@@ -2,12 +2,13 @@
 
 use tauri::{
     menu::MenuBuilder,
-    PhysicalPosition, Position,
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    AppHandle, Manager, Runtime,
+    AppHandle, Manager, PhysicalPosition, Position, Runtime,
 };
 
 use tauri::window::Color;
+
+mod terminal;
 
 #[cfg(target_os = "macos")]
 use tauri::ActivationPolicy;
@@ -87,6 +88,15 @@ fn toggle_launcher<R: Runtime>(app: &AppHandle<R>) {
 
 fn main() {
     tauri::Builder::default()
+        .manage(terminal::TerminalManager::default())
+        .invoke_handler(tauri::generate_handler![
+            terminal::terminal_create_session,
+            terminal::terminal_write,
+            terminal::terminal_run_command,
+            terminal::terminal_resize,
+            terminal::terminal_kill_session,
+            terminal::terminal_get_blocks,
+        ])
         .setup(|app| {
             #[cfg(target_os = "macos")]
             {

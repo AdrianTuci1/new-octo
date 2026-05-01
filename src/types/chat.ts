@@ -3,6 +3,7 @@ export type ChatMessage = {
   role: 'user' | 'assistant' | 'system';
   title: string;
   body: string;
+  createdAt?: string;
 };
 
 export type Conversation = {

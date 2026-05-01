@@ -93,3 +93,170 @@
 .chat-input::placeholder {
   color: var(--text-dim);
 }
+
+.command-approval-shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 90px;
+  background: #171a1d;
+  border: 1px solid rgba(69, 132, 218, 0.9);
+  border-radius: 18px;
+  box-shadow:
+    0 0 0 1px rgba(69, 132, 218, 0.12),
+    0 14px 34px rgba(0, 0, 0, 0.22);
+  overflow: hidden;
+}
+
+.command-approval-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 48px;
+  padding: 8px 12px 8px 16px;
+  background: #2a2c2d;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.035);
+}
+
+.command-approval-question {
+  display: inline-flex;
+  align-items: center;
+  gap: 11px;
+  flex: 1 1 auto;
+  min-width: 0;
+  color: rgba(244, 247, 246, 0.9);
+  font-size: 14px;
+  font-weight: 450;
+  letter-spacing: -0.01em;
+}
+
+.command-approval-question-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.command-approval-marker {
+  width: 11px;
+  height: 11px;
+  flex: 0 0 auto;
+  background: #e4a21a;
+  box-shadow: 0 0 0 1px rgba(228, 162, 26, 0.2);
+}
+
+.command-approval-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.command-approval-text-btn,
+.command-approval-run,
+.command-approval-chevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-main);
+  cursor: pointer;
+}
+
+.command-approval-text-btn {
+  gap: 5px;
+  padding: 0;
+  background: transparent;
+  color: rgba(244, 247, 246, 0.92);
+  font-size: 12px;
+  font-weight: 760;
+}
+
+.command-approval-text-btn:hover {
+  color: #fff;
+}
+
+.keycap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 17px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 6px;
+  color: rgba(244, 247, 246, 0.72);
+  background: rgba(255, 255, 255, 0.075);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.command-approval-run-group {
+  display: inline-flex;
+  align-items: stretch;
+  overflow: hidden;
+  border-radius: 7px;
+  background: #3d6fad;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+}
+
+.command-approval-run {
+  gap: 6px;
+  min-height: 31px;
+  padding: 0 11px 0 12px;
+  background: transparent;
+  font-size: 13px;
+  font-weight: 780;
+}
+
+.run-key {
+  color: rgba(255, 255, 255, 0.86);
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.command-approval-chevron {
+  width: 32px;
+  min-height: 31px;
+  border-left: 1px solid rgba(255, 255, 255, 0.16);
+  background: transparent;
+}
+
+.command-approval-run:hover,
+.command-approval-chevron:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.command-approval-command {
+  margin: 0;
+  min-height: 42px;
+  padding: 11px 16px 13px 36px;
+  color: rgba(244, 247, 246, 0.9);
+  background: #171819;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
+@media (max-width: 720px) {
+  .command-approval-top {
+    gap: 8px;
+    padding-right: 8px;
+  }
+
+  .command-approval-question {
+    font-size: 12px;
+  }
+
+  .command-approval-actions {
+    gap: 7px;
+  }
+
+  .command-approval-text-btn .keycap {
+    display: none;
+  }
+
+  .command-approval-command {
+    padding-left: 16px;
+    font-size: 12px;
+  }
+}

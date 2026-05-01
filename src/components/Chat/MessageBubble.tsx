@@ -8,9 +8,10 @@ import type { ChatMessage } from '../../types/chat';
 
 type MessageBubbleProps = {
   message: ChatMessage;
+  onRequestCommandApproval?: (command: string) => void;
 };
 
-export function MessageBubble({ message }: MessageBubbleProps) {
+export function MessageBubble({ message, onRequestCommandApproval }: MessageBubbleProps) {
   const isUser = message.role === 'user';
   const initials = "AT"; // Placeholder for user initials
 
@@ -36,6 +37,7 @@ export function MessageBubble({ message }: MessageBubbleProps) {
                 <CodeBlock 
                   code={String(children).replace(/\n$/, '')} 
                   language={lang} 
+                  onRequestCommandApproval={onRequestCommandApproval}
                 />
               ) : (
                 <code className={className} {...props}>
@@ -47,14 +49,20 @@ export function MessageBubble({ message }: MessageBubbleProps) {
         >
           {message.body}
         </ReactMarkdown>
-
-        {message.role === 'assistant' && <Suggestions />}
       </div>
     </div>
   );
 }
 
-function CodeBlock({ code, language }: { code: string; language: string }) {
+function CodeBlock({
+  code,
+  language,
+  onRequestCommandApproval
+}: {
+  code: string;
+  language: string;
+  onRequestCommandApproval?: (command: string) => void;
+}) {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = () => {
@@ -75,7 +83,11 @@ function CodeBlock({ code, language }: { code: string; language: string }) {
             {copied ? 'Copied' : 'Copy'}
           </button>
           {isShell && (
-            <button className="code-action-btn run" title="Run in terminal">
+            <button
+              className="code-action-btn run"
+              title="Run in terminal"
+              onClick={() => onRequestCommandApproval?.(code)}
+            >
               <Play size={10} />
               Run
             </button>
@@ -99,24 +111,6 @@ function CodeBlock({ code, language }: { code: string; language: string }) {
       >
         {code}
       </SyntaxHighlighter>
-    </div>
-  );
-}
-
-function Suggestions() {
-  const suggestions = [
-    "What should I do next?",
-    "Show examples.",
-    "How do I fix this?"
-  ];
-
-  return (
-    <div className="suggestions-row">
-      {suggestions.map((text) => (
-        <button key={text} className="suggestion-chip">
-          {text}
-        </button>
-      ))}
     </div>
   );
 }

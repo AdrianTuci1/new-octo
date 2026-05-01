@@ -26,6 +26,24 @@
   animation: fade-in 0.2s ease-out;
 }
 
+.terminal-block-row {
+  padding: 8px 24px;
+  display: flex;
+  align-items: flex-start;
+  flex-direction: row;
+  gap: 12px;
+  width: 100%;
+  animation: fade-in 0.2s ease-out;
+}
+
+.terminal-error-row {
+  padding: 8px 24px;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  width: 100%;
+}
+
 @keyframes fade-in {
   from {
     opacity: 0;
@@ -66,6 +84,201 @@
   line-height: 1.6;
   color: var(--text-main);
   max-width: 850px;
+}
+
+.terminal-block-summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  max-width: 850px;
+  min-height: 36px;
+  padding: 0 9px 0 12px;
+  border-radius: 10px;
+  color: rgba(244, 247, 246, 0.92);
+  background: rgba(45, 47, 47, 0.96);
+  border: 1px solid rgba(255, 255, 255, 0.045);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.025) inset;
+  cursor: pointer;
+  text-align: left;
+}
+
+.terminal-block-summary:hover {
+  background: rgba(50, 52, 52, 0.98);
+  border-color: rgba(255, 255, 255, 0.07);
+}
+
+.terminal-summary-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  color: #30b86f;
+}
+
+.terminal-summary-command {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.2;
+  letter-spacing: 0.01em;
+}
+
+.terminal-summary-chevron {
+  flex: 0 0 auto;
+  margin-left: auto;
+  color: rgba(244, 247, 246, 0.86);
+}
+
+.terminal-block-detail {
+  position: relative;
+  flex: 1;
+  max-width: 850px;
+  overflow: hidden;
+  border-radius: 12px;
+  color: var(--text-main);
+  background: transparent;
+}
+
+.terminal-detail-top-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-height: 42px;
+  padding: 0 10px 0 17px;
+  color: rgba(244, 247, 246, 0.9);
+  background: rgba(45, 47, 47, 0.96);
+  cursor: pointer;
+}
+
+.terminal-detail-top-bar.selected {
+  background: rgba(45, 47, 47, 0.96);
+}
+
+.terminal-detail-top-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 13px;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.terminal-detail-top-title svg {
+  color: #30b86f;
+}
+
+.terminal-detail-top-title span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.terminal-detail-body {
+  position: relative;
+  min-height: 112px;
+  padding: 17px 17px 18px;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 55% 0%, rgba(255, 255, 255, 0.045), transparent 28%),
+    rgba(22, 22, 21, 0.75);
+}
+
+.terminal-block-detail.failed .terminal-detail-body {
+  background:
+    radial-gradient(circle at 55% 0%, rgba(255, 95, 87, 0.045), transparent 28%),
+    rgba(50, 25, 24, 0.8);
+}
+
+.terminal-block-detail.selected .terminal-detail-body,
+.terminal-block-detail.selected.failed .terminal-detail-body {
+  background:
+    radial-gradient(circle at 52% 0%, rgba(237, 145, 51, 0.055), transparent 30%),
+    rgba(45, 36, 22, 0.82);
+}
+
+.terminal-detail-failure-rail {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background: #d94939;
+}
+
+.terminal-detail-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 27px;
+}
+
+.terminal-detail-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: rgba(244, 247, 246, 0.58);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.terminal-block-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+  color: rgba(244, 247, 246, 0.58);
+}
+
+.terminal-block-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 25px;
+  height: 25px;
+  border-radius: 7px;
+  color: rgba(244, 247, 246, 0.58);
+  background: transparent;
+  cursor: pointer;
+}
+
+.terminal-block-actions button:hover {
+  color: var(--text-main);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.terminal-block-output {
+  margin: 0;
+  padding: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: rgba(244, 247, 246, 0.92);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.48;
+}
+
+.terminal-block-output strong {
+  display: inline-block;
+  margin-bottom: 8px;
+  color: rgba(244, 247, 246, 0.98);
+  font-weight: 760;
+}
+
+.terminal-inline-error {
+  flex: 1;
+  max-width: 850px;
+  padding: 10px 12px;
+  border-radius: 9px;
+  color: #ffb8b8;
+  background: rgba(170, 48, 48, 0.22);
+  border: 1px solid rgba(255, 90, 90, 0.18);
+  font-family: var(--font-mono);
+  font-size: 11px;
 }
 
 /* User Message - Bold & Mono */

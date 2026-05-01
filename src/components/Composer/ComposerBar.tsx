@@ -8,9 +8,10 @@ type ComposerBarProps = {
   onQueryChange: (query: string) => void;
   onKeyDown: (event: KeyboardEvent<HTMLTextAreaElement>) => void;
   onHeightChange?: (height: number) => void;
+  placeholder?: string;
 };
 
-export function ComposerBar({ query, onQueryChange, onKeyDown, onHeightChange }: ComposerBarProps) {
+export function ComposerBar({ query, onQueryChange, onKeyDown, onHeightChange, placeholder }: ComposerBarProps) {
   const { inputRef, shellRef } = useComposerBar(query, onHeightChange);
 
   return (
@@ -23,7 +24,7 @@ export function ComposerBar({ query, onQueryChange, onKeyDown, onHeightChange }:
           onChange={(event) => onQueryChange(event.target.value)}
           onKeyDown={onKeyDown}
           rows={2}
-          placeholder="Ask Octomus anything, or use / for tools"
+          placeholder={placeholder ?? 'Ask Octomus anything, or use / for tools'}
         />
       </div>
 
