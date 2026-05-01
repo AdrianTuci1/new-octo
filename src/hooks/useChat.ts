@@ -35,10 +35,16 @@ export function useChat() {
         id: `assistant-${Date.now()}`,
         role: 'assistant',
         title: 'Assistant',
-        body: 'This response was triggered via the centralized useChat hook.'
+        body: `I can help you with that. To undo your last commit while keeping your changes staged, use:
+
+\`\`\`bash
+git reset --soft HEAD~1
+\`\`\`
+
+Is there anything else you'd like to know?`
       };
       addMessage(assistantMsg);
-    }, 500);
+    }, 800);
   };
 
   return {

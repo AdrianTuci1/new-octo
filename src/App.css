@@ -22,16 +22,17 @@
   align-items: stretch;
 }
 
-.chat-stack {
-  position: relative;
-  z-index: 1;
-  height: 0;
-  overflow: hidden;
+.launcher-shell.chat-active {
+  height: 80vh; /* Only chat forces the full height */
 }
 
-.launcher-shell.expanded .chat-stack {
-  height: auto;
-  min-height: 0;
+.launcher-shell.chat-active .chat-stack {
+  display: flex;
+  flex: 1;
+}
+
+.launcher-shell.tray-active .dock-stack {
+  border-top: none; /* No border needed if chat is hidden */
 }
 
 .dock-stack {
@@ -41,6 +42,15 @@
   position: relative;
   z-index: 2;
   flex: 0 0 auto;
+}
+
+.launcher-shell.expanded .dock-stack {
+  border-top: 1px solid var(--border);
+}
+
+/* Ensure no double borders when tray is open */
+.launcher-shell.expanded .tray-region {
+  border-bottom: none;
 }
 
 .panel-kicker {
@@ -81,4 +91,12 @@
   .launcher-shell {
     width: 100vw;
   }
+}
+
+.chat-stack {
+  position: relative;
+  z-index: 1;
+  display: none;
+  overflow: hidden;
+  flex-direction: column;
 }

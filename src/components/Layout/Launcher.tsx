@@ -20,18 +20,22 @@ export function Launcher() {
   const isChatOpen = messages.length > 0;
   const isExpanded = isTrayOpen || isChatOpen;
 
+  const isChatVisible = isChatOpen && !isTrayOpen;
+
   return (
     <main className="prototype-root">
       <section
         ref={shellRef}
-        className={`launcher-shell ${isExpanded ? 'expanded' : 'collapsed'}`}
+        className={`launcher-shell ${isChatVisible ? 'chat-active' : ''} ${isTrayOpen ? 'tray-active' : ''} ${isExpanded ? 'expanded' : 'collapsed'}`}
       >
-        <div className="chat-stack">
-          <ChatPanel
-            isOpen={isChatOpen && !isTrayOpen}
-            messages={messages}
-          />
-        </div>
+        {isChatOpen && !isTrayOpen && (
+          <div className="chat-stack">
+            <ChatPanel
+              isOpen={true}
+              messages={messages}
+            />
+          </div>
+        )}
 
         <div ref={dockRef} className="dock-stack">
           <TrayPanel

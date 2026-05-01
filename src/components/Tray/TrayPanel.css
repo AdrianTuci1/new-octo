@@ -90,7 +90,7 @@
   width: 100%;
   height: 1px;
   background: var(--border);
-  margin-top: 2px;
+  opacity: 1; /* Ensure it matches the main separator line */
 }
 
 .tray-footer-copy {
