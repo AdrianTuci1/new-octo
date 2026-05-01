@@ -44,3 +44,51 @@ input {
 button {
   border: 0;
 }
+
+/* Markdown Tables */
+table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 16px 0;
+  font-size: 0.9em;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+}
+
+th {
+  background: var(--surface-2);
+  color: var(--text-main);
+  font-weight: 600;
+}
+
+tr:last-child td {
+  border-bottom: none;
+}
+
+/* Markdown Lists */
+ul, ol {
+  padding-left: 20px;
+  margin: 12px 0;
+}
+
+li {
+  margin: 4px 0;
+}
+
+.status-badge {
+  font-size: 0.8em;
+  color: var(--accent);
+  opacity: 0.8;
+  margin-left: 8px;
+}
+
+.thinking-dot-animation {
+  display: inline-block;
+}

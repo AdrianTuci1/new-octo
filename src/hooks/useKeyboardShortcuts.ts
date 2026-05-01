@@ -1,9 +1,10 @@
 import { type KeyboardEvent } from 'react';
 import { useChat } from './useChat';
 import { useTray } from './useTray';
+import type { CommandApproval } from '../types/terminal';
 
 type KeyboardShortcutOptions = {
-  onCommandApproval?: (command: string) => void;
+  onCommandApproval?: (approval: CommandApproval) => void;
   onNewChat?: () => void;
   onTerminalCommand?: (command: string) => void;
 };

@@ -20,7 +20,7 @@ export function CommandApprovalComposer({
         <div className="command-approval-question">
           <span className="command-approval-marker" />
           <span className="command-approval-question-text">
-            {approval.reason ?? 'OK if I run this command and read the output?'}
+            {approval.reason ?? 'Am cerut accesul pentru a rula această comandă și a verifica rezultatul.'}
           </span>
         </div>
 

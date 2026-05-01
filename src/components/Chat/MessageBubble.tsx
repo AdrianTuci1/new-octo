@@ -5,15 +5,17 @@ import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { Copy, Play, Save, Check } from 'lucide-react';
 import { useState } from 'react';
 import type { ChatMessage } from '../../types/chat';
+import type { CommandApproval } from '../../types/terminal';
 
 type MessageBubbleProps = {
   message: ChatMessage;
-  onRequestCommandApproval?: (command: string) => void;
+  onRequestCommandApproval?: (approval: CommandApproval) => void;
 };
 
 export function MessageBubble({ message, onRequestCommandApproval }: MessageBubbleProps) {
   const isUser = message.role === 'user';
   const initials = "AT"; // Placeholder for user initials
+  const showStreamingHint = message.role === 'assistant' && message.isStreaming && !message.body.trim();
 
   return (
     <div className={`message-bubble ${message.role}`}>
@@ -24,31 +26,46 @@ export function MessageBubble({ message, onRequestCommandApproval }: MessageBubb
           </div>
         )}
       </div>
-      
+
       <div className="message-content">
-        <ReactMarkdown
-          remarkPlugins={[remarkGfm]}
-          components={{
-            code({ node, inline, className, children, ...props }: any) {
-              const match = /language-(\w+)/.exec(className || '');
-              const lang = match ? match[1] : '';
-              
-              return !inline && match ? (
-                <CodeBlock 
-                  code={String(children).replace(/\n$/, '')} 
-                  language={lang} 
-                  onRequestCommandApproval={onRequestCommandApproval}
-                />
-              ) : (
-                <code className={className} {...props}>
-                  {children}
-                </code>
-              );
-            }
-          }}
-        >
-          {message.body}
-        </ReactMarkdown>
+        {showStreamingHint && (
+          <div className="message-streaming-hint">
+            <span className="thinking-dot-animation">Thinking</span>
+            {message.status && message.status !== 'queued' && (
+              <span className="status-badge"> ({message.status})</span>
+            )}
+          </div>
+        )}
+        
+        {message.role === 'tool' ? (
+          <div className="tool-output-raw">
+            {message.body}
+          </div>
+        ) : (
+          <ReactMarkdown
+            remarkPlugins={[remarkGfm]}
+            components={{
+              code({ node, inline, className, children, ...props }: any) {
+                const match = /language-(\w+)/.exec(className || '');
+                const lang = match ? match[1] : '';
+
+                return !inline && match ? (
+                  <CodeBlock
+                    code={String(children).replace(/\n$/, '')}
+                    language={lang}
+                    onRequestCommandApproval={onRequestCommandApproval}
+                  />
+                ) : (
+                  <code className={className} {...props}>
+                    {children}
+                  </code>
+                );
+              }
+            }}
+          >
+            {message.body}
+          </ReactMarkdown>
+        )}
       </div>
     </div>
   );
@@ -61,7 +78,7 @@ function CodeBlock({
 }: {
   code: string;
   language: string;
-  onRequestCommandApproval?: (command: string) => void;
+  onRequestCommandApproval?: (approval: CommandApproval) => void;
 }) {
   const [copied, setCopied] = useState(false);
 
@@ -86,7 +103,7 @@ function CodeBlock({
             <button
               className="code-action-btn run"
               title="Run in terminal"
-              onClick={() => onRequestCommandApproval?.(code)}
+              onClick={() => onRequestCommandApproval?.({ command: code })}
             >
               <Play size={10} />
               Run

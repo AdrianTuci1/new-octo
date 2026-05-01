@@ -11,7 +11,9 @@ import { HELP_ITEMS, COMMAND_ITEMS } from '../../lib/constants';
 import type { CommandApproval } from '../../types/terminal';
 
 export function Launcher() {
-  const { query, setQuery, messages } = useChat();
+  const { query, setQuery, messages, submitToolResult } = useChat({
+    onCommandApproval: (approval) => requestCommandApproval(approval)
+  });
   const { isTrayOpen, activeTrayMode, toggleTray } = useTray();
   const terminal = useTerminalCommandBlocks();
   const [pendingApproval, setPendingApproval] = useState<CommandApproval | null>(null);
@@ -34,13 +36,12 @@ export function Launcher() {
   const isChatVisible = isChatOpen && !isTrayOpen;
   const isExpanded = isTrayOpen || isChatOpen;
 
-  const requestCommandApproval = (command: string) => {
-    const normalized = command.trim();
-    if (!normalized) return;
-
+  const requestCommandApproval = (approval: CommandApproval) => {
+    console.log('[Launcher] requestCommandApproval called for:', approval.command);
     setPendingApproval({
-      id: `command-approval-${Date.now()}`,
-      command: normalized
+      command: approval.command,
+      toolCallId: approval.toolCallId,
+      reason: approval.reason
     });
   };
 
@@ -91,9 +92,21 @@ export function Launcher() {
                 setQuery(`! ${command}`);
               }}
               onReject={() => setPendingApproval(null)}
-              onRun={(command) => {
+              onRun={async (command) => {
+                const toolCallId = pendingApproval?.toolCallId;
                 setPendingApproval(null);
-                void terminal.runCommand(command);
+                
+                // Execute the command and get the output
+                const result = await terminal.runCommand(command);
+                
+                // If this was an AI-proposed command, send the result back to continue the loop
+                if (toolCallId && result) {
+                  void submitToolResult(
+                    toolCallId,
+                    result.output || '(Comanda s-a executat fără output)',
+                    command
+                  );
+                }
               }}
             />
           ) : (

@@ -163,9 +163,9 @@ export function useTerminalCommandBlocks() {
   }, [appendOutput, upsertBlock]);
 
   const runCommand = useCallback(
-    async (command: string) => {
+    async (command: string): Promise<TerminalRunCommandResponse | null> => {
       const normalized = command.trim();
-      if (!normalized) return;
+      if (!normalized) return null;
 
       try {
         setError(null);
@@ -184,9 +184,11 @@ export function useTerminalCommandBlocks() {
           appendOutput(response.block.id, response.output);
         }
         upsertBlock(response.block);
+        return response;
       } catch (reason) {
         commandInFlightRef.current = false;
         setError(String(reason));
+        return null;
       }
     },
     [ensureSession, upsertBlock]

@@ -9,7 +9,11 @@ export function useWindowSync(elementRef: React.RefObject<HTMLElement>) {
     const element = elementRef.current;
     if (!element) return;
 
-    const currentWindow = getCurrentWindow();
+    const currentWindow = (window as any).__TAURI_INTERNALS__ ? getCurrentWindow() : null;
+    if (!currentWindow) {
+      console.warn('[useWindowSync] Tauri internals not found, skipping sync');
+      return;
+    }
     let rafId = 0;
 
     const syncWindow = async () => {
@@ -25,15 +29,20 @@ export function useWindowSync(elementRef: React.RefObject<HTMLElement>) {
       }
 
       lastWindowSizeRef.current = { width: physicalSize.width, height: physicalSize.height };
-      await currentWindow.setSize(physicalSize);
+      // No longer calling setSize as the window is now click-through natively
 
       const monitor = await currentMonitor();
       const workingMonitor = monitor ?? (await primaryMonitor());
       if (!workingMonitor) return;
 
       const { position, size } = workingMonitor.workArea;
-      const x = position.x + Math.max(0, Math.floor((size.width - physicalSize.width) / 2));
-      const y = position.y + Math.max(0, size.height - physicalSize.height - 10);
+      
+      // Calculate position based on the fixed window size (490 logical -> physical)
+      const windowHeightPhysical = Math.ceil(490 * scaleFactor);
+      const windowWidthPhysical = Math.ceil(608 * scaleFactor);
+
+      const x = position.x + Math.max(0, Math.floor((size.width - windowWidthPhysical) / 2));
+      const y = position.y + Math.max(0, size.height - windowHeightPhysical - 48);
       await currentWindow.setPosition(new PhysicalPosition(x, y));
     };
 

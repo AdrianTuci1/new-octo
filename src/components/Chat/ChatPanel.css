@@ -86,6 +86,17 @@
   max-width: 850px;
 }
 
+.message-streaming-hint {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  margin-bottom: 2px;
+  color: rgba(244, 247, 246, 0.58);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0;
+}
+
 .terminal-block-summary {
   display: flex;
   align-items: center;

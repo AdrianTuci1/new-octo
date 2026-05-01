@@ -48,7 +48,7 @@ export type TerminalCommandBlock = TerminalBlock & {
 };
 
 export type CommandApproval = {
-  id: string;
   command: string;
+  toolCallId?: string;
   reason?: string;
 };

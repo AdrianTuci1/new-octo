@@ -33,8 +33,8 @@ export function ComposerBar({ query, onQueryChange, onKeyDown, onHeightChange, p
           <button className="icon-button" type="button" title="Change working directory">
             <FolderOpen size={12} />
           </button>
-          <button className="icon-button" type="button" title="Disable terminal command auto detection">
-            <Slash size={12} />
+          <button className="icon-button" type="button" title="Disable terminal command auto detection" style={{ fontSize: '12px' }}>
+            A*
           </button>
         </div>
 

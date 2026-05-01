@@ -3,7 +3,7 @@ import './ChatPanel.css';
 import { MessageBubble } from './MessageBubble';
 import { TerminalBlockCard } from './TerminalBlockCard';
 import type { ChatMessage } from '../../types/chat';
-import type { TerminalCommandBlock } from '../../types/terminal';
+import type { CommandApproval, TerminalCommandBlock } from '../../types/terminal';
 
 type ChatPanelProps = {
   messages: ChatMessage[];
@@ -12,7 +12,7 @@ type ChatPanelProps = {
   expandedTerminalBlockIds?: string[];
   selectedTerminalBlockId?: string | null;
   isOpen: boolean;
-  onRequestCommandApproval?: (command: string) => void;
+  onRequestCommandApproval?: (approval: CommandApproval) => void;
   onCollapseTerminalBlock?: (blockId: string) => void;
   onExpandTerminalBlock?: (blockId: string) => void;
   onSelectTerminalBlock?: (blockId: string | null) => void;
@@ -53,13 +53,15 @@ export function ChatPanel({
 }: ChatPanelProps) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const hasContent = messages.length > 0 || terminalBlocks.length > 0 || Boolean(terminalError);
-  const messageItems = messages.map((message, order) => ({
-    id: message.id,
-    kind: 'message' as const,
-    at: timeFromMessage(message),
-    order,
-    message
-  }));
+  const messageItems = messages
+    .filter(m => m.role !== 'tool') // Don't show tool outputs as bubbles, terminal blocks handle them
+    .map((message, order) => ({
+      id: message.id,
+      kind: 'message' as const,
+      at: timeFromMessage(message),
+      order,
+      message
+    }));
   const blockItems = terminalBlocks.map((block, order) => ({
     id: block.id,
     kind: 'terminal-block' as const,

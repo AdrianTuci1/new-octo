@@ -6,8 +6,7 @@ use tauri::{
     AppHandle, Manager, PhysicalPosition, Position, Runtime,
 };
 
-use tauri::window::Color;
-
+mod ai;
 mod terminal;
 
 #[cfg(target_os = "macos")]
@@ -20,7 +19,7 @@ const MAIN_WINDOW_LABEL: &str = "main";
 const SHOW_MENU_ID: &str = "show";
 const HIDE_MENU_ID: &str = "hide";
 const TOGGLE_SHORTCUT: &str = "alt+space";
-const WINDOW_BOTTOM_MARGIN: i32 = 20;
+const WINDOW_BOTTOM_MARGIN: i32 = 48;
 
 fn anchor_launcher_to_bottom<R: Runtime>(app: &AppHandle<R>) {
     let Some(window) = app.get_webview_window(MAIN_WINDOW_LABEL) else {
@@ -87,9 +86,18 @@ fn toggle_launcher<R: Runtime>(app: &AppHandle<R>) {
 }
 
 fn main() {
+    load_env_file();
+
     tauri::Builder::default()
         .manage(terminal::TerminalManager::default())
+        .manage(ai::AgentHarnessManager::default())
         .invoke_handler(tauri::generate_handler![
+            ai::agent_start,
+            ai::agent_cancel,
+            ai::agent_get_run,
+            ai::agent_list_runs,
+            ai::agent_configure_openai_compatible,
+            ai::agent_provider_status,
             terminal::terminal_create_session,
             terminal::terminal_write,
             terminal::terminal_run_command,
@@ -105,7 +113,7 @@ fn main() {
             }
 
             if let Some(window) = app.get_webview_window(MAIN_WINDOW_LABEL) {
-                let _ = window.set_background_color(Some(Color(0, 0, 0, 0)));
+                let _ = window.set_background_color(None);
                 let _ = window.set_shadow(false);
             }
 
@@ -165,4 +173,53 @@ fn main() {
         })
         .run(tauri::generate_context!())
         .expect("failed to run Octomus launcher prototype");
+}
+
+fn load_env_file() {
+    for path in [".env", "../.env"] {
+        let Ok(contents) = std::fs::read_to_string(path) else {
+            continue;
+        };
+
+        for line in contents.lines() {
+            let trimmed = line.trim();
+            if trimmed.is_empty() || trimmed.starts_with('#') {
+                continue;
+            }
+
+            let Some((raw_key, raw_value)) = trimmed.split_once('=') else {
+                continue;
+            };
+
+            let key = raw_key.trim();
+            if key.is_empty() {
+                continue;
+            }
+
+            let value = parse_env_value(raw_value.trim());
+            
+            // Overwrite if it's not set or it's empty
+            let current = std::env::var(key).unwrap_or_default();
+            if current.is_empty() {
+                println!("[ENV] Setting {} from file", key);
+                std::env::set_var(key, value);
+            } else {
+                println!("[ENV] {} is already set to a non-empty value, skipping", key);
+            }
+        }
+    }
+}
+
+fn parse_env_value(value: &str) -> String {
+    let trimmed = value.trim();
+    if trimmed.len() >= 2 {
+        let bytes = trimmed.as_bytes();
+        let first = bytes[0];
+        let last = bytes[trimmed.len() - 1];
+        if (first == b'"' && last == b'"') || (first == b'\'' && last == b'\'') {
+            return trimmed[1..trimmed.len() - 1].to_string();
+        }
+    }
+
+    trimmed.to_string()
 }
