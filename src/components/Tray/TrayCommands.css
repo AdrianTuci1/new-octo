@@ -1,0 +1,66 @@
+.command-list {
+  display: grid;
+  gap: 8px;
+}
+
+.command-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 12px;
+  padding: 4px 0;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  width: 100%;
+  text-align: left;
+  transition: opacity 120ms ease;
+}
+
+.command-row:hover {
+  opacity: 0.8;
+}
+
+.command-keys {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.command-text {
+  display: flex;
+  align-items: baseline;
+  min-width: 0;
+  flex: 1;
+}
+
+.command-label {
+  color: var(--text-main);
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  width: 140px; /* Coloană fixă pentru comandă */
+  flex-shrink: 0;
+}
+
+.command-detail {
+  color: var(--text-dim);
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+}
+
+.keycap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-main);
+}

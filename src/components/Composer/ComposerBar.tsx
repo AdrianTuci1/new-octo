@@ -1,5 +1,6 @@
-import { useLayoutEffect, useRef, type KeyboardEvent } from 'react';
+import { type KeyboardEvent } from 'react';
 import { Bot, FolderOpen, MonitorSmartphone, Plus, Slash } from 'lucide-react';
+import { useComposerBar } from './useComposerBar';
 import './ComposerBar.css';
 
 type ComposerBarProps = {
@@ -10,42 +11,7 @@ type ComposerBarProps = {
 };
 
 export function ComposerBar({ query, onQueryChange, onKeyDown, onHeightChange }: ComposerBarProps) {
-  const inputRef = useRef<HTMLTextAreaElement | null>(null);
-  const shellRef = useRef<HTMLDivElement | null>(null);
-
-  useLayoutEffect(() => {
-    const element = inputRef.current;
-    if (!element) {
-      return;
-    }
-
-    element.style.height = 'auto';
-    element.style.height = `${element.scrollHeight}px`;
-  }, [query]);
-
-  useLayoutEffect(() => {
-    if (!onHeightChange) {
-      return;
-    }
-
-    const element = shellRef.current;
-    if (!element) {
-      return;
-    }
-
-    const updateHeight = () => {
-      onHeightChange(Math.ceil(element.getBoundingClientRect().height));
-    };
-
-    updateHeight();
-
-    const observer = new ResizeObserver(updateHeight);
-    observer.observe(element);
-
-    return () => {
-      observer.disconnect();
-    };
-  }, [onHeightChange]);
+  const { inputRef, shellRef } = useComposerBar(query, onHeightChange);
 
   return (
     <div ref={shellRef} className="composer-shell">

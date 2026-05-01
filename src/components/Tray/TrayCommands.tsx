@@ -1,6 +1,5 @@
 import './TrayCommands.css';
-import { Grid3X3 } from 'lucide-react';
-import type { CommandItem } from './trayTypes';
+import type { CommandItem } from '../../types/ui';
 
 type TrayCommandsProps = {
   items: CommandItem[];
@@ -10,11 +9,6 @@ type TrayCommandsProps = {
 export function TrayCommands({ items, onInsertCommand }: TrayCommandsProps) {
   return (
     <section className="tray-pane tray-commands" aria-label="Tray commands">
-      <div className="tray-header">
-        <span className="tray-title">/COMMANDS</span>
-        <Grid3X3 className="tray-header-icon" size={12} strokeWidth={1.7} />
-      </div>
-
       <div className="tray-pane-scroll">
         <div className="command-list">
           {items.map((item) => {
@@ -27,11 +21,15 @@ export function TrayCommands({ items, onInsertCommand }: TrayCommandsProps) {
                 onClick={() => onInsertCommand(item.label)}
                 type="button"
               >
-                <span className="command-row-icon" aria-hidden="true">
-                  <Icon size={12} strokeWidth={1.8} />
-                </span>
-                <span className="command-row-label">{item.label}</span>
-                <span className="command-row-detail">{item.detail}</span>
+                <div className="command-keys">
+                  <span className="keycap">
+                    <Icon size={12} strokeWidth={2} />
+                  </span>
+                </div>
+                <div className="command-text">
+                  <span className="command-label">{item.label}</span>
+                  <span className="command-detail">{item.detail}</span>
+                </div>
               </button>
             );
           })}

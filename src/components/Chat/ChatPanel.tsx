@@ -1,27 +1,20 @@
 import { useRef } from 'react';
 import './ChatPanel.css';
 
-type ChatMessage = {
-  id: string;
-  role: 'user' | 'assistant' | 'system';
-  title: string;
-  body: string;
-};
+import type { ChatMessage } from '../../types/chat';
 
 type ChatPanelProps = {
   messages: ChatMessage[];
   isOpen: boolean;
-  dockOffset: number;
 };
 
-export function ChatPanel({ messages, isOpen, dockOffset }: ChatPanelProps) {
+export function ChatPanel({ messages, isOpen }: ChatPanelProps) {
   const regionRef = useRef<HTMLDivElement | null>(null);
 
   return (
     <div
       ref={regionRef}
       className={`chat-region ${isOpen ? 'open' : 'closed'}`}
-      style={{ inset: `0 0 ${dockOffset}px 0` }}
     >
       {messages.length > 0 ? (
         <div className="chat-scroll">

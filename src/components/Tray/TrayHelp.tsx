@@ -1,5 +1,5 @@
 import './TrayHelp.css';
-import type { HelpItem } from './trayTypes';
+import type { HelpItem } from '../../types/ui';
 
 type TrayHelpProps = {
   items: HelpItem[];

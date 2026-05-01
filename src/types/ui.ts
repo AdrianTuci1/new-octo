@@ -11,4 +11,7 @@ export type CommandItem = {
   icon: LucideIcon;
 };
 
-export type TrayContentMode = 'help' | 'commands';
+export type TrayContentMode = 'help' | 'commands' | 'conversations';
+export type TrayMode = 'closed' | TrayContentMode;
+
+export type PanelMode = 'launcher' | 'settings' | 'onboarding';

@@ -25,17 +25,22 @@
 .chat-stack {
   position: relative;
   z-index: 1;
+  height: 0;
+  overflow: hidden;
+}
+
+.launcher-shell.expanded .chat-stack {
+  height: auto;
+  min-height: 0;
 }
 
 .dock-stack {
   width: 100%;
   display: flex;
   flex-direction: column;
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
+  position: relative;
   z-index: 2;
+  flex: 0 0 auto;
 }
 
 .panel-kicker {

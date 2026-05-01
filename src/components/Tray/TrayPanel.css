@@ -67,7 +67,7 @@
 .tray-switcher {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 6px;
   padding: 0;
   background: transparent;
 }
@@ -75,7 +75,7 @@
 .tray-switch-item {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   min-width: 0;
 }
 
@@ -147,10 +147,10 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 22px;
-  width: 22px;
+  min-height: 18px;
+  width: 18px;
   padding: 0;
-  border-radius: 8px;
+  border-radius: 4px;
   background: var(--surface-2);
   color: var(--text-soft);
   cursor: pointer;
@@ -162,4 +162,85 @@
 .mode-button:hover {
   background: var(--surface-2);
   color: var(--text-main);
+}
+
+.tray-footer-shortcuts {
+  padding: 8px 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.shortcut-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-dim);
+}
+
+.key-group {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.tray-key {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--text-main);
+  font-size: 10px;
+  font-weight: 600;
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.2);
+}
+
+.tray-key.chip {
+  min-width: 32px;
+  height: 18px;
+  font-weight: 500;
+  text-transform: none;
+}
+
+.shortcut-label {
+  font-size: 11px;
+  color: var(--text-soft);
+}
+
+.shortcut-label.highlight {
+  color: var(--text-main);
+  font-weight: 500;
+}
+
+.shortcut-icon {
+  color: var(--text-soft);
+  opacity: 0.8;
+}
+
+.shortcut-separator {
+  width: 1px;
+  height: 12px;
+  background: var(--border);
+  margin: 0 4px;
+}
+
+.tray-pane-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 48px 24px;
+  color: var(--text-dim);
+  text-align: center;
+}
+
+.tray-pane-placeholder p {
+  font-size: 13px;
+  margin: 0;
 }
