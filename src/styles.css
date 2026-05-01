@@ -1,0 +1,46 @@
+:root {
+  color-scheme: dark;
+  --bg-root: transparent;
+  --launcher-bg: #111417;
+  --tray-bg: #171b1f;
+  --surface-2: #1d2328;
+  --border: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(122, 211, 164, 0.24);
+  --text-main: #f4f7f6;
+  --text-soft: #9aa6a4;
+  --text-dim: #78817d;
+  --accent: #7ad3a4;
+  --accent-soft: rgba(122, 211, 164, 0.1);
+  --shadow: 0 12px 30px rgba(0, 0, 0, 0.34);
+  --font-ui: "SF Pro Display", "Segoe UI", sans-serif;
+  --font-mono: "SF Mono", "JetBrains Mono", monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  background: transparent;
+  overflow: hidden;
+}
+
+body {
+  background: transparent;
+  color: var(--text-main);
+  font-family: var(--font-ui);
+}
+
+button,
+input {
+  font: inherit;
+}
+
+button {
+  border: 0;
+}

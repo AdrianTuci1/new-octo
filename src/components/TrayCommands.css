@@ -1,0 +1,70 @@
+.tray-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 2px 4px;
+  border-bottom: 1px solid var(--border);
+  flex: 0 0 auto;
+}
+
+.tray-title {
+  margin: 0;
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.command-list {
+  display: grid;
+  gap: 2px;
+}
+
+.command-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  flex-wrap: nowrap;
+  gap: 10px;
+  padding: 10px 8px;
+  border-radius: 10px;
+  background: transparent;
+  border: 0;
+  color: var(--text-soft);
+  cursor: pointer;
+  text-align: left;
+}
+
+.command-row-icon {
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-dim);
+}
+
+.command-row-label {
+  color: var(--text-main);
+  white-space: nowrap;
+  min-width: 0;
+  flex: 0 0 auto;
+}
+
+.command-row-detail {
+  min-width: 0;
+  color: var(--text-soft);
+  font-size: 13px;
+  line-height: 1.25;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1 1 auto;
+}
+
+.command-row:hover {
+  background: rgba(255, 255, 255, 0.04);
+}

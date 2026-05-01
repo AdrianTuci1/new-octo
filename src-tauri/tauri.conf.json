@@ -1,0 +1,31 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Octomus Launcher Prototype",
+  "version": "0.1.0",
+  "identifier": "com.octomus.launcher.prototype",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build",
+    "devUrl": "http://localhost:1420",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "macOSPrivateApi": true,
+    "windows": [
+      {
+        "label": "main",
+        "title": "Octomus Launcher Prototype",
+        "width": 608,
+        "minHeight": 90,
+        "maxHeight": 648,
+        "minWidth": 608,
+        "maxWidth": 608,
+        "resizable": true,
+        "decorations": false,
+        "transparent": true,
+        "shadow": false,
+        "alwaysOnTop": true
+      }
+    ]
+  }
+}
