@@ -1,4 +1,4 @@
-export type WorkspaceChromeTabKind = 'tools' | 'agents' | 'session' | 'settings';
+export type WorkspaceChromeTabKind = 'tools' | 'agents' | 'terminal' | 'conversation' | 'settings';
 
 export type WorkspaceChromeTab = {
   id: string;
@@ -7,3 +7,9 @@ export type WorkspaceChromeTab = {
   subtitle?: string;
 };
 
+export type WorkspaceConversation = {
+  id: string;
+  title: string;
+  timeLabel: string;
+  branchLabel?: string;
+};

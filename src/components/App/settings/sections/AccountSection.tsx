@@ -27,7 +27,7 @@ function SettingsRow({
 function SettingsToggle() {
   return (
     <button
-      className="settings-toggle"
+      className="settings-toggle active"
       type="button"
       aria-label="Settings sync enabled"
       aria-pressed="true"

@@ -104,23 +104,35 @@
 
 .settings-toggle {
   position: relative;
-  width: 36px;
-  height: 20px;
+  width: 32px;
+  height: 18px;
   padding: 2px;
   border-radius: 999px;
-  background: var(--accent-blue);
+  background: rgba(255, 255, 255, 0.1);
   border: 0;
   cursor: pointer;
-  transition: background 140ms ease;
+  transition: all 140ms ease;
+  display: flex;
+  align-items: center;
 }
 
 .settings-toggle span {
   display: block;
-  width: 16px;
-  height: 16px;
-  margin-left: auto;
+  width: 14px;
+  height: 14px;
   border-radius: 50%;
   background: #ffffff;
+  transition: transform 140ms ease, background 140ms ease;
+  transform: translateX(0);
+}
+
+.settings-toggle.active {
+  background: var(--accent-blue);
+}
+
+.settings-toggle.active span {
+  background: #ffffff;
+  transform: translateX(14px);
 }
 
 .settings-version-actions {
@@ -449,3 +461,239 @@
 
 
 
+
+/* MCP Servers Section */
+.mcp-servers-section {
+  padding-bottom: 60px;
+}
+
+.settings-panel-description {
+  margin-top: 8px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-dim);
+  max-width: 800px;
+}
+
+.mcp-search-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 24px;
+}
+
+.mcp-search-input-wrapper {
+  position: relative;
+  flex: 1;
+}
+
+.mcp-search-icon {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-dim);
+  pointer-events: none;
+}
+
+.mcp-search-input-wrapper input {
+  width: 100%;
+  height: 36px;
+  padding: 0 10px 0 32px;
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  color: var(--text-main);
+  font-size: 13px;
+  outline: none;
+}
+
+.mcp-search-input-wrapper input:focus {
+  border-color: var(--accent-blue);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.mcp-add-button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 12px;
+  background: transparent;
+  border: 0;
+  color: var(--text-main);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  border-radius: 6px;
+}
+
+.mcp-add-button:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.mcp-settings-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-top: 24px;
+  padding: 16px 0;
+  gap: 20px;
+}
+
+.mcp-settings-info {
+  flex: 1;
+}
+
+.mcp-settings-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-main);
+  margin-bottom: 4px;
+}
+
+.mcp-settings-description {
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-dim);
+}
+
+.mcp-group {
+  margin-top: 32px;
+}
+
+.mcp-group-title {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 12px;
+}
+
+.mcp-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.mcp-card {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 16px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  transition: all 120ms ease;
+}
+
+.mcp-card:hover {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.mcp-card-icon-wrapper {
+  position: relative;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  color: var(--text-main);
+  flex-shrink: 0;
+}
+
+.mcp-card-icon {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #161b22;
+  border-radius: 8px;
+  border: 1px solid var(--border-strong);
+  overflow: hidden;
+  line-height: 0;
+}
+
+.mcp-icon-circle {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.mcp-status-dot {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: 8px;
+  height: 8px;
+  background: #6e7681;
+  border: 2px solid #0d1117;
+  border-radius: 50%;
+}
+
+.mcp-card.active .mcp-status-dot {
+  background: #6e7681; /* Offline color as per image */
+}
+
+.mcp-card-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.mcp-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mcp-card-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+.mcp-card-description {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mcp-card-status {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-top: 2px;
+}
+
+.mcp-card-action {
+  flex-shrink: 0;
+}
+
+.mcp-plus-button {
+  background: transparent;
+  border: 0;
+  color: var(--text-dim);
+  cursor: pointer;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 120ms ease;
+}
+
+.mcp-plus-button:hover {
+  color: var(--text-main);
+}
+
+/* Adjusting existing toggle to be switch-like - REMOVED redundant styles */

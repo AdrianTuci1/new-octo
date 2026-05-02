@@ -22,7 +22,7 @@ export type SettingsSidebarItem =
   | SettingsSidebarGroupItem
   | SettingsSidebarHeadingItem;
 
-export type SettingsSectionContentKind = 'account' | 'octo-agent' | 'knowledge' | 'profiles' | 'placeholder';
+export type SettingsSectionContentKind = 'account' | 'octo-agent' | 'knowledge' | 'profiles' | 'mcp-servers' | 'placeholder';
 
 export type SettingsSectionMeta = {
   title: string;

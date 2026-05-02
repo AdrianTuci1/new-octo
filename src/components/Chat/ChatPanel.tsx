@@ -4,6 +4,9 @@ import { MessageBubble } from './MessageBubble';
 import { TerminalBlockCard } from './TerminalBlockCard';
 import type { ChatMessage } from '../../types/chat';
 import type { CommandApproval, TerminalCommandBlock } from '../../types/terminal';
+import { ArrowLeft } from 'lucide-react';
+
+type EmptyStateVariant = 'default' | 'workspace';
 
 type ChatPanelProps = {
   messages: ChatMessage[];
@@ -12,6 +15,8 @@ type ChatPanelProps = {
   expandedTerminalBlockIds?: string[];
   selectedTerminalBlockId?: string | null;
   isOpen: boolean;
+  emptyStateVariant?: EmptyStateVariant;
+  showEmptyTopbar?: boolean;
   onRequestCommandApproval?: (approval: CommandApproval) => void;
   onCollapseTerminalBlock?: (blockId: string) => void;
   onExpandTerminalBlock?: (blockId: string) => void;
@@ -46,6 +51,8 @@ export function ChatPanel({
   expandedTerminalBlockIds = [],
   selectedTerminalBlockId,
   isOpen,
+  emptyStateVariant = 'default',
+  showEmptyTopbar = false,
   onRequestCommandApproval,
   onCollapseTerminalBlock,
   onExpandTerminalBlock,
@@ -71,12 +78,12 @@ export function ChatPanel({
   }));
   const terminalErrorItem = terminalError
     ? [{
-        id: 'terminal-error',
-        kind: 'terminal-error' as const,
-        at: Number.MAX_SAFE_INTEGER,
-        order: messages.length + terminalBlocks.length,
-        error: terminalError
-      }]
+      id: 'terminal-error',
+      kind: 'terminal-error' as const,
+      at: Number.MAX_SAFE_INTEGER,
+      order: messages.length + terminalBlocks.length,
+      error: terminalError
+    }]
     : [];
   const timelineItems: TimelineItem[] = [
     ...messageItems,
@@ -135,19 +142,34 @@ export function ChatPanel({
           })}
         </div>
       ) : (
-        <div className="chat-empty">
-          <div className="chat-empty-kicker">Octomus AI</div>
-          <h1>How can I help you today?</h1>
-          <p>
-            Ask a question, find a command, or troubleshoot an issue.
-            Octomus AI is here to help you move faster.
-          </p>
-          <div className="suggestions-row">
-            <button className="suggestion-chip">How do I undo a git commit?</button>
-            <button className="suggestion-chip">Find all files larger than 1GB</button>
-            <button className="suggestion-chip">Explain my last terminal error</button>
+        emptyStateVariant === 'workspace' ? (
+          <div className="chat-empty chat-empty-workspace">
+            {showEmptyTopbar && (
+              <div className="chat-empty-topbar">
+                <div className="chat-empty-topbar-leading">
+                  <span className="chat-empty-topbar-arrow"><ArrowLeft size={12} /> </span>
+                  <kbd className="chat-empty-topbar-key">esc</kbd>
+                  <span>for terminal</span>
+                </div>
+                <div className="chat-empty-topbar-title">New agent conversation</div>
+              </div>
+            )}
           </div>
-        </div>
+        ) : (
+          <div className="chat-empty">
+            <div className="chat-empty-kicker">Octomus AI</div>
+            <h1>How can I help you today?</h1>
+            <p>
+              Ask a question, find a command, or troubleshoot an issue.
+              Octomus AI is here to help you move faster.
+            </p>
+            <div className="suggestions-row">
+              <button className="suggestion-chip">How do I undo a git commit?</button>
+              <button className="suggestion-chip">Find all files larger than 1GB</button>
+              <button className="suggestion-chip">Explain my last terminal error</button>
+            </div>
+          </div>
+        )
       )}
     </div>
   );

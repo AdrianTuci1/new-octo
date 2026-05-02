@@ -4,6 +4,7 @@ import { AccountSection } from './sections/AccountSection';
 import { AgentSection } from './sections/AgentSection';
 import { KnowledgeSection } from './sections/KnowledgeSection';
 import { ProfilesSection } from './sections/ProfilesSection';
+import { MCPServersSection } from './sections/MCPServersSection';
 import { SectionPlaceholder } from './sections/SectionPlaceholder';
 
 type SettingsContentProps = {
@@ -24,6 +25,8 @@ export function SettingsContent({ sectionId }: SettingsContentProps) {
         <KnowledgeSection />
       ) : sectionMeta.contentKind === 'profiles' ? (
         <ProfilesSection />
+      ) : sectionMeta.contentKind === 'mcp-servers' ? (
+        <MCPServersSection />
       ) : (
         <SectionPlaceholder title={sectionMeta.title} description={sectionMeta.description} />
       )}

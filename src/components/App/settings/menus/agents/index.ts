@@ -35,7 +35,7 @@ export const agentsSectionMeta: Record<
   'agents/mcp-servers': {
     title: 'MCP servers',
     description: 'Connect and organize model context protocol servers.',
-    contentKind: 'placeholder'
+    contentKind: 'mcp-servers'
   },
   'agents/knowledge': {
     title: 'Knowledge',

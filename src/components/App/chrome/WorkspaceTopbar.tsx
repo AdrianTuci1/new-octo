@@ -8,18 +8,24 @@ type WorkspaceTopbarProps = {
   activeTabId: string;
   tabs: WorkspaceChromeTab[];
   onSelectTab: (tabId: string) => void;
-  onNewTab: () => void;
+  onNewTerminalTab: () => void;
   onCloseTab: (tabId: string) => void;
   onToggleSidebar: () => void;
+  isSidebarOpen: boolean;
+  isAgentsActive: boolean;
+  onToggleAgents: () => void;
 };
 
 export function WorkspaceTopbar({
   activeTabId,
   tabs,
   onSelectTab,
-  onNewTab,
+  onNewTerminalTab,
   onCloseTab,
-  onToggleSidebar
+  onToggleSidebar,
+  isSidebarOpen,
+  isAgentsActive,
+  onToggleAgents
 }: WorkspaceTopbarProps) {
   const dragSpacerRef = useRef<HTMLDivElement | null>(null);
 
@@ -48,15 +54,20 @@ export function WorkspaceTopbar({
     <header className="workspace-topbar" aria-label="Workspace tabs">
       <div className="workspace-topbar-left">
         <button 
-          className="workspace-topbar-icon-button" 
+          className={`workspace-topbar-icon-button ${isSidebarOpen ? 'active' : ''}`} 
           type="button" 
           title="Tools panel"
           onClick={onToggleSidebar}
         >
-          <PanelLeftOpen size={14} strokeWidth={1.8} />
+          <PanelLeftOpen size={16} strokeWidth={1.8} />
         </button>
-        <button className="workspace-topbar-icon-button" type="button" title="Agent management panel">
-          <LayoutGrid size={14} strokeWidth={1.8} />
+        <button 
+          className={`workspace-topbar-icon-button ${isAgentsActive ? 'active' : ''}`} 
+          type="button" 
+          title="Agent management panel"
+          onClick={onToggleAgents}
+        >
+          <LayoutGrid size={16} strokeWidth={1.8} />
         </button>
         <div className="workspace-topbar-vertical-divider" />
       </div>
@@ -88,7 +99,7 @@ export function WorkspaceTopbar({
                   onCloseTab(tab.id);
                 }}
               >
-                <X size={14} strokeWidth={2.4} />
+                <X size={16} strokeWidth={2.4} />
               </button>
             </div>
           );
@@ -96,11 +107,16 @@ export function WorkspaceTopbar({
       </div>
 
       <div className="workspace-topbar-plus-group">
-        <button className="workspace-topbar-plus-action" type="button" onClick={onNewTab} title="New tab">
-          <Plus size={16} strokeWidth={2.2} />
+        <button
+          className="workspace-topbar-plus-action"
+          type="button"
+          onClick={onNewTerminalTab}
+          title="New terminal workspace"
+        >
+          <Plus size={18} strokeWidth={2.2} />
         </button>
         <button className="workspace-topbar-plus-menu" type="button" title="Tab options">
-          <ChevronDown size={10} strokeWidth={1.8} />
+          <ChevronDown size={12} strokeWidth={1.8} />
         </button>
       </div>
 
@@ -113,10 +129,10 @@ export function WorkspaceTopbar({
 
       <div className="workspace-topbar-right workspace-topbar-right-compact">
         <button className="workspace-topbar-icon-button" type="button" title="Notifications">
-          <Inbox size={14} strokeWidth={1.8} />
+          <Inbox size={16} strokeWidth={1.8} />
         </button>
         <button className="workspace-topbar-icon-button" type="button" title="Account">
-          <CircleUserRound size={14} strokeWidth={1.8} />
+          <CircleUserRound size={16} strokeWidth={1.8} />
         </button>
       </div>
     </header>

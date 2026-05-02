@@ -1,10 +1,10 @@
-import type { WorkspaceChromeTab } from './workspaceChromeTypes';
+import type { WorkspaceChromeTab, WorkspaceConversation } from './workspaceChromeTypes';
 
 export const initialWorkspaceChromeTabs: WorkspaceChromeTab[] = [
   {
     id: 'terminal-main',
-    label: '../launcher-rs-react',
-    kind: 'session'
+    label: '~',
+    kind: 'terminal'
   },
   {
     id: 'settings',
@@ -14,3 +14,5 @@ export const initialWorkspaceChromeTabs: WorkspaceChromeTab[] = [
 ];
 
 export const defaultWorkspaceChromeTabId = 'settings';
+
+export const initialWorkspaceConversations: WorkspaceConversation[] = [];

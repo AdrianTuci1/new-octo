@@ -67,10 +67,13 @@
 }
 
 .workspace-topbar-icon-button {
-  width: 26px;
-  height: 26px;
-  display: grid;
-  place-items: center;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  margin: 0;
   border-radius: 6px;
   border: 0;
   background: transparent;
@@ -79,10 +82,15 @@
   cursor: pointer;
 }
 
+.workspace-topbar-icon-button svg {
+  display: block;
+}
+
 .workspace-topbar-icon-button:hover,
 .workspace-topbar-avatar-button:hover,
-.workspace-topbar-plus:hover {
-  background: rgba(255, 255, 255, 0.06);
+.workspace-topbar-plus:hover,
+.workspace-topbar-icon-button.active {
+  background: rgba(255, 255, 255, 0.08);
   color: var(--text-main);
 }
 
@@ -96,7 +104,7 @@
 
 .workspace-topbar-plus-action,
 .workspace-topbar-plus-menu {
-  height: 26px;
+  height: 24px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -108,13 +116,13 @@
 }
 
 .workspace-topbar-plus-action {
-  padding: 0 4px;
+  padding: 0 3px;
   border-top-left-radius: 6px;
   border-bottom-left-radius: 6px;
 }
 
 .workspace-topbar-plus-menu {
-  padding: 0 4px 0 2px;
+  padding: 0 4px;
   border-top-right-radius: 6px;
   border-bottom-right-radius: 6px;
 }
@@ -126,8 +134,8 @@
 }
 
 .workspace-topbar-avatar-button {
-  width: 26px;
-  height: 26px;
+  width: 24px;
+  height: 24px;
   display: grid;
   place-items: center;
   border: 0;

@@ -22,7 +22,7 @@
   overflow: hidden;
 }
 
-.app-window-body {
+.app-window-settings-body {
   min-height: 0;
   flex: 1;
   display: grid;
@@ -30,12 +30,20 @@
   background: var(--settings-bg-content);
 }
 
+.app-window-workspace,
+.app-window-panel {
+  min-height: 0;
+  flex: 1;
+  display: flex;
+}
+
 .app-window-header {
-  height: 32px;
+  height: 44px;
   display: flex;
   align-items: center;
   justify-content: center;
   background: var(--settings-bg-content);
+  border-bottom: none;
 }
 
 .app-window-header-title {
@@ -45,6 +53,8 @@
   opacity: 0.8;
 }
 
-.app-window-body > * {
+.app-window-settings-body > *,
+.app-window-workspace > *,
+.app-window-panel > * {
   min-width: 0;
 }

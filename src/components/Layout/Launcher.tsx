@@ -22,9 +22,20 @@ import {
   resolveComposerState
 } from '../../lib/composerIntelligence';
 import { HELP_ITEMS, COMMAND_ITEMS } from '../../lib/constants';
+import { formatCompactPathLabel } from '../../lib/pathLabels';
 import type { CommandApproval } from '../../types/terminal';
 import type { HistoryEntry, HistoryTab } from '../../types/history';
 import type { ComposerMode, ShellModeSource } from '../../types/ui';
+
+type LauncherVariant = 'panel' | 'workspace';
+
+type LauncherProps = {
+  variant?: LauncherVariant;
+  initialComposerSurface?: 'agent' | 'terminal';
+  chatMode?: 'auto' | 'always-open';
+  onWorkingDirectoryLabelChange?: (label: string) => void;
+  resetOnMount?: boolean;
+};
 
 function formatHistoryDetail(timestamp: string) {
   const date = new Date(timestamp);
@@ -43,8 +54,14 @@ function isSingleTokenShellCandidate(query: string) {
   return trimmed.length > 0 && !/\s/.test(trimmed) && /^[A-Za-z0-9._-]+$/.test(trimmed);
 }
 
-export function Launcher() {
-  const [composerSurface, setComposerSurface] = useState<'agent' | 'terminal'>('agent');
+export function Launcher({
+  variant = 'panel',
+  initialComposerSurface = 'agent',
+  chatMode = 'auto',
+  onWorkingDirectoryLabelChange,
+  resetOnMount = false
+}: LauncherProps) {
+  const [composerSurface, setComposerSurface] = useState<'agent' | 'terminal'>(initialComposerSurface);
   const [modeLock, setModeLock] = useState<ComposerMode | null>(null);
   const [autodetectedShellLatch, setAutodetectedShellLatch] = useState(false);
   const [allowSingleCharacterCommandPrediction, setAllowSingleCharacterCommandPrediction] = useState(false);
@@ -58,7 +75,7 @@ export function Launcher() {
   const runtimeContext = useTerminalRuntimeContext(workingDirectory.currentPath);
   const commandHistory = useCommandHistory();
   const modelSelection = useModelSelection();
-  const { query, setQuery, messages, submitQuery, submitToolResult } = useChat({
+  const { query, setQuery, messages, submitQuery, submitToolResult, clearMessages } = useChat({
     cwd: workingDirectory.currentPath,
     modelId: modelSelection.selectedModelId,
     onCommandApproval: (approval) => requestCommandApproval(approval)
@@ -289,11 +306,53 @@ export function Launcher() {
 
   const shellRef = useRef<HTMLElement | null>(null);
   const dockRef = useRef<HTMLDivElement | null>(null);
+  const didResetOnMountRef = useRef(false);
   useWindowSync(shellRef);
 
-  const isChatOpen = messages.length > 0 || terminal.blocks.length > 0 || Boolean(terminal.error);
-  const isChatVisible = isChatOpen && !isTrayOpen;
-  const isExpanded = isTrayOpen || isChatOpen;
+  useEffect(() => {
+    setComposerSurface(initialComposerSurface);
+  }, [initialComposerSurface]);
+
+  useEffect(() => {
+    onWorkingDirectoryLabelChange?.(
+      formatCompactPathLabel(workingDirectory.currentPath, workingDirectory.homeDir)
+    );
+  }, [onWorkingDirectoryLabelChange, workingDirectory.currentPath, workingDirectory.homeDir]);
+
+  useEffect(() => {
+    if (!resetOnMount || didResetOnMountRef.current) {
+      return;
+    }
+
+    didResetOnMountRef.current = true;
+    clearMessages();
+    setQuery('');
+    closeTray();
+    terminal.clearBlocks();
+    setComposerSurface(initialComposerSurface);
+    setPendingApproval(null);
+    setModeLock(null);
+    setAutodetectedShellLatch(false);
+    setAllowSingleCharacterCommandPrediction(false);
+    setTerminalAutoDetectEnabled(true);
+    setHistoryTab('all');
+    setSelectedHistoryIndex(0);
+    setModelTab('all');
+    setSelectedModelIndex(0);
+  }, [clearMessages, closeTray, initialComposerSurface, resetOnMount, setQuery, terminal]);
+
+  const hasChatContent = messages.length > 0 || terminal.blocks.length > 0 || Boolean(terminal.error);
+  const isChatOpen = chatMode === 'always-open' ? true : hasChatContent;
+  const isChatVisible = chatMode === 'always-open' ? true : hasChatContent && !isTrayOpen;
+  const isExpanded = chatMode === 'always-open' ? true : isTrayOpen || hasChatContent;
+  const launcherRootClassName = variant === 'workspace' ? 'launcher-workspace-root' : 'prototype-root';
+  const launcherShellClassName = [
+    'launcher-shell',
+    variant === 'workspace' ? 'workspace-shell' : 'panel-shell',
+    isChatVisible ? 'chat-active' : '',
+    isTrayOpen ? 'tray-active' : '',
+    isExpanded ? 'expanded' : 'collapsed'
+  ].filter(Boolean).join(' ');
   const launchAgentComposer = useCallback(() => {
     setPendingApproval(null);
     setModeLock(null);
@@ -556,16 +615,18 @@ export function Launcher() {
   };
 
   return (
-    <main className="prototype-root">
+    <main className={launcherRootClassName}>
       <section
         ref={shellRef}
-        className={`launcher-shell ${isChatVisible ? 'chat-active' : ''} ${isTrayOpen ? 'tray-active' : ''} ${isExpanded ? 'expanded' : 'collapsed'}`}
+        className={launcherShellClassName}
       >
-        {isChatOpen && !isTrayOpen && (
+        {isChatOpen && (
           <div className="chat-stack">
             <ChatPanel
+              emptyStateVariant={variant === 'workspace' ? 'workspace' : 'default'}
               isOpen={true}
               messages={messages}
+              showEmptyTopbar={variant === 'workspace' && composerSurface !== 'terminal' && composerMode !== 'shell'}
               expandedTerminalBlockIds={terminal.expandedBlockIds}
               onCollapseTerminalBlock={terminal.collapseBlock}
               onExpandTerminalBlock={terminal.expandBlock}

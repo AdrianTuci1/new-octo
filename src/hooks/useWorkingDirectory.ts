@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { formatCompactPathLabel } from '../lib/pathLabels';
 import type { FilesystemDirectoryListing, FilesystemPathContext } from '../types/filesystem';
 
 type DirectoryListingRequest = {
@@ -7,20 +8,6 @@ type DirectoryListingRequest = {
   query?: string | null;
   directoriesOnly?: boolean;
 };
-
-function compactPathLabel(path: string | null, homeDir: string | null) {
-  const segments = path?.split('/').filter(Boolean) ?? [];
-  const lastSegment = segments[segments.length - 1] ?? path ?? '~';
-
-  if (!path) return '~';
-  if (!homeDir) return path;
-  if (path === homeDir) return '~';
-  if (path.startsWith(`${homeDir}/`)) {
-    return `~/${lastSegment}`;
-  }
-
-  return lastSegment;
-}
 
 export function useWorkingDirectory() {
   const [homeDir, setHomeDir] = useState<string | null>(null);
@@ -98,7 +85,7 @@ export function useWorkingDirectory() {
   }, []);
 
   const buttonLabel = useMemo(
-    () => compactPathLabel(currentPath, homeDir),
+    () => formatCompactPathLabel(currentPath, homeDir),
     [currentPath, homeDir]
   );
 
