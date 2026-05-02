@@ -1,13 +1,13 @@
 import './App.css';
 import { Launcher } from './components/Layout/Launcher';
-import { SettingsWindow } from './components/Settings';
+import { AppWindow } from './components/App';
 import { getPanelMode } from './lib/utils';
 
 export function App() {
   const panelMode = getPanelMode();
 
   if (panelMode === 'settings') {
-    return <SettingsWindow />;
+    return <AppWindow />;
   }
 
   if (panelMode === 'onboarding') {

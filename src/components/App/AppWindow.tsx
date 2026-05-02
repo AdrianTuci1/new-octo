@@ -1,4 +1,4 @@
-import './SettingsWindow.css';
+import './AppWindow.css';
 import { useState } from 'react';
 import {
   WorkspacePanelPlaceholder,
@@ -6,17 +6,20 @@ import {
   defaultWorkspaceChromeTabId,
   initialWorkspaceChromeTabs
 } from './chrome';
-import { SettingsContent } from './SettingsContent';
-import { SettingsSidebar } from './SettingsSidebar';
-import { settingsDefaultExpandedGroupIds, settingsDefaultSectionId } from './settingsData';
+import { SettingsContent } from './settings/SettingsContent';
+import { SettingsSidebar } from './settings/SettingsSidebar';
+import { WorkspaceSidebar } from './chrome/WorkspaceSidebar';
+import { settingsDefaultExpandedGroupIds, settingsDefaultSectionId } from './settings/settingsData';
 import type { WorkspaceChromeTab } from './chrome';
 
-export function SettingsWindow() {
+export function AppWindow() {
   const [tabs, setTabs] = useState<WorkspaceChromeTab[]>(initialWorkspaceChromeTabs);
   const [activeTabId, setActiveTabId] = useState(defaultWorkspaceChromeTabId);
   const [activeSectionId, setActiveSectionId] = useState(settingsDefaultSectionId);
   const [expandedGroupIds, setExpandedGroupIds] = useState<string[]>(settingsDefaultExpandedGroupIds);
   const [nextSessionIndex, setNextSessionIndex] = useState(4);
+
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   const activeTab = tabs.find((tab) => tab.id === activeTabId) ?? tabs[0];
 
@@ -67,44 +70,51 @@ export function SettingsWindow() {
   };
 
   return (
-    <div className="settings-window">
+    <div className="app-window">
       <WorkspaceTopbar
         activeTabId={activeTab.id}
         tabs={tabs}
         onSelectTab={setActiveTabId}
         onNewTab={onNewTab}
         onCloseTab={onCloseTab}
+        onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
       />
 
-      {activeTab.kind === 'settings' && (
-        <div className="settings-header">
-          <span className="settings-header-title">Settings</span>
+      <div className="app-window-container">
+        <WorkspaceSidebar isOpen={isSidebarOpen} onClose={() => setIsSidebarOpen(false)} />
+        
+        <div className="app-window-main">
+          {activeTab.kind === 'settings' && (
+            <div className="app-window-header">
+              <span className="app-window-header-title">Settings</span>
+            </div>
+          )}
+          <div className="app-window-body">
+            {activeTab.kind === 'settings' ? (
+              <>
+                <SettingsSidebar
+                  activeSectionId={activeSectionId}
+                  expandedGroupIds={expandedGroupIds}
+                  onSelectSection={onSelectSection}
+                  onToggleGroup={onToggleGroup}
+                />
+                <SettingsContent sectionId={activeSectionId} />
+              </>
+            ) : (
+              <WorkspacePanelPlaceholder
+                eyebrow={activeTab.label}
+                title={activeTab.label}
+                description={
+                  activeTab.kind === 'tools'
+                    ? 'This tools panel will host shared utilities, quick actions, and launcher-wide commands.'
+                    : activeTab.kind === 'agents'
+                      ? 'This agent management panel will hold orchestration, profiles, and runtime controls.'
+                      : `Terminal workspace for ${activeTab.label.toLowerCase()} is still a placeholder.`
+                }
+              />
+            )}
+          </div>
         </div>
-      )}
-      <div className="settings-window-body">
-        {activeTab.kind === 'settings' ? (
-          <>
-            <SettingsSidebar
-              activeSectionId={activeSectionId}
-              expandedGroupIds={expandedGroupIds}
-              onSelectSection={onSelectSection}
-              onToggleGroup={onToggleGroup}
-            />
-            <SettingsContent sectionId={activeSectionId} />
-          </>
-        ) : (
-          <WorkspacePanelPlaceholder
-            eyebrow={activeTab.label}
-            title={activeTab.label}
-            description={
-              activeTab.kind === 'tools'
-                ? 'This tools panel will host shared utilities, quick actions, and launcher-wide commands.'
-                : activeTab.kind === 'agents'
-                  ? 'This agent management panel will hold orchestration, profiles, and runtime controls.'
-                  : `Terminal workspace for ${activeTab.label.toLowerCase()} is still a placeholder.`
-            }
-          />
-        )}
       </div>
     </div>
   );

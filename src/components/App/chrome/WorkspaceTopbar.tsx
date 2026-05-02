@@ -10,6 +10,7 @@ type WorkspaceTopbarProps = {
   onSelectTab: (tabId: string) => void;
   onNewTab: () => void;
   onCloseTab: (tabId: string) => void;
+  onToggleSidebar: () => void;
 };
 
 export function WorkspaceTopbar({
@@ -17,7 +18,8 @@ export function WorkspaceTopbar({
   tabs,
   onSelectTab,
   onNewTab,
-  onCloseTab
+  onCloseTab,
+  onToggleSidebar
 }: WorkspaceTopbarProps) {
   const dragSpacerRef = useRef<HTMLDivElement | null>(null);
 
@@ -45,7 +47,12 @@ export function WorkspaceTopbar({
   return (
     <header className="workspace-topbar" aria-label="Workspace tabs">
       <div className="workspace-topbar-left">
-        <button className="workspace-topbar-icon-button" type="button" title="Tools panel">
+        <button 
+          className="workspace-topbar-icon-button" 
+          type="button" 
+          title="Tools panel"
+          onClick={onToggleSidebar}
+        >
           <PanelLeftOpen size={14} strokeWidth={1.8} />
         </button>
         <button className="workspace-topbar-icon-button" type="button" title="Agent management panel">
