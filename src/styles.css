@@ -1,19 +1,30 @@
 :root {
   color-scheme: dark;
   --bg-root: transparent;
-  --launcher-bg: #111417;
-  --tray-bg: #171b1f;
-  --surface-2: #1d2328;
-  --border: rgba(255, 255, 255, 0.08);
-  --border-strong: rgba(122, 211, 164, 0.24);
+  --launcher-bg: #0b0b0b;
+  --tray-bg: #080808;
+  --surface-2: #141414;
+  --border: rgba(255, 255, 255, 0.06);
+  --border-strong: rgba(255, 255, 255, 0.12);
   --text-main: #f4f7f6;
   --text-soft: #9aa6a4;
-  --text-dim: #78817d;
+  --text-dim: #606060;
   --accent: #7ad3a4;
-  --accent-soft: rgba(122, 211, 164, 0.1);
-  --shadow: 0 12px 30px rgba(0, 0, 0, 0.34);
-  --font-ui: "SF Pro Display", "Segoe UI", sans-serif;
+  --accent-blue: #00a8e8;
+  --accent-soft: rgba(0, 168, 232, 0.1);
+  --shadow: 0 12px 30px rgba(0, 0, 0, 0.5);
+  --font-ui: "SF Pro Display", "Segoe UI", system-ui, sans-serif;
   --font-mono: "SF Mono", "JetBrains Mono", monospace;
+
+  /* Settings Design System */
+  --settings-sidebar-width: 240px;
+  --settings-font-xs: 11px;
+  --settings-font-sm: 12px;
+  --settings-font-md: 13px;
+  --settings-radius-sm: 4px;
+  --settings-radius-md: 6px;
+  --settings-bg-sidebar: #000000;
+  --settings-bg-content: #000000;
 }
 
 * {

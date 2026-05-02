@@ -6,12 +6,12 @@
 }
 
 .tray-models-tab {
-  min-height: 24px;
-  padding: 0 10px;
-  border-radius: 7px;
+  min-height: 22px;
+  padding: 0 8px;
+  border-radius: 6px;
   background: transparent;
   color: var(--text-soft);
-  font-size: 12px;
+  font-size: 11px;
   cursor: pointer;
 }
 
@@ -39,9 +39,9 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  min-height: 34px;
+  min-height: 30px;
   padding: 0 10px;
-  border-radius: 8px;
+  border-radius: 6px;
   background: transparent;
   color: var(--text-soft);
   text-align: left;
@@ -55,54 +55,54 @@
 }
 
 .tray-model-label {
-  font-size: 13px;
+  font-size: 12px;
 }
 
 .tray-model-selected {
   color: var(--text-dim);
-  font-size: 12px;
+  font-size: 11px;
 }
 
 .tray-models-specs {
   display: flex;
   flex-direction: column;
-  gap: 18px;
-  padding: 18px 0 0 18px;
+  gap: 14px;
+  padding: 14px 0 0 16px;
 }
 
 .tray-models-specs h3 {
   margin: 0;
   color: var(--text-main);
-  font-size: 16px;
-  font-weight: 500;
+  font-size: 14px;
+  font-weight: 600;
 }
 
 .tray-models-specs>p {
   margin: 0;
   color: var(--text-dim);
-  font-size: 13px;
+  font-size: 12px;
   line-height: 1.35;
 }
 
 .tray-model-spec-row {
   display: grid;
-  grid-template-columns: 110px minmax(0, 1fr);
+  grid-template-columns: 100px minmax(0, 1fr);
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   color: var(--text-main);
-  font-size: 14px;
+  font-size: 12px;
 }
 
 .tray-model-meter {
-  height: 24px;
-  border-radius: 7px;
-  background: rgba(255, 255, 255, 0.12);
+  height: 18px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.08);
   overflow: hidden;
 }
 
 .tray-model-meter-fill {
   height: 100%;
-  border-radius: 7px;
+  border-radius: 4px;
   background: rgba(255, 255, 255, 0.68);
 }
 
@@ -115,7 +115,8 @@
 
 .tray-model-meta span {
   color: var(--text-main);
-  font-size: 12px;
+  font-size: 10px;
+  font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
@@ -123,6 +124,6 @@
 .tray-model-meta p {
   margin: 0;
   color: var(--text-soft);
-  font-size: 13px;
+  font-size: 12px;
   line-height: 1.35;
 }

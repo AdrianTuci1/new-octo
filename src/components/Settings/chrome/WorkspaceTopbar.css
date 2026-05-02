@@ -1,0 +1,220 @@
+.workspace-topbar {
+  height: 44px;
+  display: flex;
+  align-items: stretch;
+  background: var(--launcher-bg);
+  border-bottom: 1px solid var(--border-strong);
+  -webkit-app-region: no-drag;
+  user-select: none;
+}
+
+.workspace-topbar-left,
+.workspace-topbar-right,
+.workspace-topbar-tabs {
+  display: flex;
+  align-items: stretch;
+}
+
+.workspace-topbar-left {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding-left: 80px;
+}
+
+.workspace-topbar-vertical-divider {
+  width: 1px;
+  height: 100%;
+  background: var(--border);
+  margin: 0;
+}
+
+.workspace-topbar-tabs {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: min(520px, 54vw);
+  overflow: hidden;
+  align-items: stretch;
+}
+
+.workspace-topbar-divider {
+  width: 1px;
+  margin: 8px 0;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.workspace-topbar-drag-spacer {
+  flex: 1 1 auto;
+  min-width: 18px;
+  cursor: default;
+}
+
+.workspace-topbar-right {
+  flex: 0 0 auto;
+  gap: 2px;
+  padding: 0 8px 0 6px;
+  align-items: center;
+}
+
+.workspace-topbar-icon-button,
+.workspace-topbar-avatar-button,
+.workspace-topbar-plus {
+  -webkit-app-region: no-drag;
+  border: 0;
+  background: transparent;
+  color: var(--text-soft);
+}
+
+.workspace-topbar-icon-button {
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border-radius: 6px;
+  border: 0;
+  background: transparent;
+  color: var(--text-soft);
+  transition: all 140ms ease;
+  cursor: pointer;
+}
+
+.workspace-topbar-icon-button:hover,
+.workspace-topbar-avatar-button:hover,
+.workspace-topbar-plus:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-main);
+}
+
+.workspace-topbar-plus-group {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  margin: 0 6px;
+  -webkit-app-region: no-drag;
+}
+
+.workspace-topbar-plus-action,
+.workspace-topbar-plus-menu {
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  color: var(--text-soft);
+  border: 0;
+  transition: all 140ms ease;
+  cursor: pointer;
+}
+
+.workspace-topbar-plus-action {
+  padding: 0 4px;
+  border-top-left-radius: 6px;
+  border-bottom-left-radius: 6px;
+}
+
+.workspace-topbar-plus-menu {
+  padding: 0 4px 0 2px;
+  border-top-right-radius: 6px;
+  border-bottom-right-radius: 6px;
+}
+
+.workspace-topbar-plus-action:hover,
+.workspace-topbar-plus-menu:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-main);
+}
+
+.workspace-topbar-avatar-button {
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  background: transparent;
+  color: var(--text-soft);
+  transition: all 140ms ease;
+  cursor: pointer;
+}
+
+.workspace-tab {
+  -webkit-app-region: no-drag;
+  min-width: 140px;
+  max-width: 220px;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  padding: 0 24px;
+  margin: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-dim);
+  border-right: 1px solid var(--border);
+  transition: all 140ms ease;
+}
+
+.workspace-tab:first-child {
+  border-left: 0;
+}
+
+.workspace-tab.active {
+  background: rgba(255, 255, 255, 0.035);
+  color: var(--text-main);
+  box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.02);
+}
+
+.workspace-tab-label {
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.05;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workspace-tab-close {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  border: 0;
+  background: transparent;
+  color: var(--text-soft);
+  opacity: 0;
+  transition: all 120ms ease;
+  line-height: 1;
+}
+
+.workspace-tab:hover .workspace-tab-close,
+.workspace-tab:focus-within .workspace-tab-close {
+  opacity: 1;
+}
+
+.workspace-tab-close:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.12);
+  color: var(--text-main);
+}
+
+@media (max-width: 1024px) {
+  .workspace-topbar {
+    height: 44px;
+    overflow-x: auto;
+  }
+
+  .workspace-topbar-left {
+    padding-left: 12px;
+  }
+
+  .workspace-topbar-tabs {
+    overflow-x: hidden;
+  }
+}

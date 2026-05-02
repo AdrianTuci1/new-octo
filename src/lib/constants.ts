@@ -1,4 +1,4 @@
-import { Bot, FileText, MessagesSquare, Sparkles, Code2 } from 'lucide-react';
+import { Bot, FileText, MessagesSquare, Sparkles, Code2, Settings } from 'lucide-react';
 import type { HelpItem, CommandItem } from '../types/ui';
 
 export const HELP_ITEMS: HelpItem[] = [
@@ -17,7 +17,7 @@ export const HELP_ITEMS: HelpItem[] = [
 
 export const COMMAND_ITEMS: CommandItem[] = [
   { label: '/agent', detail: 'Start an assisted coding conversation', icon: Bot },
-  { label: '/create-environment', detail: 'Create an Oz environment via guided setup', icon: Code2 },
+  { label: '/create-environment', detail: 'Create a new environment via guided setup', icon: Code2 },
   { label: '/open-file', detail: 'Open a file in the code editor', icon: FileText },
   { label: '/conversations', detail: 'Open conversation history', icon: MessagesSquare },
   { label: '/prompts', detail: 'Search saved prompts', icon: Sparkles },

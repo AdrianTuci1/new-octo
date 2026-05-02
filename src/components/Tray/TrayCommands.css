@@ -61,8 +61,5 @@
   min-width: 20px;
   height: 20px;
   padding: 0 5px;
-  border-radius: 6px;
-  border: 1px solid var(--border);
-  background: rgba(255, 255, 255, 0.04);
   color: var(--text-main);
 }
