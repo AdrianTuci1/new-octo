@@ -22,6 +22,6 @@ export const COMMAND_ITEMS: CommandItem[] = [
   { label: '/conversations', detail: 'Open conversation history', icon: MessagesSquare },
   { label: '/prompts', detail: 'Search saved prompts', icon: Sparkles },
   { label: '/plan', detail: 'Prompt the agent to research and create a plan', icon: Code2 },
-  { label: '/create mcp', detail: 'Placeholder for MCP creation flow', icon: Code2 },
+  { label: '/create-mcp', detail: 'Placeholder for MCP creation flow', icon: Code2 },
   { label: '/new', detail: 'Reset the current conversation shell', icon: Sparkles }
 ];

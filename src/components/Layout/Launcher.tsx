@@ -12,11 +12,11 @@ import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts';
 import { useTerminalCommandBlocks } from '../../hooks/useTerminalCommandBlocks';
 import { useShellCommandIndex } from '../../hooks/useShellCommandIndex';
 import { useShellPathPrediction } from '../../hooks/useShellPathPrediction';
+import { useUnifiedShellPrediction } from '../../hooks/useUnifiedShellPrediction';
 import { useWorkingDirectory } from '../../hooks/useWorkingDirectory';
 import {
   consumeShellModeActivator,
   getRecommendedComposerAction,
-  getShellPrediction,
   getShellToggleShortcutTokens,
   resolveComposerState
 } from '../../lib/composerIntelligence';
@@ -70,6 +70,7 @@ export function Launcher() {
     availableShellCommands,
     terminalAutoDetectEnabled
   );
+  const { value: queryWithoutActivator } = consumeShellModeActivator(query);
   const composerState = modeLock === null
     && autodetectedShellLatch
     && baseComposerState.mode === 'chat'
@@ -81,18 +82,26 @@ export function Launcher() {
     : baseComposerState;
   const composerMode = composerState.mode;
   const shellSource: ShellModeSource | null = composerState.shellSource;
-  const shellCommandPrediction = composerMode === 'shell'
-    ? getShellPrediction(query, terminal.blocks, availableShellCommands, {
-      allowSingleCharacterCommand: allowSingleCharacterCommandPrediction
-    })
-    : null;
+
+  const shellPrediction = useUnifiedShellPrediction(
+    queryWithoutActivator,
+    composerMode,
+    terminal.blocks,
+    workingDirectory.currentPath ?? '',
+    availableShellCommands,
+    allowSingleCharacterCommandPrediction
+  );
+
+
   const shellPathPrediction = useShellPathPrediction(
     query,
     composerMode === 'shell',
     workingDirectory.currentPath,
     workingDirectory.homeDir
   );
-  const shellPrediction = shellPathPrediction ?? shellCommandPrediction;
+
+  const activeShellPrediction = shellPathPrediction ?? shellPrediction;
+
   const recommendedAction = getRecommendedComposerAction({
     mode: composerMode,
     query,
@@ -102,27 +111,44 @@ export function Launcher() {
   });
   const shellShortcutTokens = getShellToggleShortcutTokens();
   const promptHistoryEntries = useMemo<HistoryEntry[]>(
-    () => messages
-      .filter((message) => message.role === 'user' && message.body.trim().length > 0)
-      .map((message) => ({
-        id: message.id,
-        label: message.body,
-        detail: formatHistoryDetail(message.createdAt ?? new Date().toISOString()),
-        kind: 'prompt' as const,
-        createdAt: message.createdAt ?? new Date().toISOString()
-      }))
-      .reverse(),
-    [messages]
+    () => {
+      const filtered = queryWithoutActivator.trim().length > 0
+        ? messages.filter(msg => 
+            msg.role === 'user' && 
+            msg.body.trim().length > 0 &&
+            msg.body.toLowerCase().includes(queryWithoutActivator.toLowerCase())
+          )
+        : messages.filter(msg => msg.role === 'user' && msg.body.trim().length > 0);
+
+      return filtered
+        .map((message) => ({
+          id: message.id,
+          label: message.body,
+          detail: formatHistoryDetail(message.createdAt ?? new Date().toISOString()),
+          kind: 'prompt' as const,
+          createdAt: message.createdAt ?? new Date().toISOString()
+        }))
+        .reverse();
+    },
+    [messages, queryWithoutActivator]
   );
   const commandHistoryEntries = useMemo<HistoryEntry[]>(
-    () => commandHistory.map((entry, index) => ({
-      id: `${entry.source}-${entry.executedAt}-${index}`,
-      label: entry.value,
-      detail: `${entry.source} · ${formatHistoryDetail(entry.executedAt)}`,
-      kind: 'command' as const,
-      createdAt: entry.executedAt
-    })),
-    [commandHistory]
+    () => {
+      const filtered = queryWithoutActivator.trim().length > 0
+        ? commandHistory.filter(entry => 
+            entry.value.toLowerCase().includes(queryWithoutActivator.toLowerCase())
+          )
+        : commandHistory;
+
+      return filtered.map((entry, index) => ({
+        id: `${entry.source}-${entry.executedAt}-${index}`,
+        label: entry.value,
+        detail: `${entry.source} · ${formatHistoryDetail(entry.executedAt)}`,
+        kind: 'command' as const,
+        createdAt: entry.executedAt
+      }));
+    },
+    [commandHistory, queryWithoutActivator]
   );
   const historyEntries = useMemo(() => {
     if (historyTab === 'commands') {
@@ -498,6 +524,8 @@ export function Launcher() {
                 }
 
                 setQuery(nextValue.value);
+                setSelectedHistoryIndex(0); // Reset tray selection on search
+
                 if (nextValue.value === '/' && !isTrayOpen) {
                   toggleTray('commands');
                 } else if ((nextValue.value === '' || nextValue.value === '//') && isTrayOpen && activeTrayMode === 'commands') {
@@ -514,7 +542,7 @@ export function Launcher() {
               onToggleGitBranchMenu={gitContext.toggleBranchMenu}
               onToggleModelTray={() => toggleTray('models')}
               placeholder="Octomus anything e.g. Find and fix race conditions in my Python application"
-              prediction={shellPrediction}
+              prediction={activeShellPrediction}
               query={query}
               recommendedAction={recommendedAction}
               selectedModelLabel={modelSelection.selectedModel.label}
@@ -528,6 +556,7 @@ export function Launcher() {
               onToggleTerminalAutoDetect={() => setTerminalAutoDetectEnabled((value) => !value)}
               onToggleWorkingDirectoryPicker={workingDirectory.togglePicker}
               onWorkingDirectorySearchChange={workingDirectory.setSearchQuery}
+              onToggleSingleCharacterPrediction={() => setAllowSingleCharacterCommandPrediction(!allowSingleCharacterCommandPrediction)}
             />
           )}
         </div>

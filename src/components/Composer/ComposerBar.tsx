@@ -28,6 +28,7 @@ type ComposerBarProps = {
   onKeyDown: (event: KeyboardEvent<HTMLTextAreaElement>) => void;
   onRecommendedActionClick: (action: RecommendedComposerAction) => void;
   onToggleWorkingDirectoryPicker: () => void;
+  onToggleSingleCharacterPrediction: () => void;
   onCloseWorkingDirectoryPicker: () => void;
   onWorkingDirectorySearchChange: (query: string) => void;
   onNavigateToParentDirectory: () => void;

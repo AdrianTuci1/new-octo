@@ -98,6 +98,7 @@ fn main() {
             ai::agent_list_runs,
             ai::agent_configure_openai_compatible,
             ai::agent_provider_status,
+            ai::ai_predict_command_smart,
             terminal::terminal_create_session,
             terminal::terminal_write,
             terminal::terminal_run_command,
@@ -110,6 +111,7 @@ fn main() {
             terminal::terminal_get_git_context,
             terminal::terminal_switch_git_branch,
             terminal::terminal_get_recent_history,
+            terminal::terminal_get_prediction,
         ])
         .setup(|app| {
             #[cfg(target_os = "macos")]

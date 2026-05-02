@@ -60,3 +60,24 @@ pub fn agent_list_runs(
 ) -> Result<Vec<AgentRunSnapshot>, String> {
     agent::agent_list_runs(manager)
 }
+#[tauri::command]
+pub async fn ai_predict_command_smart(
+    manager: State<'_, AgentHarnessManager>,
+    input: String,
+    last_command: Option<String>,
+) -> Result<Option<predict::CommandPrediction>, String> {
+    let provider_config = manager
+        .load_provider_config_from_disk()?
+        .or_else(|| manager.provider_config().ok().flatten())
+        .or_else(agent::openai::OpenAiCompatibleConfig::from_env)
+        .ok_or_else(|| "No AI provider configured. Please configure OpenAI/OpenRouter in settings.".to_string())?;
+
+    Ok(predict::predict_command_with_ai(
+        &input,
+        last_command.as_deref(),
+        Vec::new(),
+        &provider_config.api_key,
+        &provider_config.base_url,
+        &provider_config.model_id,
+    ).await)
+}

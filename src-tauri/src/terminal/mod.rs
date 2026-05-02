@@ -137,6 +137,7 @@ pub struct ShellHistoryEntry {
     pub value: String,
     pub executed_at: String,
     pub source: String,
+    pub pwd: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -432,18 +433,143 @@ pub fn terminal_switch_git_branch(
 }
 
 #[tauri::command]
+pub async fn terminal_get_prediction(
+    _ai_manager: State<'_, crate::ai::AgentHarnessManager>,
+    input: String,
+    cwd: Option<String>,
+    last_command: Option<String>,
+    available_commands: Vec<String>,
+    context_messages: Vec<crate::ai::predict::model::ContextMessageInput>,
+) -> Result<Option<crate::ai::predict::CommandPrediction>, String> {
+    let trimmed = input.trim();
+    if trimmed.is_empty() {
+        // 0. Try sequence-based prediction (What usually follows last_command?)
+        let cutoff = Utc::now() - Duration::days(180);
+        let mut history = Vec::new();
+        history.extend(read_zsh_history(cutoff));
+        history.extend(read_bash_history(cutoff));
+        history.extend(read_fish_history(cutoff));
+
+        if let Some(prediction) = crate::ai::predict::model::predict_from_sequences(last_command.as_deref(), &history) {
+            return Ok(Some(prediction));
+        }
+
+        // Fallback to folder-based zero state
+        let zero_state = crate::ai::predict::model::get_zero_state_suggestions(cwd.as_deref().unwrap_or("."));
+        if let Some(first) = zero_state.first() {
+            return Ok(Some(crate::ai::predict::CommandPrediction {
+                input: "".to_string(),
+                suggestion: first.clone(),
+                confidence: 0.5,
+                kind: crate::ai::predict::model::PredictionKind::Heuristic,
+            }));
+        }
+        return Ok(None);
+    }
+    // 1. Combine session history with system history
+    let cutoff = Utc::now() - Duration::days(180);
+    let mut history = Vec::new();
+    
+    // Add commands from the current session first (highest priority)
+    for msg in &context_messages {
+        if !msg.input.is_empty() {
+            history.push(crate::terminal::ShellHistoryEntry {
+                value: msg.input.clone(),
+                executed_at: Utc::now().to_rfc3339(), // Assume recent
+                source: "session".to_string(),
+                pwd: msg.context.pwd.clone(),
+            });
+        }
+    }
+
+    history.extend(read_zsh_history(cutoff));
+    history.extend(read_bash_history(cutoff));
+    history.extend(read_fish_history(cutoff));
+
+    let mut best_prediction: Option<crate::ai::predict::CommandPrediction> = None;
+
+    // 2. Try local history (immediate) - with PWD prioritization
+    if let Some(prediction) = crate::ai::predict::model::predict_from_history(trimmed, cwd.as_deref(), &history) {
+        println!("[Predict] History match: '{}' (conf: {:.2})", prediction.suggestion, prediction.confidence);
+        if prediction.suggestion.contains(' ') {
+            return Ok(Some(prediction));
+        }
+        best_prediction = Some(prediction);
+    }
+
+    // 3. Try Heuristics
+    if let Some(prediction) = crate::ai::predict::model::predict_next_command(trimmed, last_command.as_deref()) {
+        println!("[Predict] Heuristic match: '{}'", prediction.suggestion);
+        if prediction.suggestion.contains(' ') {
+            return Ok(Some(prediction));
+        }
+        if best_prediction.is_none() {
+            best_prediction = Some(prediction);
+        }
+    }
+
+    // 4. Try available commands (system executables)
+    if let Some(prediction) = crate::ai::predict::model::predict_from_executables(trimmed, &available_commands) {
+        // Only take executable if it's longer than input and we have nothing better
+        if prediction.suggestion.len() > trimmed.len() {
+            println!("[Predict] Executable match: '{}'", prediction.suggestion);
+            if best_prediction.is_none() {
+                best_prediction = Some(prediction);
+            }
+        }
+    }
+
+    // Filter out suggestions that don't add anything to the input
+    if let Some(ref pred) = best_prediction {
+        if pred.suggestion.trim() == trimmed {
+            return Ok(None);
+        }
+    }
+
+    // 5. AI Fallback is disabled as per user request to focus on local history discovery
+    Ok(best_prediction)
+}
+
+#[tauri::command]
 pub fn terminal_get_recent_history() -> Result<Vec<ShellHistoryEntry>, String> {
-    let cutoff = Utc::now() - Duration::hours(24);
-    let mut entries = Vec::new();
+    let cutoff = Utc::now() - Duration::days(180);
+    let mut raw_entries = Vec::new();
 
-    entries.extend(read_zsh_history(cutoff));
-    entries.extend(read_bash_history(cutoff));
-    entries.extend(read_fish_history(cutoff));
+    raw_entries.extend(read_zsh_history(cutoff));
+    raw_entries.extend(read_bash_history(cutoff));
+    raw_entries.extend(read_fish_history(cutoff));
 
-    entries.sort_by(|left, right| right.executed_at.cmp(&left.executed_at));
-    entries.dedup_by(|left, right| {
-        left.value == right.value && left.executed_at == right.executed_at
-    });
+    // Smart ranking: aggregate by value to find frequency
+    use std::collections::HashMap;
+    let mut stats: HashMap<String, (usize, String)> = HashMap::new();
+    
+    for entry in raw_entries {
+        let current_executed_at = entry.executed_at.clone();
+        let current = stats.entry(entry.value).or_insert((0, entry.executed_at));
+        current.0 += 1;
+        // Keep the most recent timestamp
+        if current_executed_at > current.1 {
+            current.1 = current_executed_at;
+        }
+    }
+
+    let mut entries: Vec<ShellHistoryEntry> = stats
+        .into_iter()
+        .map(|(value, (_freq, executed_at))| ShellHistoryEntry {
+            value,
+            executed_at,
+            source: "global".to_string(), // Combined source
+            pwd: None,
+        })
+        .collect();
+
+    // Sort by most recent
+    entries.sort_by(|a, b| b.executed_at.cmp(&a.executed_at));
+
+    // Limit to top 500 for performance
+    if entries.len() > 500 {
+        entries.truncate(500);
+    }
 
     Ok(entries)
 }
@@ -616,23 +742,45 @@ fn read_zsh_history(cutoff: DateTime<Utc>) -> Vec<ShellHistoryEntry> {
         return Vec::new();
     };
     let path = home.join(".zsh_history");
-    let Ok(contents) = fs::read_to_string(path) else {
+    let Ok(contents) = fs::read_to_string(&path) else {
         return Vec::new();
     };
+
+    let count = contents.lines().count();
+    println!("[History] Reading Zsh history: {} lines from {:?}", count, path);
 
     contents
         .lines()
         .filter_map(|line| {
-            let rest = line.strip_prefix(": ")?;
-            let (timestamp, command_part) = rest.split_once(':')?;
-            let (_, command) = command_part.split_once(';')?;
-            let timestamp = timestamp.parse::<i64>().ok()?;
-            let executed_at = Utc.timestamp_opt(timestamp, 0).single()?;
+            let trimmed_line = line.trim();
+            if trimmed_line.is_empty() { return None; }
+
+            let (executed_at, value) = if trimmed_line.starts_with(": ") {
+                // Extended format: : 1234567890:0;command
+                if let Some(rest) = trimmed_line.strip_prefix(": ") {
+                    if let Some((timestamp, command_part)) = rest.split_once(':') {
+                        if let Some((_, command)) = command_part.split_once(';') {
+                            let timestamp = timestamp.parse::<i64>().ok().unwrap_or(0);
+                            let time = Utc.timestamp_opt(timestamp, 0).single().unwrap_or_else(Utc::now);
+                            (time, command.trim())
+                        } else {
+                            (Utc::now(), command_part.trim())
+                        }
+                    } else {
+                        (Utc::now(), rest.trim())
+                    }
+                } else {
+                    (Utc::now(), trimmed_line)
+                }
+            } else {
+                // Simple format: command
+                (Utc::now(), trimmed_line)
+            };
+
             if executed_at < cutoff {
                 return None;
             }
 
-            let value = command.trim();
             if value.is_empty() {
                 return None;
             }
@@ -641,6 +789,7 @@ fn read_zsh_history(cutoff: DateTime<Utc>) -> Vec<ShellHistoryEntry> {
                 value: value.to_string(),
                 executed_at: executed_at.to_rfc3339(),
                 source: "zsh".to_string(),
+                pwd: None,
             })
         })
         .collect()
@@ -683,6 +832,7 @@ fn read_bash_history(cutoff: DateTime<Utc>) -> Vec<ShellHistoryEntry> {
             value: value.to_string(),
             executed_at: executed_at.to_rfc3339(),
             source: "bash".to_string(),
+            pwd: None,
         });
     }
 
@@ -730,6 +880,7 @@ fn read_fish_history(cutoff: DateTime<Utc>) -> Vec<ShellHistoryEntry> {
             value: value.to_string(),
             executed_at: executed_at.to_rfc3339(),
             source: "fish".to_string(),
+            pwd: None,
         });
     }
 

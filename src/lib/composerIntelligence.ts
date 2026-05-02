@@ -87,19 +87,20 @@ export function resolveComposerState(
 
   return isLikelyShellCommand(query.trim(), availableCommands)
     ? {
-        mode: 'shell',
-        shellSource: 'autodetected'
-      }
+      mode: 'shell',
+      shellSource: 'autodetected'
+    }
     : {
-        mode: 'chat',
-        shellSource: null
-      };
+      mode: 'chat',
+      shellSource: null
+    };
 }
 
 export function getShellPrediction(
   query: string,
   blocks: TerminalCommandBlock[],
   availableCommands: string[] = [],
+  historyStrings: string[] = [],
   options: { allowSingleCharacterCommand?: boolean } = {}
 ): ShellPrediction | null {
   const input = query.trim();
@@ -107,26 +108,38 @@ export function getShellPrediction(
     return null;
   }
 
-  const recentCommands = getRecentCommands(blocks);
+  const recentCommands = getRecentCommands(blocks, historyStrings);
   const candidates = getPredictionCandidates(
     input,
     recentCommands,
     availableCommands,
     options.allowSingleCharacterCommand ?? false
   );
+  
   const normalizedInput = input.toLowerCase();
-  const fullCommand = candidates.find((candidate) => {
-    const normalizedCandidate = candidate.toLowerCase();
-    return normalizedCandidate.startsWith(normalizedInput) && normalizedCandidate !== normalizedInput;
-  });
+  
+  // Strategy:
+  // 1. Find all history matches that start with the input
+  // 2. Filter for those that have spaces (multi-word) and pick the longest/most relevant one
+  // 3. Fall back to the most recent history match
+  // 4. Fall back to system executables
+  
+  const matches = candidates.filter(c => c.toLowerCase().startsWith(normalizedInput) && c.toLowerCase() !== normalizedInput);
+  
+  let fullCommand = matches.find(c => c.includes(' '));
+  
+  if (!fullCommand && matches.length > 0) {
+    fullCommand = matches[0];
+  }
 
   if (!fullCommand) {
     return null;
   }
 
+  // Use query.length instead of input.length to avoid double spaces when the user has already typed a trailing space
   return {
     fullCommand,
-    completionText: fullCommand.slice(input.length),
+    completionText: fullCommand.slice(query.length),
     hint: 'Press Right Arrow to complete'
   };
 }
@@ -190,7 +203,7 @@ export function getRecommendedComposerAction(options: {
     return {
       id: 'continue-mcp-setup',
       label: 'Continue MCP setup',
-      value: '/create mcp ',
+      value: '/create-mcp ',
       description: 'Resume the MCP setup flow from the chat composer.',
       mode: 'chat'
     };
@@ -252,6 +265,15 @@ function isLikelyShellCommand(query: string, availableCommands: string[]) {
     return true;
   }
 
+  // If it's a multi-word command and doesn't contain common natural language words,
+  // it's very likely a shell command even if the executable is not in our known list.
+  if (tokens.length > 1) {
+    // If the first token looks like an executable or path
+    if (/^[A-Za-z0-9._\-\/]+$/.test(firstToken)) {
+      return true;
+    }
+  }
+
   if (tokens.length === 1 && firstToken.length >= 2) {
     return availableCommands.some((command) => command.toLowerCase().startsWith(firstToken));
   }
@@ -268,7 +290,7 @@ function getPredictionCandidates(
   const trimmed = input.trim();
   const lowerInput = trimmed.toLowerCase();
   const firstToken = trimmed.split(/\s+/)[0]?.toLowerCase() ?? '';
-  const hasWhitespace = /\s/.test(trimmed);
+  const hasWhitespace = /\s/.test(input);
 
   const historyMatches = recentCommands.filter((command) => command.toLowerCase().startsWith(lowerInput));
 
@@ -296,14 +318,14 @@ function getPredictionCandidates(
   ]);
 }
 
-function getRecentCommands(blocks: TerminalCommandBlock[]) {
-  return dedupe(
-    [...blocks]
-      .reverse()
-      .filter((block) => block.status === 'finished')
-      .map((block) => block.command.trim())
-      .filter(Boolean)
-  );
+function getRecentCommands(blocks: TerminalCommandBlock[], globalHistory: string[] = []) {
+  const sessionCommands = [...blocks]
+    .reverse()
+    .filter((block) => block.status === 'finished')
+    .map((block) => block.command.trim())
+    .filter(Boolean);
+
+  return dedupe([...sessionCommands, ...globalHistory]);
 }
 
 function dedupe(values: string[]) {
