@@ -7,24 +7,61 @@ import { useTray } from '../../hooks/useTray';
 import { useWindowSync } from '../../hooks/useWindowSync';
 import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts';
 import { useTerminalCommandBlocks } from '../../hooks/useTerminalCommandBlocks';
+import {
+  consumeShellModeActivator,
+  getRecommendedComposerAction,
+  getShellPrediction,
+  getShellToggleShortcutTokens,
+  resolveComposerMode
+} from '../../lib/composerIntelligence';
 import { HELP_ITEMS, COMMAND_ITEMS } from '../../lib/constants';
 import type { CommandApproval } from '../../types/terminal';
+import type { ComposerMode } from '../../types/ui';
 
 export function Launcher() {
+  const [modeLock, setModeLock] = useState<ComposerMode | null>(null);
   const { query, setQuery, messages, submitToolResult } = useChat({
     onCommandApproval: (approval) => requestCommandApproval(approval)
   });
   const { isTrayOpen, activeTrayMode, toggleTray } = useTray();
   const terminal = useTerminalCommandBlocks();
   const [pendingApproval, setPendingApproval] = useState<CommandApproval | null>(null);
+  const composerMode = resolveComposerMode(query, modeLock);
+  const shellPrediction = composerMode === 'shell' ? getShellPrediction(query, terminal.blocks) : null;
+  const recommendedAction = getRecommendedComposerAction({
+    mode: composerMode,
+    query,
+    messages,
+    terminalBlocks: terminal.blocks,
+    terminalError: terminal.error
+  });
+  const shellShortcutTokens = getShellToggleShortcutTokens();
   const { handleKeyDown } = useKeyboardShortcuts({
     onCommandApproval: (command) => requestCommandApproval(command),
     onNewChat: () => {
       setPendingApproval(null);
+      setModeLock(null);
       terminal.clearBlocks();
     },
     onTerminalCommand: (command) => {
       void terminal.runCommand(command);
+    },
+    isShellMode: composerMode === 'shell',
+    hasPrediction: Boolean(shellPrediction),
+    onAcceptPrediction: () => {
+      if (shellPrediction) {
+        setQuery(shellPrediction.fullCommand);
+      }
+    },
+    onExitShellMode: () => {
+      setModeLock(query.trim().length > 0 ? 'chat' : null);
+    },
+    onToggleShellMode: () => {
+      if (composerMode === 'shell') {
+        setModeLock('chat');
+      } else {
+        setModeLock('shell');
+      }
     }
   });
   
@@ -73,8 +110,11 @@ export function Launcher() {
             activeMode={activeTrayMode}
             commandItems={COMMAND_ITEMS}
             helpItems={HELP_ITEMS}
+            inputMode={composerMode}
             isOpen={isTrayOpen}
+            onExitShellMode={() => setModeLock(query.trim().length > 0 ? 'chat' : null)}
             onInsertCommand={(command) => setQuery(`${command} `)}
+            shellShortcutTokens={shellShortcutTokens}
             onToggleCommands={() => {
               const willOpen = !isTrayOpen || activeTrayMode !== 'commands';
               setQuery(willOpen ? '/' : '');
@@ -89,7 +129,8 @@ export function Launcher() {
               approval={pendingApproval}
               onEdit={(command) => {
                 setPendingApproval(null);
-                setQuery(`! ${command}`);
+                setModeLock('shell');
+                setQuery(command);
               }}
               onReject={() => setPendingApproval(null)}
               onRun={async (command) => {
@@ -111,18 +152,32 @@ export function Launcher() {
             />
           ) : (
             <ComposerBar
+              mode={composerMode}
               onKeyDown={handleKeyDown}
               onHeightChange={() => {}}
               onQueryChange={(val) => {
-                setQuery(val);
-                if (val === '/' && !isTrayOpen) {
+                const nextValue = consumeShellModeActivator(val);
+                if (nextValue.consumed) {
+                  setModeLock('shell');
+                } else if (val.length === 0 && modeLock === 'chat') {
+                  setModeLock(null);
+                }
+
+                setQuery(nextValue.value);
+                if (nextValue.value === '/' && !isTrayOpen) {
                   toggleTray('commands');
-                } else if ((val === '' || val === '//') && isTrayOpen && activeTrayMode === 'commands') {
+                } else if ((nextValue.value === '' || nextValue.value === '//') && isTrayOpen && activeTrayMode === 'commands') {
                   toggleTray('commands');
                 }
               }}
+              onRecommendedActionClick={(action) => {
+                setModeLock(action.mode === 'shell' ? 'shell' : null);
+                setQuery(action.value);
+              }}
               placeholder="Ask Octomus, or run terminal commands with ! git status"
+              prediction={shellPrediction}
               query={query}
+              recommendedAction={recommendedAction}
             />
           )}
         </div>

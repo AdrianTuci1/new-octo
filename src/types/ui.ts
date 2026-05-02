@@ -11,6 +11,7 @@ export type CommandItem = {
   icon: LucideIcon;
 };
 
+export type ComposerMode = 'chat' | 'shell';
 export type TrayContentMode = 'help' | 'commands' | 'conversations';
 export type TrayMode = 'closed' | TrayContentMode;
 
