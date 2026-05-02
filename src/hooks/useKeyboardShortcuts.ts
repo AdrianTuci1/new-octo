@@ -8,6 +8,7 @@ type KeyboardShortcutOptions = {
   onNewChat?: () => void;
   onTerminalCommand?: (command: string) => void;
   cwd?: string | null;
+  modelId?: string | null;
   isShellMode?: boolean;
   isManualShellMode?: boolean;
   hasPrediction?: boolean;
@@ -27,6 +28,7 @@ function parseTerminalCommand(query: string, isShellMode?: boolean) {
 export function useKeyboardShortcuts(options: KeyboardShortcutOptions = {}) {
   const { query, setQuery, submitQuery } = useChat({
     cwd: options.cwd,
+    modelId: options.modelId,
     onCommandApproval: options.onCommandApproval,
     onNewChat: options.onNewChat
   });

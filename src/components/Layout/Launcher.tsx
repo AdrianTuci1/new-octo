@@ -1,8 +1,11 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { ChatPanel } from '../Chat';
 import { CommandApprovalComposer, ComposerBar } from '../Composer';
 import { TrayPanel } from '../Tray';
 import { useChat } from '../../hooks/useChat';
+import { useCommandHistory } from '../../hooks/useCommandHistory';
+import { useGitContext } from '../../hooks/useGitContext';
+import { useModelSelection } from '../../hooks/useModelSelection';
 import { useTray } from '../../hooks/useTray';
 import { useWindowSync } from '../../hooks/useWindowSync';
 import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts';
@@ -19,7 +22,20 @@ import {
 } from '../../lib/composerIntelligence';
 import { HELP_ITEMS, COMMAND_ITEMS } from '../../lib/constants';
 import type { CommandApproval } from '../../types/terminal';
+import type { HistoryEntry, HistoryTab } from '../../types/history';
 import type { ComposerMode, ShellModeSource } from '../../types/ui';
+
+function formatHistoryDetail(timestamp: string) {
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) {
+    return '';
+  }
+
+  return date.toLocaleTimeString([], {
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+}
 
 function isSingleTokenShellCandidate(query: string) {
   const trimmed = query.trim();
@@ -31,9 +47,17 @@ export function Launcher() {
   const [autodetectedShellLatch, setAutodetectedShellLatch] = useState(false);
   const [allowSingleCharacterCommandPrediction, setAllowSingleCharacterCommandPrediction] = useState(false);
   const [terminalAutoDetectEnabled, setTerminalAutoDetectEnabled] = useState(true);
+  const [historyTab, setHistoryTab] = useState<HistoryTab>('all');
+  const [selectedHistoryIndex, setSelectedHistoryIndex] = useState(0);
+  const [modelTab, setModelTab] = useState<'all' | 'saved'>('all');
+  const [selectedModelIndex, setSelectedModelIndex] = useState(0);
   const workingDirectory = useWorkingDirectory();
+  const gitContext = useGitContext(workingDirectory.currentPath);
+  const commandHistory = useCommandHistory();
+  const modelSelection = useModelSelection();
   const { query, setQuery, messages, submitToolResult } = useChat({
     cwd: workingDirectory.currentPath,
+    modelId: modelSelection.selectedModelId,
     onCommandApproval: (approval) => requestCommandApproval(approval)
   });
   const { isTrayOpen, activeTrayMode, toggleTray } = useTray();
@@ -77,6 +101,49 @@ export function Launcher() {
     terminalError: terminal.error
   });
   const shellShortcutTokens = getShellToggleShortcutTokens();
+  const promptHistoryEntries = useMemo<HistoryEntry[]>(
+    () => messages
+      .filter((message) => message.role === 'user' && message.body.trim().length > 0)
+      .map((message) => ({
+        id: message.id,
+        label: message.body,
+        detail: formatHistoryDetail(message.createdAt ?? new Date().toISOString()),
+        kind: 'prompt' as const,
+        createdAt: message.createdAt ?? new Date().toISOString()
+      }))
+      .reverse(),
+    [messages]
+  );
+  const commandHistoryEntries = useMemo<HistoryEntry[]>(
+    () => commandHistory.map((entry, index) => ({
+      id: `${entry.source}-${entry.executedAt}-${index}`,
+      label: entry.value,
+      detail: `${entry.source} · ${formatHistoryDetail(entry.executedAt)}`,
+      kind: 'command' as const,
+      createdAt: entry.executedAt
+    })),
+    [commandHistory]
+  );
+  const historyEntries = useMemo(() => {
+    if (historyTab === 'commands') {
+      return commandHistoryEntries;
+    }
+
+    if (historyTab === 'prompts') {
+      return promptHistoryEntries;
+    }
+
+    return [...commandHistoryEntries, ...promptHistoryEntries]
+      .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+  }, [commandHistoryEntries, historyTab, promptHistoryEntries]);
+  const visibleModels = useMemo(() => {
+    if (modelTab !== 'saved') {
+      return modelSelection.models;
+    }
+
+    const savedModels = modelSelection.models.filter((model) => model.id === modelSelection.selectedModelId);
+    return savedModels.length > 0 ? savedModels : modelSelection.models;
+  }, [modelSelection.models, modelSelection.selectedModelId, modelTab]);
 
   useEffect(() => {
     if (!terminalAutoDetectEnabled || modeLock !== null || query.trim().length === 0) {
@@ -106,8 +173,18 @@ export function Launcher() {
     }
   }, [composerMode, query]);
 
+  useEffect(() => {
+    setSelectedHistoryIndex((index) => Math.min(index, Math.max(0, historyEntries.length - 1)));
+  }, [historyEntries.length]);
+
+  useEffect(() => {
+    const nextIndex = visibleModels.findIndex((model) => model.id === modelSelection.selectedModelId);
+    setSelectedModelIndex(nextIndex >= 0 ? nextIndex : 0);
+  }, [modelSelection.selectedModelId, visibleModels]);
+
   const { handleKeyDown } = useKeyboardShortcuts({
     cwd: workingDirectory.currentPath,
+    modelId: modelSelection.selectedModelId,
     onCommandApproval: (command) => requestCommandApproval(command),
     onNewChat: () => {
       setPendingApproval(null);
@@ -154,6 +231,171 @@ export function Launcher() {
     });
   };
 
+  useEffect(() => {
+    if (!isTrayOpen || (activeTrayMode !== 'history' && activeTrayMode !== 'models')) {
+      return;
+    }
+
+    const handleWindowKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.defaultPrevented) {
+        return;
+      }
+
+      if (activeTrayMode === 'history') {
+        if (event.key === 'ArrowDown') {
+          event.preventDefault();
+          setSelectedHistoryIndex((index) => Math.min(index + 1, Math.max(0, historyEntries.length - 1)));
+          return;
+        }
+
+        if (event.key === 'ArrowUp') {
+          event.preventDefault();
+          setSelectedHistoryIndex((index) => Math.max(index - 1, 0));
+          return;
+        }
+
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          const entry = historyEntries[selectedHistoryIndex];
+          if (entry) {
+            setModeLock(entry.kind === 'command' ? 'shell' : 'chat');
+            setQuery(entry.label);
+            toggleTray('history');
+          }
+          return;
+        }
+
+        if (event.key === 'Tab' && event.shiftKey) {
+          event.preventDefault();
+          setHistoryTab((tab) => tab === 'all' ? 'commands' : tab === 'commands' ? 'prompts' : 'all');
+          return;
+        }
+      }
+
+      if (activeTrayMode === 'models') {
+        if (event.key === 'ArrowDown') {
+          event.preventDefault();
+          setSelectedModelIndex((index) => Math.min(index + 1, Math.max(0, visibleModels.length - 1)));
+          return;
+        }
+
+        if (event.key === 'ArrowUp') {
+          event.preventDefault();
+          setSelectedModelIndex((index) => Math.max(index - 1, 0));
+          return;
+        }
+
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          const model = visibleModels[selectedModelIndex];
+          if (model) {
+            modelSelection.selectModel(model.id, event.metaKey || event.ctrlKey);
+            toggleTray('models');
+          }
+          return;
+        }
+
+        if (event.key === 'Tab' && event.shiftKey) {
+          event.preventDefault();
+          setModelTab((tab) => tab === 'all' ? 'saved' : 'all');
+          return;
+        }
+      }
+
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        toggleTray(activeTrayMode);
+      }
+    };
+
+    window.addEventListener('keydown', handleWindowKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleWindowKeyDown);
+    };
+  }, [
+    activeTrayMode,
+    historyEntries,
+    isTrayOpen,
+    modelSelection,
+    selectedHistoryIndex,
+    selectedModelIndex,
+    setQuery,
+    toggleTray,
+    visibleModels
+  ]);
+
+  const handleComposerKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (isTrayOpen && activeTrayMode === 'history') {
+      if (event.key === 'ArrowDown') {
+        event.preventDefault();
+        setSelectedHistoryIndex((index) => Math.min(index + 1, Math.max(0, historyEntries.length - 1)));
+        return;
+      }
+
+      if (event.key === 'ArrowUp') {
+        event.preventDefault();
+        setSelectedHistoryIndex((index) => Math.max(index - 1, 0));
+        return;
+      }
+
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        const entry = historyEntries[selectedHistoryIndex];
+        if (entry) {
+          setModeLock(entry.kind === 'command' ? 'shell' : 'chat');
+          setQuery(entry.label);
+          toggleTray('history');
+        }
+        return;
+      }
+
+      if (event.key === 'Tab' && event.shiftKey) {
+        event.preventDefault();
+        setHistoryTab((tab) => tab === 'all' ? 'commands' : tab === 'commands' ? 'prompts' : 'all');
+        return;
+      }
+    }
+
+    if (isTrayOpen && activeTrayMode === 'models') {
+      if (event.key === 'ArrowDown') {
+        event.preventDefault();
+        setSelectedModelIndex((index) => Math.min(index + 1, Math.max(0, visibleModels.length - 1)));
+        return;
+      }
+
+      if (event.key === 'ArrowUp') {
+        event.preventDefault();
+        setSelectedModelIndex((index) => Math.max(index - 1, 0));
+        return;
+      }
+
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        const model = visibleModels[selectedModelIndex];
+        if (model) {
+          modelSelection.selectModel(model.id, event.metaKey || event.ctrlKey);
+          toggleTray('models');
+        }
+        return;
+      }
+
+      if (event.key === 'Tab' && event.shiftKey) {
+        event.preventDefault();
+        setModelTab((tab) => tab === 'all' ? 'saved' : 'all');
+        return;
+      }
+    }
+
+    if (event.key === 'ArrowUp' && !event.shiftKey && query.trim().length === 0 && !isTrayOpen) {
+      event.preventDefault();
+      setSelectedHistoryIndex(0);
+      toggleTray('history');
+      return;
+    }
+
+    handleKeyDown(event);
+  };
+
   return (
     <main className="prototype-root">
       <section
@@ -182,12 +424,27 @@ export function Launcher() {
             activeMode={activeTrayMode}
             commandItems={COMMAND_ITEMS}
             helpItems={HELP_ITEMS}
+            historyEntries={historyEntries}
+            historyTab={historyTab}
             inputMode={composerMode}
             isOpen={isTrayOpen}
+            modelTab={modelTab}
+            modelEntries={visibleModels}
             onExitShellMode={() => setModeLock(query.trim().length > 0 ? 'chat' : null)}
+            onHistoryTabChange={setHistoryTab}
             onInsertCommand={(command) => setQuery(`${command} `)}
+            onModelTabChange={setModelTab}
+            onSelectHistoryEntry={(entry) => {
+              setModeLock(entry.kind === 'command' ? 'shell' : 'chat');
+              setQuery(entry.label);
+              toggleTray('history');
+            }}
+            onSelectModel={(modelId) => modelSelection.selectModel(modelId, false)}
             shellSource={shellSource}
             shellShortcutTokens={shellShortcutTokens}
+            selectedHistoryIndex={selectedHistoryIndex}
+            selectedModelId={modelSelection.selectedModelId}
+            selectedModelIndex={selectedModelIndex}
             onToggleCommands={() => {
               const willOpen = !isTrayOpen || activeTrayMode !== 'commands';
               setQuery(willOpen ? '/' : '');
@@ -227,7 +484,10 @@ export function Launcher() {
             <ComposerBar
               mode={composerMode}
               shellSource={shellSource}
-              onKeyDown={handleKeyDown}
+              gitBranchMenuOpen={gitContext.isBranchMenuOpen}
+              gitContext={gitContext.gitContext}
+              onCloseGitBranchMenu={() => gitContext.setIsBranchMenuOpen(false)}
+              onKeyDown={handleComposerKeyDown}
               onHeightChange={() => { }}
               onQueryChange={(val) => {
                 const nextValue = consumeShellModeActivator(val);
@@ -249,11 +509,15 @@ export function Launcher() {
                 setQuery(action.value);
               }}
               onCloseWorkingDirectoryPicker={workingDirectory.closePicker}
+              onSelectGitBranch={gitContext.switchBranch}
               onNavigateToParentDirectory={workingDirectory.navigateToParent}
+              onToggleGitBranchMenu={gitContext.toggleBranchMenu}
+              onToggleModelTray={() => toggleTray('models')}
               placeholder="Octomus anything e.g. Find and fix race conditions in my Python application"
               prediction={shellPrediction}
               query={query}
               recommendedAction={recommendedAction}
+              selectedModelLabel={modelSelection.selectedModel.label}
               terminalAutoDetectEnabled={terminalAutoDetectEnabled}
               workingDirectory={workingDirectory.currentPath}
               workingDirectoryLabel={workingDirectory.buttonLabel}

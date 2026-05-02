@@ -16,7 +16,7 @@
         "label": "main",
         "title": "Octomus Launcher Prototype",
         "width": 608,
-        "height": 490,
+        "height": 560,
         "resizable": false,
         "titleBarStyle": "Overlay",
         "decorations": false,

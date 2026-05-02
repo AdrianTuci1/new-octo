@@ -1,7 +1,12 @@
-import { ChevronUp, ChevronDown, Command, MessagesSquare } from 'lucide-react';
+import { MessagesSquare } from 'lucide-react';
 import './TrayPanel.css';
 import { TrayCommands } from './TrayCommands';
+import { TrayFooter } from './TrayFooter';
 import { TrayHelp } from './TrayHelp';
+import { TrayHistory } from './TrayHistory';
+import { TrayModels } from './TrayModels';
+import type { HistoryEntry, HistoryTab } from '../../types/history';
+import type { ModelSpec } from '../../types/model';
 import type { CommandItem, ComposerMode, HelpItem, ShellModeSource, TrayContentMode } from '../../types/ui';
 
 type TrayPanelProps = {
@@ -9,10 +14,21 @@ type TrayPanelProps = {
   activeMode: TrayContentMode;
   helpItems: HelpItem[];
   commandItems: CommandItem[];
+  historyEntries: HistoryEntry[];
+  historyTab: HistoryTab;
+  modelTab: 'all' | 'saved';
+  modelEntries: ModelSpec[];
+  selectedHistoryIndex: number;
+  selectedModelId: string;
+  selectedModelIndex: number;
   inputMode: ComposerMode;
   shellSource: ShellModeSource | null;
   shellShortcutTokens: string[];
   onExitShellMode: () => void;
+  onHistoryTabChange: (tab: HistoryTab) => void;
+  onSelectHistoryEntry: (entry: HistoryEntry) => void;
+  onSelectModel: (modelId: string) => void;
+  onModelTabChange: (tab: 'all' | 'saved') => void;
   onToggleHelp: () => void;
   onToggleCommands: () => void;
   onToggleConversations: () => void;
@@ -24,53 +40,50 @@ export function TrayPanel({
   activeMode,
   helpItems,
   commandItems,
+  historyEntries,
+  historyTab,
+  modelTab,
+  modelEntries,
+  selectedHistoryIndex,
+  selectedModelId,
+  selectedModelIndex,
   inputMode,
   shellSource,
   shellShortcutTokens,
   onExitShellMode,
+  onHistoryTabChange,
+  onSelectHistoryEntry,
+  onSelectModel,
+  onModelTabChange,
   onToggleHelp,
   onToggleCommands,
   onToggleConversations,
   onInsertCommand
 }: TrayPanelProps) {
-  const shellFooter = shellSource === 'autodetected'
-    ? (
-        <div className="tray-switcher">
-          <div className="tray-switch-item">
-            <span className="tray-switch-label">autodetected shell command,</span>
-            {shellShortcutTokens.map((token) => (
-              <div key={token} className="mode-button active tray-shortcut-token">
-                {token}
-              </div>
-            ))}
-            <span className="tray-switch-label">to override</span>
-          </div>
-        </div>
-      )
-    : (
-        <div className="tray-switcher">
-          <div className="tray-switch-item">
-            <button className="mode-button active" onClick={onExitShellMode} type="button">
-              ⌫
-            </button>
-            <span className="tray-switch-label">to exit shell mode</span>
-          </div>
-          <div className="tray-switch-item">
-            {shellShortcutTokens.map((token) => (
-              <div key={token} className="mode-button active tray-shortcut-token">
-                {token}
-              </div>
-            ))}
-            <span className="tray-switch-label">toggle input</span>
-          </div>
-        </div>
-      );
-
   return (
     <div className={`tray-region ${isOpen ? 'open' : 'closed'}`}>
       <div className="tray-body">
         {activeMode === 'help' && <TrayHelp items={helpItems} />}
         {activeMode === 'commands' && <TrayCommands items={commandItems} onInsertCommand={onInsertCommand} />}
+        {activeMode === 'history' && (
+          <TrayHistory
+            activeTab={historyTab}
+            entries={historyEntries}
+            onSelectEntry={onSelectHistoryEntry}
+            onTabChange={onHistoryTabChange}
+            selectedIndex={selectedHistoryIndex}
+          />
+        )}
+        {activeMode === 'models' && (
+          <TrayModels
+            activeTab={modelTab}
+            models={modelEntries}
+            onSelectModel={onSelectModel}
+            onTabChange={onModelTabChange}
+            selectedIndex={selectedModelIndex}
+            selectedModelId={selectedModelId}
+          />
+        )}
         {activeMode === 'conversations' && (
           <div className="tray-pane-placeholder">
             <MessagesSquare size={32} strokeWidth={1.5} className="tray-header-icon" />
@@ -81,94 +94,33 @@ export function TrayPanel({
 
       <div className={`tray-footer ${isOpen ? 'expanded' : 'collapsed'}`}>
         {!isOpen && (
-          inputMode === 'shell' ? shellFooter : (
-            <div className="tray-switcher">
-              <div className="tray-switch-item">
-                <button
-                  className={`mode-button ${activeMode === 'help' ? 'active' : ''}`}
-                  onClick={onToggleHelp}
-                  type="button"
-                >
-                  ?
-                </button>
-                <span className="tray-switch-label">for help</span>
-              </div>
-              <div className="tray-switch-item">
-                <button
-                  className={`mode-button ${activeMode === 'commands' ? 'active' : ''}`}
-                  onClick={onToggleCommands}
-                  type="button"
-                >
-                  /
-                </button>
-                <span className="tray-switch-label">for commands</span>
-              </div>
-              <div className="tray-switch-item">
-                <button
-                  className={`mode-button ${activeMode === 'conversations' ? 'active' : ''}`}
-                  onClick={onToggleConversations}
-                  type="button"
-                >
-                  <Command size={10} />
-                </button>
-                <button
-                  className={`mode-button ${activeMode === 'conversations' ? 'active' : ''}`}
-                  onClick={onToggleConversations}
-                  type="button"
-                >
-                  Y
-                </button>
-                <span className="tray-switch-label">open conversation</span>
-              </div>
-            </div>
-          )
+          <TrayFooter
+            activeMode={activeMode}
+            inputMode={inputMode}
+            isOpen={false}
+            onExitShellMode={onExitShellMode}
+            onToggleCommands={onToggleCommands}
+            onToggleConversations={onToggleConversations}
+            onToggleHelp={onToggleHelp}
+            shellShortcutTokens={shellShortcutTokens}
+            shellSource={shellSource}
+          />
         )}
 
         {isOpen && (
           <>
             <div className="tray-footer-divider" aria-hidden="true" />
-            {inputMode === 'shell' ? shellFooter : (
-              <div className="tray-switcher">
-                {activeMode === 'help' && (
-                  <div className="tray-switch-item">
-                    <div className="mode-button active">?</div>
-                    <span className="tray-switch-label">to hide help</span>
-                  </div>
-                )}
-
-                {activeMode === 'commands' && (
-                  <>
-                    <div className="tray-switch-item">
-                      <div className="mode-button active"><ChevronUp size={10} /></div>
-                      <div className="mode-button active"><ChevronDown size={10} /></div>
-                      <span className="tray-switch-label">to navigate</span>
-                    </div>
-                    <div className="tray-switch-item">
-                      <div className="mode-button active" style={{ width: 'auto', padding: '0 4px' }}>Esc</div>
-                      <span className="tray-switch-label">to dismiss</span>
-                    </div>
-                  </>
-                )}
-
-                {activeMode === 'conversations' && (
-                  <>
-                    <div className="tray-switch-item">
-                      <div className="mode-button active"><MessagesSquare size={10} /></div>
-                      <span className="tray-switch-label" style={{ color: 'var(--text-main)', fontWeight: 500 }}>continue in this plane</span>
-                    </div>
-                    <div className="tray-switch-item">
-                      <div className="mode-button active"><ChevronUp size={10} /></div>
-                      <div className="mode-button active"><ChevronDown size={10} /></div>
-                      <span className="tray-switch-label">to navigate</span>
-                    </div>
-                    <div className="tray-switch-item">
-                      <div className="mode-button active" style={{ width: 'auto', padding: '0 4px' }}>Esc</div>
-                      <span className="tray-switch-label">to dismiss</span>
-                    </div>
-                  </>
-                )}
-              </div>
-            )}
+            <TrayFooter
+              activeMode={activeMode}
+              inputMode={inputMode}
+              isOpen={true}
+              onExitShellMode={onExitShellMode}
+              onToggleCommands={onToggleCommands}
+              onToggleConversations={onToggleConversations}
+              onToggleHelp={onToggleHelp}
+              shellShortcutTokens={shellShortcutTokens}
+              shellSource={shellSource}
+            />
           </>
         )}
       </div>

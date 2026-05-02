@@ -19,7 +19,7 @@ const MAIN_WINDOW_LABEL: &str = "main";
 const SHOW_MENU_ID: &str = "show";
 const HIDE_MENU_ID: &str = "hide";
 const TOGGLE_SHORTCUT: &str = "alt+space";
-const WINDOW_BOTTOM_MARGIN: i32 = 48;
+const WINDOW_BOTTOM_MARGIN: i32 = 68;
 
 fn anchor_launcher_to_bottom<R: Runtime>(app: &AppHandle<R>) {
     let Some(window) = app.get_webview_window(MAIN_WINDOW_LABEL) else {
@@ -107,6 +107,9 @@ fn main() {
             terminal::terminal_list_commands,
             terminal::terminal_get_path_context,
             terminal::terminal_list_directory_entries,
+            terminal::terminal_get_git_context,
+            terminal::terminal_switch_git_branch,
+            terminal::terminal_get_recent_history,
         ])
         .setup(|app| {
             #[cfg(target_os = "macos")]

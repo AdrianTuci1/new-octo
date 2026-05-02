@@ -19,6 +19,7 @@ type UseChatOptions = {
   onCommandApproval?: (approval: CommandApproval) => void;
   onNewChat?: () => void;
   cwd?: string | null;
+  modelId?: string | null;
 };
 
 let agentBridgeReady: Promise<void> | null = null;
@@ -213,7 +214,8 @@ export function useChat(options: UseChatOptions = {}) {
       role: 'user',
       title: 'User',
       body: trimmed,
-      conversationId
+      conversationId,
+      createdAt: new Date().toISOString()
     });
 
     addMessage({
@@ -242,6 +244,7 @@ export function useChat(options: UseChatOptions = {}) {
           assistantMessageId,
           prompt: trimmed,
           cwd: options.cwd ?? null,
+          modelId: options.modelId ?? null,
           messages: requestMessages
         }
       });
@@ -303,6 +306,7 @@ export function useChat(options: UseChatOptions = {}) {
           assistantMessageId: nextAssistantMessageId,
           prompt: buildToolResultFollowupPrompt(command),
           cwd: options.cwd ?? null,
+          modelId: options.modelId ?? null,
           messages: requestMessages
         }
       });

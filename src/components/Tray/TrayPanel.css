@@ -10,7 +10,7 @@
     opacity 160ms ease,
     padding 160ms ease,
     transform 160ms ease;
-  max-height: 380px;
+  max-height: 420px;
   opacity: 1;
   transform: translateY(0);
   border-bottom: 1px solid var(--border);

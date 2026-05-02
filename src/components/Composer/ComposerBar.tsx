@@ -1,8 +1,10 @@
 import { useState, useEffect, type KeyboardEvent } from 'react';
 import { ArrowRight, Bot, MonitorSmartphone, Plus, Sparkles } from 'lucide-react';
+import { GitBranchPicker } from './GitBranchPicker';
 import { useComposerBar } from './useComposerBar';
 import { WorkingDirectoryPicker } from './WorkingDirectoryPicker';
 import type { RecommendedComposerAction, ShellPrediction } from '../../lib/composerIntelligence';
+import type { GitRepoContext } from '../../types/git';
 import type { ComposerMode, ShellModeSource } from '../../types/ui';
 import type { FilesystemDirectoryListing } from '../../types/filesystem';
 import './ComposerBar.css';
@@ -13,11 +15,14 @@ type ComposerBarProps = {
   query: string;
   prediction: ShellPrediction | null;
   recommendedAction: RecommendedComposerAction | null;
+  gitContext: GitRepoContext | null;
+  gitBranchMenuOpen: boolean;
   workingDirectory: string | null;
   workingDirectoryLabel: string;
   workingDirectoryPickerOpen: boolean;
   workingDirectoryListing: FilesystemDirectoryListing | null;
   workingDirectorySearch: string;
+  selectedModelLabel: string;
   terminalAutoDetectEnabled: boolean;
   onQueryChange: (query: string) => void;
   onKeyDown: (event: KeyboardEvent<HTMLTextAreaElement>) => void;
@@ -28,6 +33,10 @@ type ComposerBarProps = {
   onNavigateToParentDirectory: () => void;
   onSelectWorkingDirectory: (path: string) => void;
   onToggleTerminalAutoDetect: () => void;
+  onToggleGitBranchMenu: () => void;
+  onToggleModelTray: () => void;
+  onCloseGitBranchMenu: () => void;
+  onSelectGitBranch: (branch: string) => void;
   onHeightChange?: (height: number) => void;
   placeholder?: string;
 };
@@ -38,11 +47,14 @@ export function ComposerBar({
   query,
   prediction,
   recommendedAction,
+  gitContext,
+  gitBranchMenuOpen,
   workingDirectory,
   workingDirectoryLabel,
   workingDirectoryPickerOpen,
   workingDirectoryListing,
   workingDirectorySearch,
+  selectedModelLabel,
   terminalAutoDetectEnabled,
   onQueryChange,
   onKeyDown,
@@ -53,6 +65,10 @@ export function ComposerBar({
   onNavigateToParentDirectory,
   onSelectWorkingDirectory,
   onToggleTerminalAutoDetect,
+  onToggleGitBranchMenu,
+  onToggleModelTray,
+  onCloseGitBranchMenu,
+  onSelectGitBranch,
   onHeightChange,
   placeholder
 }: ComposerBarProps) {
@@ -144,6 +160,16 @@ export function ComposerBar({
             onToggle={onToggleWorkingDirectoryPicker}
             searchQuery={workingDirectorySearch}
           />
+          {gitContext && (
+            <GitBranchPicker
+              branches={gitContext.branches}
+              currentBranch={gitContext.currentBranch}
+              isOpen={gitBranchMenuOpen}
+              onClose={onCloseGitBranchMenu}
+              onSelectBranch={onSelectGitBranch}
+              onToggle={onToggleGitBranchMenu}
+            />
+          )}
           <button
             className={`toolbar-chip auto-detect-chip ${terminalAutoDetectEnabled ? 'active' : ''}`}
             onClick={onToggleTerminalAutoDetect}
@@ -155,9 +181,8 @@ export function ComposerBar({
         </div>
 
         <div className="action-group right-actions">
-          <button className="toolbar-chip model-chip" type="button" title="Model">
-            <Bot size={12} />
-            <span>Model</span>
+          <button className="toolbar-chip model-chip" onClick={onToggleModelTray} type="button" title="Model">
+            <span>{selectedModelLabel}</span>
           </button>
           <button className="toolbar-chip remote-chip" type="button" title="Remote control">
             <MonitorSmartphone size={12} />
