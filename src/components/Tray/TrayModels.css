@@ -77,7 +77,7 @@
   font-weight: 500;
 }
 
-.tray-models-specs > p {
+.tray-models-specs>p {
   margin: 0;
   color: var(--text-dim);
   font-size: 13px;

@@ -109,7 +109,6 @@ export function TrayPanel({
 
         {isOpen && (
           <>
-            <div className="tray-footer-divider" aria-hidden="true" />
             <TrayFooter
               activeMode={activeMode}
               inputMode={inputMode}
@@ -121,6 +120,7 @@ export function TrayPanel({
               shellShortcutTokens={shellShortcutTokens}
               shellSource={shellSource}
             />
+            <div className="tray-footer-divider" aria-hidden="true" />
           </>
         )}
       </div>
