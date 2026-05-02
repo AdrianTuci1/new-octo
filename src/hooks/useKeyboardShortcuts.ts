@@ -7,6 +7,7 @@ type KeyboardShortcutOptions = {
   onCommandApproval?: (approval: CommandApproval) => void;
   onNewChat?: () => void;
   onTerminalCommand?: (command: string) => void;
+  disableTrayShortcuts?: boolean;
   cwd?: string | null;
   modelId?: string | null;
   isShellMode?: boolean;
@@ -69,6 +70,8 @@ export function useKeyboardShortcuts(options: KeyboardShortcutOptions = {}) {
     }
 
     if (event.key === 'Escape') {
+      event.preventDefault();
+      event.stopPropagation();
       if (options.isManualShellMode && query.length === 0) {
         options.onExitShellMode?.();
       }
@@ -76,13 +79,13 @@ export function useKeyboardShortcuts(options: KeyboardShortcutOptions = {}) {
       return;
     }
 
-    if (event.key === '?' && query.length === 0) {
+    if (!options.disableTrayShortcuts && event.key === '?' && query.length === 0) {
       event.preventDefault();
       toggleTray('help');
       return;
     }
 
-    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'y') {
+    if (!options.disableTrayShortcuts && (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'y') {
       event.preventDefault();
       toggleTray('conversations');
     }

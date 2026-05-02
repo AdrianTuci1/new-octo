@@ -1,11 +1,12 @@
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { ChatPanel } from '../Chat';
-import { CommandApprovalComposer, ComposerBar } from '../Composer';
+import { CommandApprovalComposer, ComposerBar, TerminalComposer } from '../Composer';
 import { TrayPanel } from '../Tray';
 import { useChat } from '../../hooks/useChat';
 import { useCommandHistory } from '../../hooks/useCommandHistory';
 import { useGitContext } from '../../hooks/useGitContext';
 import { useModelSelection } from '../../hooks/useModelSelection';
+import { useTerminalRuntimeContext } from '../../hooks/useTerminalRuntimeContext';
 import { useTray } from '../../hooks/useTray';
 import { useWindowSync } from '../../hooks/useWindowSync';
 import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts';
@@ -43,6 +44,7 @@ function isSingleTokenShellCandidate(query: string) {
 }
 
 export function Launcher() {
+  const [composerSurface, setComposerSurface] = useState<'agent' | 'terminal'>('agent');
   const [modeLock, setModeLock] = useState<ComposerMode | null>(null);
   const [autodetectedShellLatch, setAutodetectedShellLatch] = useState(false);
   const [allowSingleCharacterCommandPrediction, setAllowSingleCharacterCommandPrediction] = useState(false);
@@ -53,14 +55,15 @@ export function Launcher() {
   const [selectedModelIndex, setSelectedModelIndex] = useState(0);
   const workingDirectory = useWorkingDirectory();
   const gitContext = useGitContext(workingDirectory.currentPath);
+  const runtimeContext = useTerminalRuntimeContext(workingDirectory.currentPath);
   const commandHistory = useCommandHistory();
   const modelSelection = useModelSelection();
-  const { query, setQuery, messages, submitToolResult } = useChat({
+  const { query, setQuery, messages, submitQuery, submitToolResult } = useChat({
     cwd: workingDirectory.currentPath,
     modelId: modelSelection.selectedModelId,
     onCommandApproval: (approval) => requestCommandApproval(approval)
   });
-  const { isTrayOpen, activeTrayMode, toggleTray } = useTray();
+  const { isTrayOpen, activeTrayMode, toggleTray, setTrayMode, closeTray } = useTray();
   const terminal = useTerminalCommandBlocks(workingDirectory.currentPath);
   const availableShellCommands = useShellCommandIndex();
   const [pendingApproval, setPendingApproval] = useState<CommandApproval | null>(null);
@@ -109,6 +112,46 @@ export function Launcher() {
     terminalBlocks: terminal.blocks,
     terminalError: terminal.error
   });
+  const terminalFailureCount = useMemo(() => {
+    let failures = 0;
+
+    for (let index = terminal.blocks.length - 1; index >= 0; index -= 1) {
+      const block = terminal.blocks[index];
+      if (block.status !== 'finished') {
+        continue;
+      }
+
+      if (typeof block.exitCode === 'number' && block.exitCode !== 0) {
+        failures += 1;
+        continue;
+      }
+
+      break;
+    }
+
+    return failures;
+  }, [terminal.blocks]);
+  const terminalComposerAction = useMemo(() => {
+    if (terminalFailureCount < 2) {
+      return null;
+    }
+
+    const lastFailedBlock = [...terminal.blocks]
+      .reverse()
+      .find((block) => block.status === 'finished' && typeof block.exitCode === 'number' && block.exitCode !== 0);
+
+    if (!lastFailedBlock) {
+      return null;
+    }
+
+    return {
+      id: 'terminal-ask-agent',
+      label: 'Ask the agent about recent failures',
+      value: `Explain why \`${lastFailedBlock.command}\` failed repeatedly and suggest the safest next step.`,
+      description: 'Start an agent conversation from the latest terminal failures.',
+      mode: 'chat' as const
+    };
+  }, [terminal.blocks, terminalFailureCount]);
   const shellShortcutTokens = getShellToggleShortcutTokens();
   const promptHistoryEntries = useMemo<HistoryEntry[]>(
     () => {
@@ -170,6 +213,8 @@ export function Launcher() {
     const savedModels = modelSelection.models.filter((model) => model.id === modelSelection.selectedModelId);
     return savedModels.length > 0 ? savedModels : modelSelection.models;
   }, [modelSelection.models, modelSelection.selectedModelId, modelTab]);
+  const isTerminalSurface = composerSurface === 'terminal';
+  const isTerminalCommandsTrayOpen = isTerminalSurface && isTrayOpen && activeTrayMode === 'commands';
 
   useEffect(() => {
     if (!terminalAutoDetectEnabled || modeLock !== null || query.trim().length === 0) {
@@ -211,10 +256,12 @@ export function Launcher() {
   const { handleKeyDown } = useKeyboardShortcuts({
     cwd: workingDirectory.currentPath,
     modelId: modelSelection.selectedModelId,
+    disableTrayShortcuts: isTerminalCommandsTrayOpen,
     onCommandApproval: (command) => requestCommandApproval(command),
     onNewChat: () => {
       setPendingApproval(null);
       setModeLock(null);
+      setComposerSurface('agent');
       terminal.clearBlocks();
     },
     onTerminalCommand: (command) => {
@@ -247,6 +294,21 @@ export function Launcher() {
   const isChatOpen = messages.length > 0 || terminal.blocks.length > 0 || Boolean(terminal.error);
   const isChatVisible = isChatOpen && !isTrayOpen;
   const isExpanded = isTrayOpen || isChatOpen;
+  const launchAgentComposer = useCallback(() => {
+    setPendingApproval(null);
+    setModeLock(null);
+    closeTray();
+    setComposerSurface('agent');
+    setQuery('');
+  }, [closeTray, setQuery]);
+  const openCommandsTray = useCallback(() => {
+    setSelectedHistoryIndex(0);
+    setTrayMode('commands');
+  }, [setTrayMode]);
+  const toggleComposerSurface = useCallback(() => {
+    closeTray();
+    setComposerSurface((current) => current === 'agent' ? 'terminal' : 'agent');
+  }, [closeTray]);
 
   const requestCommandApproval = (approval: CommandApproval) => {
     console.log('[Launcher] requestCommandApproval called for:', approval.command);
@@ -258,7 +320,52 @@ export function Launcher() {
   };
 
   useEffect(() => {
+    if (!isTerminalSurface || !isTrayOpen) {
+      return;
+    }
+
+    if (activeTrayMode !== 'commands') {
+      closeTray();
+    }
+  }, [activeTrayMode, closeTray, isTerminalSurface, isTrayOpen]);
+
+  useEffect(() => {
+    const handleGlobalEscape = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== 'Escape') {
+        return;
+      }
+
+      const target = event.target as HTMLElement | null;
+      if (target?.closest('.working-directory-menu, .git-branch-menu')) {
+        return;
+      }
+
+       if (isTrayOpen) {
+        event.preventDefault();
+        event.stopPropagation();
+        event.stopImmediatePropagation();
+        closeTray();
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+      toggleComposerSurface();
+    };
+
+    window.addEventListener('keydown', handleGlobalEscape, true);
+    return () => {
+      window.removeEventListener('keydown', handleGlobalEscape, true);
+    };
+  }, [closeTray, isTrayOpen, toggleComposerSurface]);
+
+  useEffect(() => {
     if (!isTrayOpen || (activeTrayMode !== 'history' && activeTrayMode !== 'models')) {
+      return;
+    }
+
+    if (isTerminalSurface) {
       return;
     }
 
@@ -330,6 +437,7 @@ export function Launcher() {
 
       if (event.key === 'Escape') {
         event.preventDefault();
+        event.stopPropagation();
         toggleTray(activeTrayMode);
       }
     };
@@ -343,6 +451,7 @@ export function Launcher() {
     historyEntries,
     isTrayOpen,
     modelSelection,
+    isTerminalSurface,
     selectedHistoryIndex,
     selectedModelIndex,
     setQuery,
@@ -351,6 +460,30 @@ export function Launcher() {
   ]);
 
   const handleComposerKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      event.stopPropagation();
+      toggleComposerSurface();
+      return;
+    }
+
+    if (isTerminalSurface) {
+      if (event.key === 'Enter' && !event.shiftKey) {
+        event.preventDefault();
+        const command = query.trim();
+        if (!command) {
+          return;
+        }
+
+        void terminal.runCommand(command).then(() => {
+          setQuery('');
+        });
+        return;
+      }
+
+      return;
+    }
+
     if (isTrayOpen && activeTrayMode === 'history') {
       if (event.key === 'ArrowDown') {
         event.preventDefault();
@@ -446,39 +579,42 @@ export function Launcher() {
         )}
 
         <div ref={dockRef} className="dock-stack">
-          <TrayPanel
-            activeMode={activeTrayMode}
-            commandItems={COMMAND_ITEMS}
-            helpItems={HELP_ITEMS}
-            historyEntries={historyEntries}
-            historyTab={historyTab}
-            inputMode={composerMode}
-            isOpen={isTrayOpen}
-            modelTab={modelTab}
-            modelEntries={visibleModels}
-            onExitShellMode={() => setModeLock(query.trim().length > 0 ? 'chat' : null)}
-            onHistoryTabChange={setHistoryTab}
-            onInsertCommand={(command) => setQuery(`${command} `)}
-            onModelTabChange={setModelTab}
-            onSelectHistoryEntry={(entry) => {
-              setModeLock(entry.kind === 'command' ? 'shell' : 'chat');
-              setQuery(entry.label);
-              toggleTray('history');
-            }}
-            onSelectModel={(modelId) => modelSelection.selectModel(modelId, false)}
-            shellSource={shellSource}
-            shellShortcutTokens={shellShortcutTokens}
-            selectedHistoryIndex={selectedHistoryIndex}
-            selectedModelId={modelSelection.selectedModelId}
-            selectedModelIndex={selectedModelIndex}
-            onToggleCommands={() => {
-              const willOpen = !isTrayOpen || activeTrayMode !== 'commands';
-              setQuery(willOpen ? '/' : '');
-              toggleTray('commands');
-            }}
-            onToggleHelp={() => toggleTray('help')}
-            onToggleConversations={() => toggleTray('conversations')}
-          />
+          {(!isTerminalSurface || isTerminalCommandsTrayOpen) && (
+            <TrayPanel
+              activeMode={activeTrayMode}
+              commandItems={COMMAND_ITEMS}
+              helpItems={HELP_ITEMS}
+              historyEntries={historyEntries}
+              historyTab={historyTab}
+              inputMode={composerMode}
+              isOpen={isTrayOpen}
+              showFooter={!isTerminalSurface || activeTrayMode === 'commands'}
+              modelTab={modelTab}
+              modelEntries={visibleModels}
+              onExitShellMode={() => setModeLock(query.trim().length > 0 ? 'chat' : null)}
+              onHistoryTabChange={setHistoryTab}
+              onInsertCommand={(command) => setQuery(`${command} `)}
+              onModelTabChange={setModelTab}
+              onSelectHistoryEntry={(entry) => {
+                setModeLock(entry.kind === 'command' ? 'shell' : 'chat');
+                setQuery(entry.label);
+                toggleTray('history');
+              }}
+              onSelectModel={(modelId) => modelSelection.selectModel(modelId, false)}
+              shellSource={shellSource}
+              shellShortcutTokens={shellShortcutTokens}
+              selectedHistoryIndex={selectedHistoryIndex}
+              selectedModelId={modelSelection.selectedModelId}
+              selectedModelIndex={selectedModelIndex}
+              onToggleCommands={() => {
+                const willOpen = !isTrayOpen || activeTrayMode !== 'commands';
+                setQuery(willOpen ? '/' : '');
+                toggleTray('commands');
+              }}
+              onToggleHelp={() => toggleTray('help')}
+              onToggleConversations={() => toggleTray('conversations')}
+            />
+          )}
 
           {pendingApproval ? (
             <CommandApprovalComposer
@@ -505,6 +641,52 @@ export function Launcher() {
                   );
                 }
               }}
+            />
+          ) : composerSurface === 'terminal' ? (
+            <TerminalComposer
+              gitBranchMenuOpen={gitContext.isBranchMenuOpen}
+              gitContext={gitContext.gitContext}
+              onLaunchAgentComposer={launchAgentComposer}
+              onOpenCommandsTray={openCommandsTray}
+              onCloseGitBranchMenu={() => gitContext.setIsBranchMenuOpen(false)}
+              onCloseWorkingDirectoryPicker={workingDirectory.closePicker}
+              onHeightChange={() => {}}
+              onKeyDown={handleComposerKeyDown}
+              onNavigateToParentDirectory={workingDirectory.navigateToParent}
+              onQueryChange={(value) => {
+                setQuery(value);
+                setSelectedHistoryIndex(0);
+
+                if (value === '/') {
+                  setTrayMode('commands');
+                  return;
+                }
+
+                if ((value === '' || value === '//') && isTrayOpen && activeTrayMode === 'commands') {
+                  closeTray();
+                }
+              }}
+              onRecommendedActionClick={(action) => {
+                setComposerSurface('agent');
+                setModeLock(null);
+                setQuery(action.value);
+                window.requestAnimationFrame(() => {
+                  void submitQuery();
+                });
+              }}
+              onSelectGitBranch={gitContext.switchBranch}
+              onSelectWorkingDirectory={workingDirectory.selectDirectory}
+              onToggleGitBranchMenu={gitContext.toggleBranchMenu}
+              onToggleWorkingDirectoryPicker={workingDirectory.togglePicker}
+              onWorkingDirectorySearchChange={workingDirectory.setSearchQuery}
+              query={query}
+              recommendedAction={terminalComposerAction}
+              runtimeNodeVersion={runtimeContext?.nodeVersion ?? null}
+              workingDirectory={workingDirectory.currentPath}
+              workingDirectoryLabel={workingDirectory.buttonLabel}
+              workingDirectoryListing={workingDirectory.listing}
+              workingDirectoryPickerOpen={workingDirectory.isPickerOpen}
+              workingDirectorySearch={workingDirectory.searchQuery}
             />
           ) : (
             <ComposerBar
@@ -533,6 +715,7 @@ export function Launcher() {
                 }
               }}
               onRecommendedActionClick={(action) => {
+                setComposerSurface('agent');
                 setModeLock(action.mode === 'shell' ? 'shell' : null);
                 setQuery(action.value);
               }}

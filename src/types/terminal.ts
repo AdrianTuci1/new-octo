@@ -42,6 +42,10 @@ export type TerminalRunCommandResponse = {
   output: string;
 };
 
+export type TerminalRuntimeContext = {
+  nodeVersion?: string | null;
+};
+
 export type TerminalCommandBlock = TerminalBlock & {
   output: string;
   status: 'running' | 'finished';

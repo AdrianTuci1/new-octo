@@ -133,6 +133,12 @@ pub struct GitRepoContext {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct TerminalRuntimeContext {
+    pub node_version: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ShellHistoryEntry {
     pub value: String,
     pub executed_at: String,
@@ -332,6 +338,15 @@ pub fn terminal_get_path_context() -> Result<FilesystemPathContext, String> {
     Ok(FilesystemPathContext {
         home_dir,
         current_dir,
+    })
+}
+
+#[tauri::command]
+pub fn terminal_get_runtime_context(request: PathRequest) -> Result<TerminalRuntimeContext, String> {
+    let cwd = resolve_request_path(request.path)?;
+
+    Ok(TerminalRuntimeContext {
+        node_version: read_command_version("node", &cwd),
     })
 }
 
@@ -735,6 +750,30 @@ fn run_git_capture(cwd: &Path, args: &[&str]) -> Result<String, String> {
     }
 
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
+fn read_command_version(command: &str, cwd: &Path) -> Option<String> {
+    let output = Command::new(command)
+        .arg("--version")
+        .current_dir(cwd)
+        .output()
+        .ok()?;
+
+    if !output.status.success() {
+        return None;
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if !stdout.is_empty() {
+        return Some(stdout);
+    }
+
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    if stderr.is_empty() {
+        None
+    } else {
+        Some(stderr)
+    }
 }
 
 fn read_zsh_history(cutoff: DateTime<Utc>) -> Vec<ShellHistoryEntry> {

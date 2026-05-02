@@ -11,6 +11,7 @@ import type { CommandItem, ComposerMode, HelpItem, ShellModeSource, TrayContentM
 
 type TrayPanelProps = {
   isOpen: boolean;
+  showFooter?: boolean;
   activeMode: TrayContentMode;
   helpItems: HelpItem[];
   commandItems: CommandItem[];
@@ -37,6 +38,7 @@ type TrayPanelProps = {
 
 export function TrayPanel({
   isOpen,
+  showFooter = true,
   activeMode,
   helpItems,
   commandItems,
@@ -92,27 +94,13 @@ export function TrayPanel({
         )}
       </div>
 
-      <div className={`tray-footer ${isOpen ? 'expanded' : 'collapsed'}`}>
-        {!isOpen && (
-          <TrayFooter
-            activeMode={activeMode}
-            inputMode={inputMode}
-            isOpen={false}
-            onExitShellMode={onExitShellMode}
-            onToggleCommands={onToggleCommands}
-            onToggleConversations={onToggleConversations}
-            onToggleHelp={onToggleHelp}
-            shellShortcutTokens={shellShortcutTokens}
-            shellSource={shellSource}
-          />
-        )}
-
-        {isOpen && (
-          <>
+      {showFooter && (
+        <div className={`tray-footer ${isOpen ? 'expanded' : 'collapsed'}`}>
+          {!isOpen && (
             <TrayFooter
               activeMode={activeMode}
               inputMode={inputMode}
-              isOpen={true}
+              isOpen={false}
               onExitShellMode={onExitShellMode}
               onToggleCommands={onToggleCommands}
               onToggleConversations={onToggleConversations}
@@ -120,10 +108,26 @@ export function TrayPanel({
               shellShortcutTokens={shellShortcutTokens}
               shellSource={shellSource}
             />
-            <div className="tray-footer-divider" aria-hidden="true" />
-          </>
-        )}
-      </div>
+          )}
+
+          {isOpen && (
+            <>
+              <TrayFooter
+                activeMode={activeMode}
+                inputMode={inputMode}
+                isOpen={true}
+                onExitShellMode={onExitShellMode}
+                onToggleCommands={onToggleCommands}
+                onToggleConversations={onToggleConversations}
+                onToggleHelp={onToggleHelp}
+                shellShortcutTokens={shellShortcutTokens}
+                shellSource={shellSource}
+              />
+              <div className="tray-footer-divider" aria-hidden="true" />
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }

@@ -17,9 +17,15 @@ export const useUIStore = create<UIState>((set) => ({
   lastTrayMode: 'help',
   isExpanded: false,
 
-  setTrayMode: (mode) => set({ 
-    trayMode: mode,
-    isExpanded: mode !== 'closed'
+  setTrayMode: (mode) => set((state) => {
+    if (state.trayMode === mode) {
+      return state;
+    }
+
+    return {
+      trayMode: mode,
+      isExpanded: mode !== 'closed'
+    };
   }),
 
   toggleTray: (mode) => set((state) => {

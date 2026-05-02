@@ -212,6 +212,7 @@ fn main() {
             terminal::terminal_get_blocks,
             terminal::terminal_list_commands,
             terminal::terminal_get_path_context,
+            terminal::terminal_get_runtime_context,
             terminal::terminal_list_directory_entries,
             terminal::terminal_get_git_context,
             terminal::terminal_switch_git_branch,

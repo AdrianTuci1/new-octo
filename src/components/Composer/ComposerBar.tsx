@@ -12,6 +12,7 @@ import './ComposerBar.css';
 type ComposerBarProps = {
   mode: ComposerMode;
   shellSource: ShellModeSource | null;
+  restrictActions?: boolean;
   query: string;
   prediction: ShellPrediction | null;
   recommendedAction: RecommendedComposerAction | null;
@@ -45,6 +46,7 @@ type ComposerBarProps = {
 export function ComposerBar({
   mode,
   shellSource,
+  restrictActions = false,
   query,
   prediction,
   recommendedAction,
@@ -146,54 +148,56 @@ export function ComposerBar({
         </div>
       </div>
 
-      <div className="input-actions composer-actions">
-        <div className="action-group left-actions">
-          <WorkingDirectoryPicker
-            buttonLabel={workingDirectoryLabel}
-            currentPath={workingDirectory}
-            isOpen={workingDirectoryPickerOpen}
-            isCompact={true}
-            listing={workingDirectoryListing}
-            onClose={onCloseWorkingDirectoryPicker}
-            onNavigateToParent={onNavigateToParentDirectory}
-            onSearchQueryChange={onWorkingDirectorySearchChange}
-            onSelectDirectory={onSelectWorkingDirectory}
-            onToggle={onToggleWorkingDirectoryPicker}
-            searchQuery={workingDirectorySearch}
-          />
-          {gitContext && (
-            <GitBranchPicker
-              branches={gitContext.branches}
-              currentBranch={gitContext.currentBranch}
-              isOpen={gitBranchMenuOpen}
-              onClose={onCloseGitBranchMenu}
-              onSelectBranch={onSelectGitBranch}
-              onToggle={onToggleGitBranchMenu}
+      {!restrictActions && (
+        <div className="input-actions composer-actions">
+          <div className="action-group left-actions">
+            <WorkingDirectoryPicker
+              buttonLabel={workingDirectoryLabel}
+              currentPath={workingDirectory}
+              isOpen={workingDirectoryPickerOpen}
+              isCompact={true}
+              listing={workingDirectoryListing}
+              onClose={onCloseWorkingDirectoryPicker}
+              onNavigateToParent={onNavigateToParentDirectory}
+              onSearchQueryChange={onWorkingDirectorySearchChange}
+              onSelectDirectory={onSelectWorkingDirectory}
+              onToggle={onToggleWorkingDirectoryPicker}
+              searchQuery={workingDirectorySearch}
             />
-          )}
-          <button
-            className={`toolbar-chip auto-detect-chip ${terminalAutoDetectEnabled ? 'active' : ''}`}
-            onClick={onToggleTerminalAutoDetect}
-            type="button"
-            title="Auto detect terminal commands"
-          >
-            A*
-          </button>
-        </div>
+            {gitContext && (
+              <GitBranchPicker
+                branches={gitContext.branches}
+                currentBranch={gitContext.currentBranch}
+                isOpen={gitBranchMenuOpen}
+                onClose={onCloseGitBranchMenu}
+                onSelectBranch={onSelectGitBranch}
+                onToggle={onToggleGitBranchMenu}
+              />
+            )}
+            <button
+              className={`toolbar-chip auto-detect-chip ${terminalAutoDetectEnabled ? 'active' : ''}`}
+              onClick={onToggleTerminalAutoDetect}
+              type="button"
+              title="Auto detect terminal commands"
+            >
+              A*
+            </button>
+          </div>
 
-        <div className="action-group right-actions">
-          <button className="toolbar-chip model-chip" onClick={onToggleModelTray} type="button" title="Model">
-            <span>{selectedModelLabel}</span>
-          </button>
-          <button className="toolbar-chip remote-chip" type="button" title="Remote control">
-            <MonitorSmartphone size={12} />
-            <span>Remote</span>
-          </button>
-          <button className="icon-button attach-button" type="button" title="Attach file">
-            <Plus size={12} />
-          </button>
+          <div className="action-group right-actions">
+            <button className="toolbar-chip model-chip" onClick={onToggleModelTray} type="button" title="Model">
+              <span>{selectedModelLabel}</span>
+            </button>
+            <button className="toolbar-chip remote-chip" type="button" title="Remote control">
+              <MonitorSmartphone size={12} />
+              <span>Remote</span>
+            </button>
+            <button className="icon-button attach-button" type="button" title="Attach file">
+              <Plus size={12} />
+            </button>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
