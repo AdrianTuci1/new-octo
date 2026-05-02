@@ -170,7 +170,7 @@
 
 .icon-button:hover,
 .toolbar-chip:hover {
-  background: var(--surface-2);
+  background: rgba(255, 255, 255, 0.15);
   color: var(--text-main);
 }
 
@@ -280,8 +280,7 @@
 }
 
 .auto-detect-chip.active {
-  background: rgba(68, 201, 127, 0.18);
-  color: #8cf0b3;
+  color: var(--accent);
 }
 
 .git-branch-menu {

@@ -59,11 +59,21 @@ export const settingsSectionMetaById: Record<string, SettingsSectionMeta> = {
 };
 
 export function getSettingsSectionMeta(sectionId: string): SettingsSectionMeta {
-  return (
-    settingsSectionMetaById[sectionId] ?? {
-      title: 'Settings',
-      description: 'Choose a section from the sidebar.',
-      contentKind: 'placeholder'
-    }
-  );
+  const meta = settingsSectionMetaById[sectionId];
+  if (meta) return meta;
+
+  // Fallback for Octo Agent if ID mapping is slightly off
+  if (sectionId === 'agents/octo-agent' || sectionId === 'agents/warp-agent') {
+    return {
+      title: 'Octo Agent',
+      description: 'Configure default agent behavior and task routing.',
+      contentKind: 'octo-agent'
+    };
+  }
+
+  return {
+    title: 'Settings',
+    description: 'Choose a section from the sidebar.',
+    contentKind: 'placeholder'
+  };
 }

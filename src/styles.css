@@ -2,16 +2,16 @@
   color-scheme: dark;
   --bg-root: transparent;
   --launcher-bg: #0b0b0b;
-  --tray-bg: #080808;
-  --surface-2: #141414;
-  --border: rgba(255, 255, 255, 0.06);
-  --border-strong: rgba(255, 255, 255, 0.12);
-  --text-main: #f4f7f6;
-  --text-soft: #9aa6a4;
-  --text-dim: #606060;
-  --accent: #7ad3a4;
-  --accent-blue: #00a8e8;
-  --accent-soft: rgba(0, 168, 232, 0.1);
+  --tray-bg: #050505;
+  --surface-2: #1a1a1a;
+  --border: rgba(255, 255, 255, 0.05);
+  --border-strong: rgba(255, 255, 255, 0.08);
+  --text-main: #ffffff;
+  --text-soft: rgba(255, 255, 255, 0.7);
+  --text-dim: rgba(255, 255, 255, 0.45);
+  --accent: #5ef1a1;
+  --accent-blue: #38bdf8;
+  --accent-soft: rgba(56, 189, 248, 0.1);
   --shadow: 0 12px 30px rgba(0, 0, 0, 0.5);
   --font-ui: "SF Pro Display", "Segoe UI", system-ui, sans-serif;
   --font-mono: "SF Mono", "JetBrains Mono", monospace;
@@ -102,4 +102,39 @@ li {
 
 .thinking-dot-animation {
   display: inline-block;
+}
+
+/* Slim Scrollbars - Hidden unless hovered */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 10px;
+  transition: background 120ms ease;
+}
+
+/* We need to apply hover to the container, but since we want it global: */
+*:hover::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* Firefox - approximated as it doesn't support transition on thumb */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+
+*:hover {
+  scrollbar-color: rgba(255, 255, 255, 0.12) transparent;
 }

@@ -6,7 +6,7 @@ export const agentsSidebarItem: SettingsSidebarGroupItem = {
   label: 'Agents',
   defaultExpanded: true,
   children: [
-    { kind: 'leaf', id: 'agents/warp-agent', label: 'Warp Agent' },
+    { kind: 'leaf', id: 'agents/octo-agent', label: 'Octo Agent' },
     { kind: 'leaf', id: 'agents/profiles', label: 'Profiles' },
     { kind: 'leaf', id: 'agents/mcp-servers', label: 'MCP servers' },
     { kind: 'leaf', id: 'agents/knowledge', label: 'Knowledge' },
@@ -15,22 +15,22 @@ export const agentsSidebarItem: SettingsSidebarGroupItem = {
 };
 
 export const agentsSectionMeta: Record<
-  | 'agents/warp-agent'
+  | 'agents/octo-agent'
   | 'agents/profiles'
   | 'agents/mcp-servers'
   | 'agents/knowledge'
   | 'agents/third-party-cli-agents',
   SettingsSectionMeta
 > = {
-  'agents/warp-agent': {
-    title: 'Warp Agent',
+  'agents/octo-agent': {
+    title: 'Octo Agent',
     description: 'Configure default agent behavior and task routing.',
-    contentKind: 'placeholder'
+    contentKind: 'octo-agent'
   },
   'agents/profiles': {
     title: 'Profiles',
     description: 'Prepare saved personas and prompt presets for the agent runtime.',
-    contentKind: 'placeholder'
+    contentKind: 'profiles'
   },
   'agents/mcp-servers': {
     title: 'MCP servers',
@@ -40,7 +40,7 @@ export const agentsSectionMeta: Record<
   'agents/knowledge': {
     title: 'Knowledge',
     description: 'Manage the shared knowledge base that agents can reference.',
-    contentKind: 'placeholder'
+    contentKind: 'knowledge'
   },
   'agents/third-party-cli-agents': {
     title: 'Third party CLI agents',

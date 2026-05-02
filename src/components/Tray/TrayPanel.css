@@ -162,7 +162,7 @@
 
 .mode-button.active,
 .mode-button:hover {
-  background: var(--surface-2);
+  background: rgba(255, 255, 255, 0.15);
   color: var(--text-main);
 }
 
