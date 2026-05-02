@@ -4,7 +4,10 @@ mod pty;
 mod session;
 
 use std::{
+    collections::BTreeSet,
     collections::HashMap,
+    env,
+    fs,
     io::Read,
     process::Command,
     sync::{Arc, Mutex},
@@ -93,6 +96,37 @@ pub struct TerminalBlockOutputEvent {
 pub struct TerminalRunCommandResponse {
     pub block: TerminalBlock,
     pub output: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FilesystemPathContext {
+    pub home_dir: String,
+    pub current_dir: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FilesystemEntry {
+    pub name: String,
+    pub path: String,
+    pub is_directory: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FilesystemDirectoryListing {
+    pub current_path: String,
+    pub parent_path: Option<String>,
+    pub entries: Vec<FilesystemEntry>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListDirectoryEntriesRequest {
+    pub path: Option<String>,
+    pub query: Option<String>,
+    pub directories_only: Option<bool>,
 }
 
 impl TerminalManager {
@@ -224,6 +258,113 @@ pub fn terminal_get_blocks(
     Ok(manager.get(&request.session_id)?.blocks_snapshot())
 }
 
+#[tauri::command]
+pub fn terminal_list_commands() -> Result<Vec<String>, String> {
+    let mut commands = BTreeSet::new();
+
+    for path in env::split_paths(&env::var_os("PATH").unwrap_or_default()) {
+        let Ok(entries) = fs::read_dir(path) else {
+            continue;
+        };
+
+        for entry in entries.flatten() {
+            let entry_path = entry.path();
+            if !is_executable_command(&entry_path) {
+                continue;
+            }
+
+            let Some(file_name) = entry_path.file_name().and_then(|name| name.to_str()) else {
+                continue;
+            };
+
+            if !file_name.is_empty() {
+                commands.insert(file_name.to_string());
+            }
+        }
+    }
+
+    Ok(commands.into_iter().collect())
+}
+
+#[tauri::command]
+pub fn terminal_get_path_context() -> Result<FilesystemPathContext, String> {
+    let home_dir = home_dir()
+        .ok_or_else(|| "home directory was not found".to_string())?
+        .to_string_lossy()
+        .to_string();
+    let current_dir = env::current_dir()
+        .map_err(|error| format!("failed to read current directory: {error}"))?
+        .to_string_lossy()
+        .to_string();
+
+    Ok(FilesystemPathContext {
+        home_dir,
+        current_dir,
+    })
+}
+
+#[tauri::command]
+pub fn terminal_list_directory_entries(
+    request: ListDirectoryEntriesRequest,
+) -> Result<FilesystemDirectoryListing, String> {
+    let target_path = request
+        .path
+        .filter(|value| !value.trim().is_empty())
+        .map(std::path::PathBuf::from)
+        .unwrap_or(env::current_dir().map_err(|error| format!("failed to read current directory: {error}"))?);
+    let normalized_path = target_path
+        .canonicalize()
+        .map_err(|error| format!("failed to open '{}': {error}", target_path.display()))?;
+    let directories_only = request.directories_only.unwrap_or(true);
+    let normalized_query = request.query.unwrap_or_default().trim().to_lowercase();
+    let mut entries = Vec::new();
+
+    for entry in fs::read_dir(&normalized_path)
+        .map_err(|error| format!("failed to read '{}': {error}", normalized_path.display()))?
+        .flatten()
+    {
+        let entry_path = entry.path();
+        let Ok(metadata) = entry.metadata() else {
+            continue;
+        };
+
+        let is_directory = metadata.is_dir();
+        if directories_only && !is_directory {
+            continue;
+        }
+
+        let Some(name) = entry.file_name().to_str().map(str::to_string) else {
+            continue;
+        };
+
+        if name.starts_with('.') {
+            continue;
+        }
+
+        if !normalized_query.is_empty() && !name.to_lowercase().contains(&normalized_query) {
+            continue;
+        }
+
+        entries.push(FilesystemEntry {
+            name,
+            path: entry_path.to_string_lossy().to_string(),
+            is_directory,
+        });
+    }
+
+    entries.sort_by(|left, right| {
+        right.is_directory
+            .cmp(&left.is_directory)
+            .then_with(|| left.name.to_lowercase().cmp(&right.name.to_lowercase()))
+    });
+
+    Ok(FilesystemDirectoryListing {
+        current_path: normalized_path.to_string_lossy().to_string(),
+        parent_path: normalized_path.parent().map(|path| path.to_string_lossy().to_string()),
+        entries,
+    })
+}
+
 fn spawn_reader_thread(
     app: AppHandle,
     manager: TerminalManager,
@@ -323,4 +464,26 @@ fn run_shell_command(
     output_text.push_str(&String::from_utf8_lossy(&output.stderr));
 
     Ok((output.status.code().unwrap_or(1), output_text))
+}
+
+fn home_dir() -> Option<std::path::PathBuf> {
+    env::var_os("HOME").map(std::path::PathBuf::from)
+}
+
+#[cfg(unix)]
+fn is_executable_command(path: &std::path::Path) -> bool {
+    use std::os::unix::fs::PermissionsExt;
+
+    let Ok(metadata) = fs::metadata(path) else {
+        return false;
+    };
+
+    metadata.is_file() && metadata.permissions().mode() & 0o111 != 0
+}
+
+#[cfg(not(unix))]
+fn is_executable_command(path: &std::path::Path) -> bool {
+    fs::metadata(path)
+        .map(|metadata| metadata.is_file())
+        .unwrap_or(false)
 }

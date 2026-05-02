@@ -1,36 +1,65 @@
 import { useState, useEffect, type KeyboardEvent } from 'react';
-import { Bot, FolderOpen, MonitorSmartphone, Plus, Sparkles } from 'lucide-react';
+import { ArrowRight, Bot, MonitorSmartphone, Plus, Sparkles } from 'lucide-react';
 import { useComposerBar } from './useComposerBar';
+import { WorkingDirectoryPicker } from './WorkingDirectoryPicker';
 import type { RecommendedComposerAction, ShellPrediction } from '../../lib/composerIntelligence';
-import type { ComposerMode } from '../../types/ui';
+import type { ComposerMode, ShellModeSource } from '../../types/ui';
+import type { FilesystemDirectoryListing } from '../../types/filesystem';
 import './ComposerBar.css';
 
 type ComposerBarProps = {
   mode: ComposerMode;
+  shellSource: ShellModeSource | null;
   query: string;
   prediction: ShellPrediction | null;
   recommendedAction: RecommendedComposerAction | null;
+  workingDirectory: string | null;
+  workingDirectoryLabel: string;
+  workingDirectoryPickerOpen: boolean;
+  workingDirectoryListing: FilesystemDirectoryListing | null;
+  workingDirectorySearch: string;
+  terminalAutoDetectEnabled: boolean;
   onQueryChange: (query: string) => void;
   onKeyDown: (event: KeyboardEvent<HTMLTextAreaElement>) => void;
   onRecommendedActionClick: (action: RecommendedComposerAction) => void;
+  onToggleWorkingDirectoryPicker: () => void;
+  onCloseWorkingDirectoryPicker: () => void;
+  onWorkingDirectorySearchChange: (query: string) => void;
+  onNavigateToParentDirectory: () => void;
+  onSelectWorkingDirectory: (path: string) => void;
+  onToggleTerminalAutoDetect: () => void;
   onHeightChange?: (height: number) => void;
   placeholder?: string;
 };
 
 export function ComposerBar({
   mode,
+  shellSource,
   query,
   prediction,
   recommendedAction,
+  workingDirectory,
+  workingDirectoryLabel,
+  workingDirectoryPickerOpen,
+  workingDirectoryListing,
+  workingDirectorySearch,
+  terminalAutoDetectEnabled,
   onQueryChange,
   onKeyDown,
   onRecommendedActionClick,
+  onToggleWorkingDirectoryPicker,
+  onCloseWorkingDirectoryPicker,
+  onWorkingDirectorySearchChange,
+  onNavigateToParentDirectory,
+  onSelectWorkingDirectory,
+  onToggleTerminalAutoDetect,
   onHeightChange,
   placeholder
 }: ComposerBarProps) {
   const { inputRef, shellRef } = useComposerBar(query, onHeightChange);
   const [isDismissed, setIsDismissed] = useState(false);
   const predictionSuffix = prediction?.completionText ?? '';
+  const showShellIndicator = mode === 'shell' && shellSource === 'manual';
 
   // Reset dismissal when recommendation changes
   useEffect(() => {
@@ -51,11 +80,10 @@ export function ComposerBar({
     <div ref={shellRef} className="composer-shell">
       <div className={`composer-input-row ${mode === 'shell' ? 'shell-active' : ''}`}>
         <div className="composer-editor-shell">
-
           <div className="composer-input-wrapper">
-            {mode === 'shell' && <span className="composer-shell-indicator">!</span>}
-            
-            <div className={`composer-textarea-container ${mode === 'shell' ? 'shell-mode' : ''} ${showRecommendation ? 'has-recommendation' : ''}`}>
+            {showShellIndicator && <span className="composer-shell-indicator">!</span>}
+
+            <div className={`composer-textarea-container ${mode === 'shell' ? 'shell-mode' : ''} ${showShellIndicator ? 'manual-shell-mode' : ''} ${showRecommendation ? 'has-recommendation' : ''}`}>
               {showRecommendation && (
                 <div className="composer-recommendation-chip-wrapper">
                   <button
@@ -73,6 +101,14 @@ export function ComposerBar({
                 <div className="composer-suggestion-overlay" aria-hidden="true">
                   <span className="composer-suggestion-prefix">{query}</span>
                   <span className="composer-suggestion-text">{predictionSuffix}</span>
+                  <span className="composer-suggestion-accept-group" title={prediction?.hint}>
+                    <span className="composer-suggestion-accept-main">
+                      <ArrowRight size={11} />
+                    </span>
+                    <span className="composer-suggestion-accept-tail">
+                      <span className="composer-suggestion-accept-tail-mark" />
+                    </span>
+                  </span>
                 </div>
               )}
               <textarea
@@ -85,7 +121,7 @@ export function ComposerBar({
                 placeholder={
                   mode === 'shell'
                     ? 'Run a terminal command'
-                    : placeholder ?? 'Ask Octomus anything, or use / for tools'
+                    : placeholder ?? 'Octomus anything, or use / for tools'
                 }
               />
             </div>
@@ -95,19 +131,27 @@ export function ComposerBar({
 
       <div className="input-actions composer-actions">
         <div className="action-group left-actions">
-          <button className="icon-button" type="button" title="Change working directory">
-            <FolderOpen size={12} />
+          <WorkingDirectoryPicker
+            buttonLabel={workingDirectoryLabel}
+            currentPath={workingDirectory}
+            isOpen={workingDirectoryPickerOpen}
+            isCompact={true}
+            listing={workingDirectoryListing}
+            onClose={onCloseWorkingDirectoryPicker}
+            onNavigateToParent={onNavigateToParentDirectory}
+            onSearchQueryChange={onWorkingDirectorySearchChange}
+            onSelectDirectory={onSelectWorkingDirectory}
+            onToggle={onToggleWorkingDirectoryPicker}
+            searchQuery={workingDirectorySearch}
+          />
+          <button
+            className={`toolbar-chip auto-detect-chip ${terminalAutoDetectEnabled ? 'active' : ''}`}
+            onClick={onToggleTerminalAutoDetect}
+            type="button"
+            title="Auto detect terminal commands"
+          >
+            A*
           </button>
-          {mode === 'shell' ? (
-            <div className="composer-mode-chip">
-              <span>shell</span>
-              {prediction && <span className="composer-mode-chip-hint">Tab</span>}
-            </div>
-          ) : (
-            <button className="icon-button" type="button" title="Auto detect terminal commands" style={{ fontSize: '12px' }}>
-              A*
-            </button>
-          )}
         </div>
 
         <div className="action-group right-actions">

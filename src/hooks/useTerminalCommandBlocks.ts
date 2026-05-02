@@ -19,7 +19,7 @@ function mergeBlock(block: TerminalBlock, output = ''): TerminalCommandBlock {
   };
 }
 
-export function useTerminalCommandBlocks() {
+export function useTerminalCommandBlocks(cwd?: string | null) {
   const sessionRef = useRef<TerminalSessionInfo | null>(null);
   const sessionPromiseRef = useRef<Promise<TerminalSessionInfo> | null>(null);
   const activeBlockIdRef = useRef<string | null>(null);
@@ -40,7 +40,7 @@ export function useTerminalCommandBlocks() {
       request: {
         rows: 24,
         cols: 120,
-        cwd: null
+        cwd: cwd ?? null
       }
     })
       .then((session) => {
@@ -52,7 +52,7 @@ export function useTerminalCommandBlocks() {
       });
 
     return sessionPromiseRef.current;
-  }, []);
+  }, [cwd]);
 
   const upsertBlock = useCallback((block: TerminalBlock) => {
     setBlocks((currentBlocks) => {
@@ -161,6 +161,27 @@ export function useTerminalCommandBlocks() {
       }
     };
   }, [appendOutput, upsertBlock]);
+
+  useEffect(() => {
+    const activeSession = sessionRef.current;
+    if (!activeSession || activeSession.cwd === (cwd ?? null)) {
+      return;
+    }
+
+    void invoke('terminal_kill_session', {
+      request: {
+        sessionId: activeSession.id
+      }
+    });
+
+    sessionRef.current = null;
+    sessionPromiseRef.current = null;
+    commandInFlightRef.current = false;
+    activeBlockIdRef.current = null;
+    pendingCommandOutputRef.current = '';
+    pendingOutputRef.current = {};
+    setError(null);
+  }, [cwd]);
 
   const runCommand = useCallback(
     async (command: string): Promise<TerminalRunCommandResponse | null> => {

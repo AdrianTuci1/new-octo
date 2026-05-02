@@ -2,7 +2,7 @@ import { ChevronUp, ChevronDown, Command, MessagesSquare } from 'lucide-react';
 import './TrayPanel.css';
 import { TrayCommands } from './TrayCommands';
 import { TrayHelp } from './TrayHelp';
-import type { CommandItem, ComposerMode, HelpItem, TrayContentMode } from '../../types/ui';
+import type { CommandItem, ComposerMode, HelpItem, ShellModeSource, TrayContentMode } from '../../types/ui';
 
 type TrayPanelProps = {
   isOpen: boolean;
@@ -10,6 +10,7 @@ type TrayPanelProps = {
   helpItems: HelpItem[];
   commandItems: CommandItem[];
   inputMode: ComposerMode;
+  shellSource: ShellModeSource | null;
   shellShortcutTokens: string[];
   onExitShellMode: () => void;
   onToggleHelp: () => void;
@@ -24,6 +25,7 @@ export function TrayPanel({
   helpItems,
   commandItems,
   inputMode,
+  shellSource,
   shellShortcutTokens,
   onExitShellMode,
   onToggleHelp,
@@ -31,24 +33,38 @@ export function TrayPanel({
   onToggleConversations,
   onInsertCommand
 }: TrayPanelProps) {
-  const shellFooter = (
-    <div className="tray-switcher">
-      <div className="tray-switch-item">
-        <button className="mode-button active" onClick={onExitShellMode} type="button">
-          ⌫
-        </button>
-        <span className="tray-switch-label">to exit shell mode</span>
-      </div>
-      <div className="tray-switch-item">
-        {shellShortcutTokens.map((token) => (
-          <div key={token} className="mode-button active tray-shortcut-token">
-            {token}
+  const shellFooter = shellSource === 'autodetected'
+    ? (
+        <div className="tray-switcher">
+          <div className="tray-switch-item">
+            <span className="tray-switch-label">autodetected shell command,</span>
+            {shellShortcutTokens.map((token) => (
+              <div key={token} className="mode-button active tray-shortcut-token">
+                {token}
+              </div>
+            ))}
+            <span className="tray-switch-label">to override</span>
           </div>
-        ))}
-        <span className="tray-switch-label">toggle input</span>
-      </div>
-    </div>
-  );
+        </div>
+      )
+    : (
+        <div className="tray-switcher">
+          <div className="tray-switch-item">
+            <button className="mode-button active" onClick={onExitShellMode} type="button">
+              ⌫
+            </button>
+            <span className="tray-switch-label">to exit shell mode</span>
+          </div>
+          <div className="tray-switch-item">
+            {shellShortcutTokens.map((token) => (
+              <div key={token} className="mode-button active tray-shortcut-token">
+                {token}
+              </div>
+            ))}
+            <span className="tray-switch-label">toggle input</span>
+          </div>
+        </div>
+      );
 
   return (
     <div className={`tray-region ${isOpen ? 'open' : 'closed'}`}>

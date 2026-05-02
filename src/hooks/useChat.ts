@@ -18,6 +18,7 @@ import type { CommandApproval } from '../types/terminal';
 type UseChatOptions = {
   onCommandApproval?: (approval: CommandApproval) => void;
   onNewChat?: () => void;
+  cwd?: string | null;
 };
 
 let agentBridgeReady: Promise<void> | null = null;
@@ -240,6 +241,7 @@ export function useChat(options: UseChatOptions = {}) {
           conversationId,
           assistantMessageId,
           prompt: trimmed,
+          cwd: options.cwd ?? null,
           messages: requestMessages
         }
       });
@@ -300,6 +302,7 @@ export function useChat(options: UseChatOptions = {}) {
           conversationId,
           assistantMessageId: nextAssistantMessageId,
           prompt: buildToolResultFollowupPrompt(command),
+          cwd: options.cwd ?? null,
           messages: requestMessages
         }
       });

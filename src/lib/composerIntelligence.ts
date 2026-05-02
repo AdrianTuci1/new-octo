@@ -1,38 +1,6 @@
 import type { ChatMessage } from '../types/chat';
 import type { TerminalCommandBlock } from '../types/terminal';
-import type { ComposerMode } from '../types/ui';
-
-const SHELL_COMMAND_PREFIXES = new Set([
-  'git',
-  'npm',
-  'pnpm',
-  'yarn',
-  'bun',
-  'cargo',
-  'docker',
-  'kubectl',
-  'rg',
-  'ls',
-  'cat',
-  'cd',
-  'mkdir',
-  'touch',
-  'cp',
-  'mv',
-  'rm',
-  'find',
-  'grep',
-  'node',
-  'python',
-  'python3',
-  'uv',
-  'make',
-  'just',
-  'ssh',
-  'scp',
-  'curl',
-  'wget'
-]);
+import type { ComposerMode, ShellModeSource } from '../types/ui';
 
 const NATURAL_LANGUAGE_TOKENS = new Set([
   'cum',
@@ -52,6 +20,13 @@ const NATURAL_LANGUAGE_TOKENS = new Set([
   'could'
 ]);
 
+const SHELL_PATTERN_PREFIXES = [
+  /^~(?:\/|$)/,
+  /^\.\.?(?:\/|$)/,
+  /^[#$]/,
+  /^\*[\w./-]/
+];
+
 export type ShellPrediction = {
   completionText: string;
   fullCommand: string;
@@ -66,6 +41,11 @@ export type RecommendedComposerAction = {
   mode: ComposerMode;
 };
 
+export type ComposerModeResolution = {
+  mode: ComposerMode;
+  shellSource: ShellModeSource | null;
+};
+
 export function consumeShellModeActivator(value: string): { consumed: boolean; value: string } {
   const match = value.match(/^\s*!\s?(.*)$/s);
   if (!match) {
@@ -78,22 +58,62 @@ export function consumeShellModeActivator(value: string): { consumed: boolean; v
   };
 }
 
-export function resolveComposerMode(query: string, lockedMode: ComposerMode | null): ComposerMode {
-  if (lockedMode) {
-    return lockedMode;
+export function resolveComposerState(
+  query: string,
+  lockedMode: ComposerMode | null,
+  availableCommands: string[] = [],
+  autodetectEnabled = true
+): ComposerModeResolution {
+  if (lockedMode === 'shell') {
+    return {
+      mode: 'shell',
+      shellSource: 'manual'
+    };
   }
 
-  return isLikelyShellCommand(query.trim()) ? 'shell' : 'chat';
+  if (lockedMode === 'chat') {
+    return {
+      mode: 'chat',
+      shellSource: null
+    };
+  }
+
+  if (!autodetectEnabled) {
+    return {
+      mode: 'chat',
+      shellSource: null
+    };
+  }
+
+  return isLikelyShellCommand(query.trim(), availableCommands)
+    ? {
+        mode: 'shell',
+        shellSource: 'autodetected'
+      }
+    : {
+        mode: 'chat',
+        shellSource: null
+      };
 }
 
-export function getShellPrediction(query: string, blocks: TerminalCommandBlock[]): ShellPrediction | null {
+export function getShellPrediction(
+  query: string,
+  blocks: TerminalCommandBlock[],
+  availableCommands: string[] = [],
+  options: { allowSingleCharacterCommand?: boolean } = {}
+): ShellPrediction | null {
   const input = query.trim();
   if (!input || input.includes('\n')) {
     return null;
   }
 
-  const lastFinishedBlock = [...blocks].reverse().find((block) => block.status === 'finished');
-  const candidates = getPredictionCandidates(input, lastFinishedBlock?.command);
+  const recentCommands = getRecentCommands(blocks);
+  const candidates = getPredictionCandidates(
+    input,
+    recentCommands,
+    availableCommands,
+    options.allowSingleCharacterCommand ?? false
+  );
   const normalizedInput = input.toLowerCase();
   const fullCommand = candidates.find((candidate) => {
     const normalizedCandidate = candidate.toLowerCase();
@@ -107,7 +127,7 @@ export function getShellPrediction(query: string, blocks: TerminalCommandBlock[]
   return {
     fullCommand,
     completionText: fullCommand.slice(input.length),
-    hint: 'Press Tab to complete'
+    hint: 'Press Right Arrow to complete'
   };
 }
 
@@ -119,7 +139,7 @@ export function getRecommendedComposerAction(options: {
   terminalError: string | null;
 }): RecommendedComposerAction | null {
   const { mode, query, messages, terminalBlocks, terminalError } = options;
-  if (mode !== 'chat' || query.trim().length > 0) {
+  if (mode !== 'chat' || query.trim().length > 0 || messages.length === 0) {
     return null;
   }
 
@@ -194,7 +214,7 @@ export function getShellToggleShortcutTokens() {
   return ['Ctrl', 'I'];
 }
 
-function isLikelyShellCommand(query: string) {
+function isLikelyShellCommand(query: string, availableCommands: string[]) {
   if (!query || query.includes('\n')) {
     return false;
   }
@@ -212,59 +232,90 @@ function isLikelyShellCommand(query: string) {
     return false;
   }
 
-  if (!/^[A-Za-z0-9_./:@~"'=+\- ]+$/.test(query)) {
+  if (!/^[A-Za-z0-9_./:@~"'=+\- *#$&|<>]+$/.test(query)) {
     return false;
   }
 
-  return SHELL_COMMAND_PREFIXES.has(tokens[0].toLowerCase());
+  if (
+    SHELL_PATTERN_PREFIXES.some((pattern) => pattern.test(query)) ||
+    query.includes(' && ') ||
+    query.includes(' | ') ||
+    query.includes(' > ') ||
+    query.includes(' < ')
+  ) {
+    return true;
+  }
+
+  const firstToken = tokens[0].toLowerCase();
+  const normalizedCommands = new Set(availableCommands.map((command) => command.toLowerCase()));
+  if (normalizedCommands.has(firstToken)) {
+    return true;
+  }
+
+  if (tokens.length === 1 && firstToken.length >= 2) {
+    return availableCommands.some((command) => command.toLowerCase().startsWith(firstToken));
+  }
+
+  return false;
 }
 
-function getPredictionCandidates(input: string, lastCommand?: string | null) {
-  const firstToken = input.split(/\s+/)[0]?.toLowerCase();
+function getPredictionCandidates(
+  input: string,
+  recentCommands: string[],
+  availableCommands: string[],
+  allowSingleCharacterCommand: boolean
+) {
+  const trimmed = input.trim();
+  const lowerInput = trimmed.toLowerCase();
+  const firstToken = trimmed.split(/\s+/)[0]?.toLowerCase() ?? '';
+  const hasWhitespace = /\s/.test(trimmed);
 
-  if (firstToken === 'git') {
-    const contextualFirst = lastCommand?.startsWith('git add')
-      ? 'git commit -m "describe changes"'
-      : lastCommand?.startsWith('git commit')
-        ? 'git push -u origin HEAD'
-        : 'git status';
-    return dedupe([
-      contextualFirst,
-      'git status',
-      'git add .',
-      'git commit -m "describe changes"',
-      'git push -u origin HEAD',
-      'git checkout -b feature/name'
-    ]);
+  const historyMatches = recentCommands.filter((command) => command.toLowerCase().startsWith(lowerInput));
+
+  if (hasWhitespace) {
+    return dedupe(historyMatches);
   }
 
-  if (firstToken === 'npm') {
-    return ['npm run dev', 'npm test', 'npm install'];
+  if (firstToken.length < 2 && !allowSingleCharacterCommand) {
+    return [];
   }
 
-  if (firstToken === 'pnpm') {
-    return ['pnpm dev', 'pnpm test', 'pnpm install'];
-  }
+  const executableMatches = availableCommands
+    .filter((command) => command.toLowerCase().startsWith(lowerInput))
+    .sort(compareCommandCandidates);
+  const exactExecutable = executableMatches.find((command) => command.toLowerCase() === lowerInput);
+  const historyForExecutable = exactExecutable
+    ? recentCommands.filter((command) => command.toLowerCase().startsWith(`${firstToken} `))
+    : [];
+  const systemMatches = exactExecutable ? [] : executableMatches;
 
-  if (firstToken === 'cargo') {
-    return ['cargo test', 'cargo run', 'cargo fmt', 'cargo clippy'];
-  }
+  return dedupe([
+    ...historyMatches,
+    ...historyForExecutable,
+    ...systemMatches
+  ]);
+}
 
-  if (firstToken === 'rg') {
-    return ['rg --files', 'rg TODO src', 'rg "useEffect" src'];
-  }
-
-  if (firstToken === 'ls') {
-    return ['ls -la', 'ls src', 'ls src-tauri'];
-  }
-
-  if (firstToken === 'docker') {
-    return ['docker ps', 'docker compose up', 'docker compose logs'];
-  }
-
-  return [];
+function getRecentCommands(blocks: TerminalCommandBlock[]) {
+  return dedupe(
+    [...blocks]
+      .reverse()
+      .filter((block) => block.status === 'finished')
+      .map((block) => block.command.trim())
+      .filter(Boolean)
+  );
 }
 
 function dedupe(values: string[]) {
   return [...new Set(values)];
+}
+
+function compareCommandCandidates(left: string, right: string) {
+  return scoreCommandCandidate(left) - scoreCommandCandidate(right)
+    || left.length - right.length
+    || left.localeCompare(right);
+}
+
+function scoreCommandCandidate(command: string) {
+  return /^[a-z][a-z0-9-]*$/i.test(command) ? 0 : 1;
 }

@@ -104,6 +104,9 @@ fn main() {
             terminal::terminal_resize,
             terminal::terminal_kill_session,
             terminal::terminal_get_blocks,
+            terminal::terminal_list_commands,
+            terminal::terminal_get_path_context,
+            terminal::terminal_list_directory_entries,
         ])
         .setup(|app| {
             #[cfg(target_os = "macos")]

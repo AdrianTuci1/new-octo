@@ -5,7 +5,7 @@
   place-items: end center;
   padding: 0;
   background: transparent;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .launcher-shell {
@@ -16,7 +16,7 @@
   border: 1px solid var(--border);
   border-radius: 18px;
   box-shadow: var(--shadow);
-  overflow: hidden;
+  overflow: visible;
   display: flex;
   flex-direction: column;
   align-items: stretch;
@@ -42,6 +42,7 @@
   position: relative;
   z-index: 2;
   flex: 0 0 auto;
+  overflow: visible;
 }
 
 .launcher-shell.expanded .dock-stack {

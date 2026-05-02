@@ -7,7 +7,9 @@ type KeyboardShortcutOptions = {
   onCommandApproval?: (approval: CommandApproval) => void;
   onNewChat?: () => void;
   onTerminalCommand?: (command: string) => void;
+  cwd?: string | null;
   isShellMode?: boolean;
+  isManualShellMode?: boolean;
   hasPrediction?: boolean;
   onAcceptPrediction?: () => void;
   onExitShellMode?: () => void;
@@ -24,6 +26,7 @@ function parseTerminalCommand(query: string, isShellMode?: boolean) {
 
 export function useKeyboardShortcuts(options: KeyboardShortcutOptions = {}) {
   const { query, setQuery, submitQuery } = useChat({
+    cwd: options.cwd,
     onCommandApproval: options.onCommandApproval,
     onNewChat: options.onNewChat
   });
@@ -36,13 +39,13 @@ export function useKeyboardShortcuts(options: KeyboardShortcutOptions = {}) {
       return;
     }
 
-    if (event.key === 'Tab' && options.isShellMode && options.hasPrediction) {
+    if (event.key === 'ArrowRight' && options.isShellMode && options.hasPrediction) {
       event.preventDefault();
       options.onAcceptPrediction?.();
       return;
     }
 
-    if (event.key === 'Backspace' && options.isShellMode && query.length === 0) {
+    if (event.key === 'Backspace' && options.isManualShellMode && query.length === 0) {
       event.preventDefault();
       options.onExitShellMode?.();
       return;
@@ -64,7 +67,7 @@ export function useKeyboardShortcuts(options: KeyboardShortcutOptions = {}) {
     }
 
     if (event.key === 'Escape') {
-      if (options.isShellMode && query.length === 0) {
+      if (options.isManualShellMode && query.length === 0) {
         options.onExitShellMode?.();
       }
       closeTray();

@@ -41,6 +41,10 @@
   padding-left: 4px;
 }
 
+.manual-shell-mode .composer-recommendation-chip-wrapper {
+  padding-left: 4px;
+}
+
 .composer-recommendation-chip {
   pointer-events: auto;
 }
@@ -117,6 +121,11 @@
   gap: 6px;
 }
 
+.working-directory-picker {
+  position: relative;
+  z-index: 40;
+}
+
 .icon-button,
 .toolbar-chip {
   display: inline-flex;
@@ -159,11 +168,124 @@
   color: var(--text-main);
 }
 
+.working-directory-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 24px;
+  padding: 0 7px;
+  border-radius: 8px;
+  background: var(--surface-2);
+  color: var(--text-soft);
+  font-size: 10px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.working-directory-button:hover {
+  background: var(--surface-2);
+  color: var(--text-main);
+}
+
+.working-directory-button.compact {
+  font-family: inherit;
+}
+
+.working-directory-button.compact svg {
+  width: 12px;
+  height: 12px;
+}
+
+.working-directory-label {
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.working-directory-menu {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 10px);
+  width: min(720px, calc(100vw - 32px));
+  max-height: 420px;
+  border-radius: 16px;
+  background: rgba(20, 21, 23, 0.98);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  box-shadow:
+    0 22px 54px rgba(0, 0, 0, 0.38),
+    inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  overflow: hidden;
+  z-index: 80;
+  backdrop-filter: blur(20px);
+}
+
+.working-directory-menu-search {
+  padding: 10px 12px 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.045);
+}
+
+.working-directory-search-input {
+  width: 100%;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: rgba(244, 247, 246, 0.92);
+  font-size: 13px;
+  line-height: 1.3;
+}
+
+.working-directory-search-input::placeholder {
+  color: rgba(244, 247, 246, 0.38);
+}
+
+.working-directory-menu-list {
+  display: flex;
+  flex-direction: column;
+  max-height: 352px;
+  overflow-y: auto;
+  padding: 6px 0;
+}
+
+.working-directory-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 36px;
+  padding: 0 14px;
+  color: rgba(244, 247, 246, 0.9);
+  font-size: 13px;
+  line-height: 1.3;
+  text-align: left;
+  background: transparent;
+  cursor: pointer;
+}
+
+.working-directory-item:hover {
+  background: rgba(53, 183, 227, 0.16);
+}
+
+.working-directory-item.active {
+  background: #2eaad4;
+  color: #081216;
+}
+
+.working-directory-parent {
+  color: rgba(244, 247, 246, 0.62);
+}
+
+.auto-detect-chip.active {
+  background: rgba(68, 201, 127, 0.18);
+  color: #8cf0b3;
+}
 
 .composer-suggestion-overlay {
   position: absolute;
   inset: 0;
   padding: 10px 12px 8px;
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0;
   font-family: var(--font-mono);
   font-size: 12px;
   line-height: 1.35;
@@ -172,7 +294,7 @@
   pointer-events: none;
 }
 
-.shell-mode .composer-suggestion-overlay {
+.manual-shell-mode .composer-suggestion-overlay {
   padding-left: 4px;
 }
 
@@ -188,6 +310,44 @@
 
 .composer-suggestion-text {
   color: rgba(255, 255, 255, 0.34);
+}
+
+.composer-suggestion-accept-group {
+  display: inline-flex;
+  align-items: stretch;
+  margin-left: 6px;
+  border-radius: 6px;
+  overflow: hidden;
+  background: rgba(74, 122, 188, 0.78);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.08),
+    0 3px 12px rgba(0, 0, 0, 0.16);
+}
+
+.composer-suggestion-accept-main,
+.composer-suggestion-accept-tail {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 16px;
+  color: rgba(247, 250, 252, 0.94);
+}
+
+.composer-suggestion-accept-main {
+  min-width: 18px;
+  padding: 0 6px;
+}
+
+.composer-suggestion-accept-tail {
+  width: 14px;
+  border-left: 1px solid rgba(255, 255, 255, 0.16);
+}
+
+.composer-suggestion-accept-tail-mark {
+  width: 4px;
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.75);
 }
 
 .chat-input {
@@ -207,6 +367,9 @@
 
 .shell-mode .chat-input {
   color: #44c97f;
+}
+
+.manual-shell-mode .chat-input {
   padding-left: 4px;
 }
 
@@ -217,31 +380,6 @@
 
 .chat-input::placeholder {
   color: var(--text-dim);
-}
-
-.composer-mode-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-height: 24px;
-  padding: 0 8px;
-  border-radius: 999px;
-  background: rgba(68, 201, 127, 0.08);
-  color: #84d8a6;
-  font-size: 10px;
-  letter-spacing: 0.03em;
-  text-transform: uppercase;
-}
-
-.composer-mode-chip-hint {
-  min-width: 24px;
-  padding: 2px 5px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.08);
-  color: var(--text-main);
-  font-size: 9px;
-  letter-spacing: 0;
-  text-transform: none;
 }
 
 .command-approval-shell {

@@ -12,6 +12,7 @@ export type CommandItem = {
 };
 
 export type ComposerMode = 'chat' | 'shell';
+export type ShellModeSource = 'manual' | 'autodetected';
 export type TrayContentMode = 'help' | 'commands' | 'conversations';
 export type TrayMode = 'closed' | TrayContentMode;
 
