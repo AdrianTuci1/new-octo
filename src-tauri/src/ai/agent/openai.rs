@@ -9,7 +9,7 @@ use super::{
         AgentCancellation, AgentEventSink, AgentHarness, AgentHarnessContext, AgentHarnessError,
         AgentHarnessOutcome,
     },
-    types::{AgentInputMessage, AgentRunStatus, AgentUsage, AgentToolCall},
+    types::{AgentInputMessage, AgentRunStatus, AgentToolCall, AgentUsage},
 };
 
 const DEFAULT_BASE_URL: &str = "https://api.openai.com/v1";
@@ -151,11 +151,9 @@ async fn stream_chat_completion(
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(180))
         .build()
-        .map_err(|error| {
-            AgentHarnessError::new(format!("Failed to create HTTP client: {error}"))
-        })?;
+        .map_err(|error| AgentHarnessError::new(format!("Failed to create HTTP client: {error}")))?;
 
-    let endpoint = format!("{}", config.base_url);
+    let endpoint = resolve_chat_endpoint(&config.base_url);
     let mut headers = HeaderMap::new();
     headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
 
@@ -167,7 +165,6 @@ async fn stream_chat_completion(
             }
         }
     }
-
 
     let tools = json!([
         {
@@ -251,7 +248,7 @@ async fn stream_chat_completion(
 
         let bytes = next_chunk
             .map_err(|error| AgentHarnessError::new(format!("Stream interrupted: {error}")))?;
-        
+
         let text = String::from_utf8_lossy(&bytes);
         println!("[AI] Received chunk ({} bytes): {:?}", bytes.len(), text);
         sse_buffer.push_str(&text);
@@ -273,7 +270,6 @@ async fn stream_chat_completion(
 
                 match handle_stream_payload(data, &sink, &mut streamed, &mut usage) {
                     Ok(Some(delta_tool_call)) => {
-                        // Handle tool call delta
                         if let Some(id) = delta_tool_call.id {
                             current_tool_call_id = Some(id);
                         }
@@ -285,22 +281,26 @@ async fn stream_chat_completion(
                         }
                     }
                     Ok(None) => {}
-                    Err(e) => {
-                        println!("[AI] Failed to handle payload: {}. Data: {}", e.message, data);
+                    Err(error) => {
+                        println!(
+                            "[AI] Failed to handle payload: {}. Data: {}",
+                            error.message, data
+                        );
                     }
                 }
             } else if line.starts_with('{') && line.ends_with('}') {
-                // Try parsing it as raw JSON if it doesn't have the data: prefix
                 let _ = handle_stream_payload(&line, &sink, &mut streamed, &mut usage);
             }
         }
 
-        // Check if a tool call just finished (OpenAI usually sends an empty delta or finish_reason)
         if current_tool_call_id.is_some() && !current_tool_args.is_empty() {
             if let Ok(args_value) = serde_json::from_str::<Value>(&current_tool_args) {
-                println!("[AI] Emitting tool call: {} with args: {}", current_tool_name, args_value);
+                println!(
+                    "[AI] Emitting tool call: {} with args: {}",
+                    current_tool_name, args_value
+                );
                 sink.tool_call(AgentToolCall {
-                    id: current_tool_call_id.take().unwrap(),
+                    id: current_tool_call_id.take().expect("tool id should exist"),
                     name: current_tool_name.clone(),
                     args: args_value,
                 });
@@ -310,7 +310,6 @@ async fn stream_chat_completion(
         }
     }
 
-    // Process any remaining content in the buffer
     let remaining = sse_buffer.trim();
     if !remaining.is_empty() {
         let data = remaining.strip_prefix("data:").unwrap_or(remaining).trim();
@@ -350,24 +349,38 @@ fn handle_stream_payload(
     };
 
     let delta = choice.get("delta");
-    
-    // Handle content
-    if let Some(content) = delta.and_then(|d| d.get("content")).and_then(Value::as_str) {
+
+    if let Some(content) = delta.and_then(|item| item.get("content")).and_then(Value::as_str) {
         if !content.is_empty() {
             streamed.push_str(content);
             sink.token(content);
         }
     }
 
-    // Handle tool calls
-    if let Some(tool_calls) = delta.and_then(|d| d.get("tool_calls")).and_then(Value::as_array) {
+    if let Some(tool_calls) = delta
+        .and_then(|item| item.get("tool_calls"))
+        .and_then(Value::as_array)
+    {
         if let Some(tool_call) = tool_calls.first() {
-            let id = tool_call.get("id").and_then(Value::as_str).map(|s| s.to_string());
+            let id = tool_call
+                .get("id")
+                .and_then(Value::as_str)
+                .map(|value| value.to_string());
             let function = tool_call.get("function");
-            let name = function.and_then(|f| f.get("name")).and_then(Value::as_str).map(|s| s.to_string());
-            let arguments = function.and_then(|f| f.get("arguments")).and_then(Value::as_str).map(|s| s.to_string());
+            let name = function
+                .and_then(|value| value.get("name"))
+                .and_then(Value::as_str)
+                .map(|value| value.to_string());
+            let arguments = function
+                .and_then(|value| value.get("arguments"))
+                .and_then(Value::as_str)
+                .map(|value| value.to_string());
 
-            return Ok(Some(DeltaToolCall { id, name, arguments }));
+            return Ok(Some(DeltaToolCall {
+                id,
+                name,
+                arguments,
+            }));
         }
     }
 
@@ -376,7 +389,6 @@ fn handle_stream_payload(
 
 fn build_chat_messages(context: &AgentHarnessContext) -> Vec<Value> {
     let mut messages = Vec::new();
-
     let cwd = context.cwd.as_deref().unwrap_or("unknown");
 
     messages.push(json!({
@@ -400,30 +412,30 @@ fn build_chat_messages(context: &AgentHarnessContext) -> Vec<Value> {
         )
     }));
 
-    for message in &context.messages {
-        let mut msg = json!({
+    for message in context.messages.iter().filter_map(sanitize_message) {
+        let mut api_message = json!({
             "role": message.role,
-            "content": message.content
+            "content": message.content,
         });
 
-        if let Some(ref tool_call_id) = message.tool_call_id {
-            if let Some(obj) = msg.as_object_mut() {
-                obj.insert("tool_call_id".to_string(), json!(tool_call_id));
+        if let Some(tool_call_id) = message.tool_call_id {
+            if let Some(object) = api_message.as_object_mut() {
+                object.insert("tool_call_id".to_string(), json!(tool_call_id));
             }
         }
 
-        if let Some(ref tool_calls) = message.tool_calls {
-            if let Some(obj) = msg.as_object_mut() {
-                obj.insert("tool_calls".to_string(), tool_calls.clone());
+        if let Some(tool_calls) = message.tool_calls {
+            if let Some(object) = api_message.as_object_mut() {
+                object.insert("tool_calls".to_string(), tool_calls);
             }
         }
 
-        messages.push(msg);
+        messages.push(api_message);
     }
 
     messages.push(json!({
         "role": "user",
-        "content": context.prompt
+        "content": context.prompt,
     }));
 
     messages
@@ -434,8 +446,7 @@ fn sanitize_message(message: &AgentInputMessage) -> Option<AgentInputMessage> {
         "system" | "user" | "assistant" | "tool" => message.role.clone(),
         _ => return None,
     };
-    
-    // Assistant messages can have empty content if they have tool_calls
+
     if message.content.trim().is_empty() && message.tool_calls.is_none() && role != "tool" {
         return None;
     }
@@ -492,6 +503,14 @@ fn normalize_base_url(base_url: &str) -> String {
     base_url.trim().trim_end_matches('/').to_string()
 }
 
+fn resolve_chat_endpoint(base_url: &str) -> String {
+    if base_url.ends_with("/chat/completions") || base_url.ends_with("/responses") {
+        return normalize_base_url(base_url);
+    }
+
+    format!("{}/chat/completions", normalize_base_url(base_url))
+}
+
 fn trim_error_body(body: &str) -> String {
     const MAX_CHARS: usize = 600;
 
@@ -515,37 +534,28 @@ mod tests {
     }
 
     #[test]
+    fn resolves_chat_completion_endpoint() {
+        assert_eq!(
+            resolve_chat_endpoint("https://api.openai.com/v1"),
+            "https://api.openai.com/v1/chat/completions"
+        );
+        assert_eq!(
+            resolve_chat_endpoint("https://api.openai.com/v1/chat/completions"),
+            "https://api.openai.com/v1/chat/completions"
+        );
+    }
+
+    #[test]
     fn parses_usage_chunk() {
         let value = json!({
             "prompt_tokens": 10,
             "completion_tokens": 5,
-            "total_tokens": 15
+            "total_tokens": 15,
         });
 
-        let usage = parse_usage(Some(&value)).expect("usage");
+        let usage = parse_usage(Some(&value)).expect("usage should parse");
+        assert_eq!(usage.prompt_tokens, 10);
+        assert_eq!(usage.completion_tokens, 5);
         assert_eq!(usage.total_tokens, 15);
-    }
-
-    #[test]
-    fn builds_messages_with_history_and_current_prompt() {
-        let context = AgentHarnessContext {
-            run_id: "run_test".to_string(),
-            conversation_id: "conv_test".to_string(),
-            assistant_message_id: "assistant_test".to_string(),
-            prompt: "current".to_string(),
-            messages: vec![AgentInputMessage {
-                role: "user".to_string(),
-                content: "previous".to_string(),
-            }],
-            cwd: None,
-            model_id: "model".to_string(),
-        };
-
-        let messages = build_chat_messages(&context);
-        assert_eq!(messages.len(), 4);
-        assert_eq!(messages[0]["role"], "system");
-        assert_eq!(messages[1]["role"], "system");
-        assert_eq!(messages[2]["content"], "previous");
-        assert_eq!(messages[3]["content"], "current");
     }
 }

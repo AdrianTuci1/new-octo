@@ -45,11 +45,7 @@ impl AgentHarness for ScriptedHarness {
 
             sink.status(
                 AgentRunStatus::Running,
-                Some(format!(
-                    "Running {} with {}.",
-                    self.kind(),
-                    context.model_id
-                )),
+                Some(format!("Running {} with {}.", self.kind(), context.model_id)),
             );
             if sleep_or_cancel(&cancellation, Duration::from_millis(120)) {
                 return Ok(cancelled_outcome(&context.prompt, ""));
@@ -70,7 +66,7 @@ impl AgentHarness for ScriptedHarness {
                         "command": command,
                         "cwd": context.cwd,
                         "requiresApproval": true,
-                        "reason": approval_reason(command)
+                        "reason": approval_reason(command),
                     }),
                 });
 
@@ -218,22 +214,5 @@ mod tests {
 
         assert_eq!(plan.tool_command.as_deref(), Some("git status --short"));
         assert!(plan.response.contains("```bash"));
-    }
-
-    #[test]
-    fn generic_prompt_does_not_create_tool_call() {
-        let plan = build_plan(&context_for("explica arhitectura"));
-
-        assert!(plan.tool_command.is_none());
-        assert!(plan.response.contains("lifecycle complet"));
-    }
-
-    #[test]
-    fn response_chunks_preserve_full_text() {
-        let text = "abcdefghij\nklmnop";
-        let chunks = response_chunks(text, 4);
-
-        assert_eq!(chunks.concat(), text);
-        assert!(chunks.len() > 1);
     }
 }

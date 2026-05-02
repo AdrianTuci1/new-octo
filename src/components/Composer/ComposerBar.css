@@ -13,6 +13,94 @@
   align-items: stretch;
   width: 100%;
   padding: 0;
+  min-height: 48px;
+}
+
+.composer-input-row.shell-active {
+  align-items: flex-start;
+}
+
+.composer-editor-shell {
+  position: relative;
+  flex: 1 1 auto;
+
+  margin: 0 8px;
+}
+
+.composer-recommendation-chip-wrapper {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  padding: 4px 10px 0;
+  z-index: 5;
+  pointer-events: none;
+}
+
+.shell-mode .composer-recommendation-chip-wrapper {
+  padding-left: 4px;
+}
+
+.manual-shell-mode .composer-recommendation-chip-wrapper {
+  padding-left: 4px;
+}
+
+.composer-recommendation-chip {
+  pointer-events: auto;
+}
+
+.composer-recommendation-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  background: var(--surface-2);
+  border-radius: 4px;
+  color: var(--text-main);
+  font-size: 11px;
+  font-family: var(--font-mono);
+  cursor: pointer;
+  letter-spacing: 0.01em;
+  backdrop-filter: blur(4px);
+}
+
+.composer-recommendation-chip:hover {
+  background: rgba(168, 129, 255, 0.15);
+  border-color: rgba(168, 129, 255, 0.4);
+}
+
+.recommendation-icon {
+  flex-shrink: 0;
+  filter: drop-shadow(0 0 8px rgba(168, 129, 255, 0.4));
+}
+
+.recommendation-label {
+  opacity: 0.9;
+}
+
+.composer-recommendation-chip:hover .recommendation-label {
+  opacity: 1;
+}
+
+.composer-input-wrapper {
+  display: flex;
+  align-items: flex-start;
+  position: relative;
+  width: 100%;
+}
+
+.composer-shell-indicator {
+  padding: 10px 0 8px 12px;
+  color: #44c97f;
+  font-size: 16px;
+  font-family: var(--font-mono);
+  line-height: 1.35;
+  user-select: none;
+}
+
+.composer-textarea-container {
+  position: relative;
+  flex: 1;
 }
 
 .input-actions {
@@ -31,6 +119,14 @@
   display: flex;
   align-items: center;
   gap: 6px;
+}
+
+.working-directory-picker {
+  position: relative;
+}
+
+.git-branch-picker {
+  position: relative;
 }
 
 .icon-button,
@@ -67,12 +163,238 @@
 
 .toolbar-chip span {
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 132px;
 }
 
 .icon-button:hover,
 .toolbar-chip:hover {
   background: var(--surface-2);
   color: var(--text-main);
+}
+
+.working-directory-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 24px;
+  padding: 0 7px;
+  border-radius: 8px;
+  background: var(--surface-2);
+  color: var(--text-soft);
+  font-size: 10px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.working-directory-button:hover {
+  background: var(--surface-2);
+  color: var(--text-main);
+}
+
+.working-directory-button.compact {
+  font-family: inherit;
+}
+
+.working-directory-button.compact svg {
+  width: 12px;
+  height: 12px;
+}
+
+.working-directory-label {
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.working-directory-menu {
+  position: fixed;
+  max-height: min(320px, calc(100vh - 64px));
+  border-radius: 10px;
+  background: rgba(20, 21, 23, 0.98);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.24);
+  overflow: hidden;
+  z-index: 140;
+  backdrop-filter: blur(20px);
+}
+
+.working-directory-menu-search {
+  padding: 9px 10px 7px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.045);
+}
+
+.working-directory-search-input {
+  width: 100%;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: rgba(244, 247, 246, 0.92);
+  font-size: 13px;
+  line-height: 1.3;
+}
+
+.working-directory-search-input::placeholder {
+  color: rgba(244, 247, 246, 0.38);
+}
+
+.working-directory-menu-list {
+  display: flex;
+  flex-direction: column;
+  max-height: min(268px, calc(100vh - 112px));
+  overflow-y: auto;
+  padding: 4px 0;
+}
+
+.working-directory-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 30px;
+  padding: 0 12px;
+  color: rgba(244, 247, 246, 0.9);
+  font-size: 13px;
+  line-height: 1.3;
+  text-align: left;
+  background: transparent;
+  cursor: pointer;
+}
+
+.working-directory-item:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.working-directory-item.active {
+  background: rgba(53, 183, 227, 0.82);
+  color: #081216;
+}
+
+.working-directory-item.selected:not(.active) {
+  color: var(--text-main);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.working-directory-parent {
+  color: rgba(244, 247, 246, 0.62);
+}
+
+.auto-detect-chip.active {
+  background: rgba(68, 201, 127, 0.18);
+  color: #8cf0b3;
+}
+
+.git-branch-menu {
+  position: fixed;
+  max-height: min(260px, calc(100vh - 64px));
+  border-radius: 10px;
+  background: rgba(20, 21, 23, 0.98);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.24);
+  overflow: hidden;
+  z-index: 140;
+}
+
+.git-branch-menu-list {
+  display: flex;
+  flex-direction: column;
+  max-height: inherit;
+  overflow-y: auto;
+  padding: 4px 0;
+}
+
+.git-branch-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 30px;
+  padding: 0 12px;
+  color: rgba(244, 247, 246, 0.9);
+  font-size: 13px;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.git-branch-item:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.git-branch-item.active {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-main);
+}
+
+.composer-suggestion-overlay {
+  position: absolute;
+  inset: 0;
+  padding: 10px 12px 8px;
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.35;
+  white-space: pre-wrap;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.manual-shell-mode .composer-suggestion-overlay {
+  padding-left: 4px;
+}
+
+.has-recommendation .chat-input,
+.has-recommendation .composer-suggestion-overlay {
+  padding-top: 30px;
+  padding-bottom: 4px;
+}
+
+.composer-suggestion-prefix {
+  visibility: hidden;
+}
+
+.composer-suggestion-text {
+  color: rgba(255, 255, 255, 0.34);
+}
+
+.composer-suggestion-accept-group {
+  display: inline-flex;
+  align-items: stretch;
+  margin-left: 6px;
+  border-radius: 6px;
+  overflow: hidden;
+  background: rgba(74, 122, 188, 0.78);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.08),
+    0 3px 12px rgba(0, 0, 0, 0.16);
+}
+
+.composer-suggestion-accept-main,
+.composer-suggestion-accept-tail {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 16px;
+  color: rgba(247, 250, 252, 0.94);
+}
+
+.composer-suggestion-accept-main {
+  min-width: 18px;
+  padding: 0 6px;
+}
+
+.composer-suggestion-accept-tail {
+  width: 14px;
+  border-left: 1px solid rgba(255, 255, 255, 0.16);
+}
+
+.composer-suggestion-accept-tail-mark {
+  width: 4px;
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.75);
 }
 
 .chat-input {
@@ -88,6 +410,19 @@
   resize: none;
   min-height: 34px;
   overflow: hidden;
+}
+
+.shell-mode .chat-input {
+  color: #44c97f;
+}
+
+.manual-shell-mode .chat-input {
+  padding-left: 4px;
+}
+
+.chat-input.has-recommendation {
+  padding-top: 30px;
+  padding-bottom: 4px;
 }
 
 .chat-input::placeholder {

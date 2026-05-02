@@ -31,18 +31,15 @@ export function useWindowSync(elementRef: React.RefObject<HTMLElement>) {
       lastWindowSizeRef.current = { width: physicalSize.width, height: physicalSize.height };
       // No longer calling setSize as the window is now click-through natively
 
+      const outerSize = await currentWindow.outerSize();
       const monitor = await currentMonitor();
       const workingMonitor = monitor ?? (await primaryMonitor());
       if (!workingMonitor) return;
 
       const { position, size } = workingMonitor.workArea;
       
-      // Calculate position based on the fixed window size (490 logical -> physical)
-      const windowHeightPhysical = Math.ceil(490 * scaleFactor);
-      const windowWidthPhysical = Math.ceil(608 * scaleFactor);
-
-      const x = position.x + Math.max(0, Math.floor((size.width - windowWidthPhysical) / 2));
-      const y = position.y + Math.max(0, size.height - windowHeightPhysical - 48);
+      const x = position.x + Math.max(0, Math.floor((size.width - outerSize.width) / 2));
+      const y = position.y + Math.max(0, size.height - outerSize.height - 68);
       await currentWindow.setPosition(new PhysicalPosition(x, y));
     };
 

@@ -8,7 +8,12 @@ export function useComposerBar(query: string, onHeightChange?: (height: number) 
   useLayoutEffect(() => {
     const element = inputRef.current;
     if (!element) return;
-
+    
+    if (query === '') {
+      element.style.height = '';
+      return;
+    }
+ 
     element.style.height = 'auto';
     element.style.height = `${element.scrollHeight}px`;
   }, [query]);

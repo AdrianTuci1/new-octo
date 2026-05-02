@@ -9,13 +9,11 @@ use std::{
 
 use tauri::{AppHandle, Emitter};
 
-use super::{
-    manager::AgentHarnessManager,
-    types::{
-        AgentDoneEvent, AgentErrorEvent, AgentInputMessage, AgentRunStatus, AgentRunStatusEvent,
-        AgentTokenEvent, AgentToolCall, AgentToolCallEvent, AgentToolResultEvent, AgentUsage,
-    },
+use super::types::{
+    AgentDoneEvent, AgentErrorEvent, AgentInputMessage, AgentRunStatus, AgentRunStatusEvent,
+    AgentTokenEvent, AgentToolCall, AgentToolCallEvent, AgentToolResultEvent, AgentUsage,
 };
+use crate::ai::agent_management::AgentHarnessManager;
 
 const EVENT_STATUS: &str = "agent:status";
 const EVENT_TOKEN: &str = "agent:token";
@@ -82,7 +80,6 @@ pub trait AgentHarness: Send + Sync + 'static {
 
 #[derive(Clone)]
 pub struct AgentEventSink {
-    app: AppHandle,
     window: tauri::Window,
     manager: AgentHarnessManager,
     run_id: String,
@@ -92,13 +89,12 @@ pub struct AgentEventSink {
 
 impl AgentEventSink {
     pub fn new(
-        app: AppHandle,
+        _app: AppHandle,
         window: tauri::Window,
         manager: AgentHarnessManager,
         context: &AgentHarnessContext,
     ) -> Self {
         Self {
-            app,
             window,
             manager,
             run_id: context.run_id.clone(),
@@ -136,13 +132,16 @@ impl AgentEventSink {
                 text: text_str,
             },
         );
-        if let Err(e) = res {
-            println!("[AI] ERROR emitting token event: {:?}", e);
+        if let Err(error) = res {
+            println!("[AI] ERROR emitting token event: {:?}", error);
         }
     }
 
     pub fn tool_call(&self, tool_call: AgentToolCall) {
-        println!("[AI] Emitting tool call: {} with args: {}", tool_call.name, tool_call.args);
+        println!(
+            "[AI] Emitting tool call: {} with args: {}",
+            tool_call.name, tool_call.args
+        );
         let res = self.window.emit(
             EVENT_TOOL_CALL,
             AgentToolCallEvent {
@@ -152,8 +151,8 @@ impl AgentEventSink {
                 tool_call,
             },
         );
-        if let Err(e) = res {
-            println!("[AI] ERROR emitting tool call event: {:?}", e);
+        if let Err(error) = res {
+            println!("[AI] ERROR emitting tool call event: {:?}", error);
         }
     }
 
@@ -197,6 +196,7 @@ impl AgentEventSink {
             },
         );
     }
+
 }
 
 pub fn sleep_or_cancel(cancellation: &AgentCancellation, duration: Duration) -> bool {

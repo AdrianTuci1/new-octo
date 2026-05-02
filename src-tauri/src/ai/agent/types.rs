@@ -142,7 +142,7 @@ pub struct AgentToolResultEvent {
     pub result: String,
 }
 
-#[derive(Debug, Clone, Default, Serialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AgentUsage {
     pub prompt_tokens: u32,

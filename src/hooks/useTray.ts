@@ -15,6 +15,8 @@ export function useTray() {
     openHelp: () => toggleTray('help'),
     openCommands: () => toggleTray('commands'),
     openConversations: () => toggleTray('conversations'),
+    openHistory: () => toggleTray('history'),
+    openModels: () => toggleTray('models'),
     closeTray: () => setTrayMode('closed')
   };
 }

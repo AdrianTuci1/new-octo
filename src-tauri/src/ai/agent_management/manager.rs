@@ -9,8 +9,10 @@ use std::{
 use chrono::Utc;
 use serde_json::Value;
 
-use super::openai::OpenAiCompatibleConfig;
-use super::types::{AgentRunSnapshot, AgentRunStatus};
+use crate::ai::agent::{
+    openai::OpenAiCompatibleConfig,
+    types::{AgentRunSnapshot, AgentRunStatus},
+};
 
 #[derive(Clone, Default)]
 pub struct AgentHarnessManager {

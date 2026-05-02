@@ -42,6 +42,7 @@
   position: relative;
   z-index: 2;
   flex: 0 0 auto;
+  overflow: hidden;
 }
 
 .launcher-shell.expanded .dock-stack {

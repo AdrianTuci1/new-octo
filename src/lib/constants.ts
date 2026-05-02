@@ -3,6 +3,7 @@ import type { HelpItem, CommandItem } from '../types/ui';
 
 export const HELP_ITEMS: HelpItem[] = [
   { keys: ['!'], label: 'input shell command' },
+  { keys: ['⌘', 'I'], label: 'toggle shell mode' },
   { keys: ['/'], label: 'for slash commands' },
   { keys: ['@'], label: 'for file paths and attaching other context' },
   { keys: ['⇧', '⌘', '+'], label: 'open code review' },
