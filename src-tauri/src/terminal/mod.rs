@@ -30,14 +30,21 @@ const EVENT_BLOCK: &str = "terminal:block";
 const EVENT_BLOCK_OUTPUT: &str = "terminal:block-output";
 const EVENT_EXIT: &str = "terminal:exit";
 
+#[derive(Clone)]
+struct ManagedTerminalSession {
+    session: SharedTerminalSession,
+    attachment_count: usize,
+}
+
 #[derive(Clone, Default)]
 pub struct TerminalManager {
-    sessions: Arc<Mutex<HashMap<String, SharedTerminalSession>>>,
+    sessions: Arc<Mutex<HashMap<String, ManagedTerminalSession>>>,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateTerminalSessionRequest {
+    pub session_id: Option<String>,
     pub rows: Option<u16>,
     pub cols: Option<u16>,
     pub cwd: Option<String>,
@@ -172,7 +179,13 @@ impl TerminalManager {
         self.sessions
             .lock()
             .map_err(|_| "terminal session map lock is poisoned".to_string())?
-            .insert(session.id.clone(), session);
+            .insert(
+                session.id.clone(),
+                ManagedTerminalSession {
+                    session,
+                    attachment_count: 1,
+                },
+            );
         Ok(())
     }
 
@@ -181,12 +194,46 @@ impl TerminalManager {
             .lock()
             .map_err(|_| "terminal session map lock is poisoned".to_string())?
             .get(session_id)
-            .cloned()
+            .map(|managed| managed.session.clone())
             .ok_or_else(|| format!("terminal session '{session_id}' was not found"))
     }
 
+    fn attach(&self, session_id: &str) -> Result<Option<SharedTerminalSession>, String> {
+        let mut sessions = self
+            .sessions
+            .lock()
+            .map_err(|_| "terminal session map lock is poisoned".to_string())?;
+        let Some(managed) = sessions.get_mut(session_id) else {
+            return Ok(None);
+        };
+
+        managed.attachment_count += 1;
+        Ok(Some(managed.session.clone()))
+    }
+
+    fn release(&self, session_id: &str) -> Result<Option<SharedTerminalSession>, String> {
+        let mut sessions = self
+            .sessions
+            .lock()
+            .map_err(|_| "terminal session map lock is poisoned".to_string())?;
+        let Some(managed) = sessions.get_mut(session_id) else {
+            return Ok(None);
+        };
+
+        if managed.attachment_count > 1 {
+            managed.attachment_count -= 1;
+            return Ok(None);
+        }
+
+        Ok(sessions.remove(session_id).map(|managed| managed.session))
+    }
+
     fn remove(&self, session_id: &str) -> Option<SharedTerminalSession> {
-        self.sessions.lock().ok()?.remove(session_id)
+        self.sessions
+            .lock()
+            .ok()?
+            .remove(session_id)
+            .map(|managed| managed.session)
     }
 }
 
@@ -196,6 +243,12 @@ pub fn terminal_create_session(
     manager: State<'_, TerminalManager>,
     request: CreateTerminalSessionRequest,
 ) -> Result<TerminalSessionInfo, String> {
+    if let Some(existing_session_id) = request.session_id.as_deref().filter(|value| !value.trim().is_empty()) {
+        if let Some(session) = manager.attach(existing_session_id)? {
+            return Ok(session.info());
+        }
+    }
+
     let rows = request.rows.unwrap_or(24).max(2);
     let cols = request.cols.unwrap_or(80).max(2);
     let spawned = spawn_terminal(rows, cols, request.cwd)?;
@@ -204,9 +257,23 @@ pub fn terminal_create_session(
     let manager_handle = manager.inner().clone();
 
     manager.insert(session.clone())?;
-    spawn_reader_thread(app, manager_handle, session, spawned.reader);
+    if let Some(reader) = spawned.reader {
+        spawn_reader_thread(app, manager_handle, session, reader);
+    }
 
     Ok(info)
+}
+
+#[tauri::command]
+pub fn terminal_release_session(
+    manager: State<'_, TerminalManager>,
+    request: TerminalSessionRequest,
+) -> Result<(), String> {
+    let Some(session) = manager.release(&request.session_id)? else {
+        return Ok(());
+    };
+
+    session.kill()
 }
 
 #[tauri::command]
@@ -247,6 +314,18 @@ pub fn terminal_run_command(
         Ok((exit_code, output_text)) => (Some(exit_code), output_text),
         Err(error) => (Some(1), format!("{error}\n")),
     };
+
+    if !output_text.is_empty() {
+        let _ = session.with_blocks(|blocks| blocks.append_output(&block.id, &output_text));
+        let _ = app.emit(
+            EVENT_BLOCK_OUTPUT,
+            TerminalBlockOutputEvent {
+                session_id: session.id.clone(),
+                block_id: block.id.clone(),
+                data: output_text.clone(),
+            },
+        );
+    }
 
     let finished_events = session
         .with_blocks(|blocks| blocks.finish_command(&session.id, &block.id, exit_code))
@@ -554,36 +633,44 @@ pub fn terminal_get_recent_history() -> Result<Vec<ShellHistoryEntry>, String> {
     raw_entries.extend(read_bash_history(cutoff));
     raw_entries.extend(read_fish_history(cutoff));
 
-    // Smart ranking: aggregate by value to find frequency
+    // Smart ranking: keep only the most recent shape of each command while
+    // preserving which shell it came from.
     use std::collections::HashMap;
-    let mut stats: HashMap<String, (usize, String)> = HashMap::new();
-    
+    let mut stats: HashMap<String, ShellHistoryEntry> = HashMap::new();
+
     for entry in raw_entries {
-        let current_executed_at = entry.executed_at.clone();
-        let current = stats.entry(entry.value).or_insert((0, entry.executed_at));
-        current.0 += 1;
-        // Keep the most recent timestamp
-        if current_executed_at > current.1 {
-            current.1 = current_executed_at;
+        let normalized_value = entry.value.trim().to_string();
+        if normalized_value.is_empty() {
+            continue;
+        }
+
+        let should_replace = match stats.get(&normalized_value) {
+            Some(existing) => entry.executed_at > existing.executed_at,
+            None => true,
+        };
+
+        if should_replace {
+            stats.insert(
+                normalized_value.clone(),
+                ShellHistoryEntry {
+                    value: normalized_value,
+                    executed_at: entry.executed_at,
+                    source: entry.source,
+                    pwd: entry.pwd,
+                },
+            );
         }
     }
 
-    let mut entries: Vec<ShellHistoryEntry> = stats
-        .into_iter()
-        .map(|(value, (_freq, executed_at))| ShellHistoryEntry {
-            value,
-            executed_at,
-            source: "global".to_string(), // Combined source
-            pwd: None,
-        })
-        .collect();
+    let mut entries: Vec<ShellHistoryEntry> = stats.into_values().collect();
 
     // Sort by most recent
     entries.sort_by(|a, b| b.executed_at.cmp(&a.executed_at));
 
-    // Limit to top 500 for performance
-    if entries.len() > 500 {
-        entries.truncate(500);
+    // Keep the tray focused on recent, relevant commands instead of exposing
+    // a full terminal dump.
+    if entries.len() > 120 {
+        entries.truncate(120);
     }
 
     Ok(entries)
@@ -623,6 +710,7 @@ fn spawn_reader_thread(
                                 };
                                 let data = clean_terminal_text(&bytes);
                                 if !data.is_empty() {
+                                    let _ = session.with_blocks(|blocks| blocks.append_output(&block_id, &data));
                                     let _ = app.emit(
                                         EVENT_BLOCK_OUTPUT,
                                         TerminalBlockOutputEvent {

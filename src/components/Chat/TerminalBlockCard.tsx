@@ -9,6 +9,7 @@ type TerminalBlockCardProps = {
   onCollapse: (blockId: string) => void;
   onExpand: (blockId: string) => void;
   onSelect: (blockId: string | null) => void;
+  onOpenConversation?: (conversationId: string) => void;
 };
 
 export function TerminalBlockCard({
@@ -17,11 +18,16 @@ export function TerminalBlockCard({
   isSelected,
   onCollapse,
   onExpand,
-  onSelect
+  onSelect,
+  onOpenConversation
 }: TerminalBlockCardProps) {
+  if (block.presentation === 'conversation-link' && block.conversationId) {
+    return <TerminalBlockSummary block={block} onOpen={() => onOpenConversation?.(block.conversationId!)} />;
+  }
+
   const failed = block.status === 'finished' && typeof block.exitCode === 'number' && block.exitCode !== 0;
   const succeeded = block.status === 'finished' && !failed;
-  const shouldCollapse = succeeded && !isExpanded && !isSelected;
+  const shouldCollapse = succeeded && block.source !== 'user' && !isExpanded && !isSelected;
 
   if (shouldCollapse) {
     return <TerminalBlockSummary block={block} onOpen={() => onExpand(block.id)} />;

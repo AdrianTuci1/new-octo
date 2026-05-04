@@ -1,4 +1,5 @@
 .workspace-topbar {
+  position: relative;
   height: 44px;
   display: flex;
   align-items: stretch;
@@ -157,23 +158,52 @@
   padding: 0 24px;
   margin: 0;
   border: 0;
-  background: transparent;
+  background: color-mix(in srgb, var(--tab-tint, transparent) 16%, transparent);
   color: var(--text-dim);
   border-right: 1px solid var(--border);
   transition: all 140ms ease;
+  overflow: hidden;
 }
 
 .workspace-tab:first-child {
   border-left: 0;
 }
 
+.workspace-tab::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--tab-tint, transparent) 28%, transparent),
+    transparent 72%
+  );
+  opacity: 0.9;
+  pointer-events: none;
+}
+
 .workspace-tab.active {
-  background: rgba(255, 255, 255, 0.035);
+  background: color-mix(in srgb, var(--tab-tint, rgba(255, 255, 255, 0.035)) 28%, rgba(255, 255, 255, 0.035));
   color: var(--text-main);
   box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.02);
 }
 
+.workspace-tab.launcher-bound::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 15px;
+  height: 15px;
+  background: linear-gradient(135deg, rgba(94, 241, 161, 0.96), rgba(56, 189, 120, 0.9));
+  clip-path: polygon(0 0, 100% 0, 0 100%);
+  pointer-events: none;
+  box-shadow: inset -1px -1px 0 rgba(8, 20, 14, 0.22);
+}
+
 .workspace-tab-label {
+  position: relative;
+  z-index: 1;
   font-size: 11px;
   font-weight: 600;
   line-height: 1.05;
@@ -184,6 +214,7 @@
 
 .workspace-tab-close {
   position: absolute;
+  z-index: 1;
   right: 6px;
   top: 50%;
   transform: translateY(-50%);
@@ -210,6 +241,70 @@
   background: rgba(255, 255, 255, 0.06);
   border-color: rgba(255, 255, 255, 0.12);
   color: var(--text-main);
+}
+
+.workspace-topbar-tab-menu {
+  position: absolute;
+  z-index: 50;
+  min-width: 208px;
+  padding: 6px;
+  border-radius: 8px;
+  background: rgba(17, 21, 29, 0.98);
+  border: 1px solid var(--border-strong);
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.38);
+  display: grid;
+  gap: 2px;
+}
+
+.workspace-topbar-tab-menu button {
+  width: 100%;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-main);
+  text-align: left;
+  padding: 8px 10px;
+  font-size: 12px;
+  line-height: 1.2;
+  cursor: pointer;
+}
+
+.workspace-topbar-tab-menu button:hover {
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.workspace-topbar-tab-menu-swatches {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 6px;
+  padding: 8px 6px 4px;
+}
+
+.workspace-topbar-tab-menu .workspace-topbar-swatch {
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: var(--swatch-color);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  padding: 0;
+  min-width: 18px;
+}
+
+.workspace-topbar-swatch.selected {
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.28);
+}
+
+.workspace-topbar-swatch-clear {
+  position: relative;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.workspace-topbar-swatch-clear::before {
+  content: '';
+  position: absolute;
+  inset: 8px 3px;
+  border-top: 1.5px solid rgba(255, 255, 255, 0.8);
+  transform: rotate(-32deg);
 }
 
 @media (max-width: 1024px) {

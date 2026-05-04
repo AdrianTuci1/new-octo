@@ -21,6 +21,7 @@ type ChatPanelProps = {
   onCollapseTerminalBlock?: (blockId: string) => void;
   onExpandTerminalBlock?: (blockId: string) => void;
   onSelectTerminalBlock?: (blockId: string | null) => void;
+  onOpenConversationBlock?: (conversationId: string) => void;
 };
 
 type TimelineItem =
@@ -44,6 +45,20 @@ function timeFromBlock(block: TerminalCommandBlock) {
   return Number.isFinite(timestamp) ? timestamp : 0;
 }
 
+function shouldRenderCollapsedBlock(
+  block: TerminalCommandBlock,
+  isExpanded: boolean,
+  isSelected: boolean
+) {
+  if (block.presentation === 'conversation-link') {
+    return true;
+  }
+
+  const failed = block.status === 'finished' && typeof block.exitCode === 'number' && block.exitCode !== 0;
+  const succeeded = block.status === 'finished' && !failed;
+  return succeeded && block.source !== 'user' && !isExpanded && !isSelected;
+}
+
 export function ChatPanel({
   messages,
   terminalBlocks = [],
@@ -56,7 +71,8 @@ export function ChatPanel({
   onRequestCommandApproval,
   onCollapseTerminalBlock,
   onExpandTerminalBlock,
-  onSelectTerminalBlock
+  onSelectTerminalBlock,
+  onOpenConversationBlock
 }: ChatPanelProps) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const hasContent = messages.length > 0 || terminalBlocks.length > 0 || Boolean(terminalError);
@@ -106,7 +122,7 @@ export function ChatPanel({
       {hasContent ? (
         <div ref={scrollRef} className="chat-scroll">
           <div className="chat-spacer" />
-          {timelineItems.map((item) => {
+          {timelineItems.map((item, itemIndex) => {
             if (item.kind === 'message') {
               return (
                 <MessageBubble
@@ -118,15 +134,32 @@ export function ChatPanel({
             }
 
             if (item.kind === 'terminal-block') {
+              const nextItem = itemIndex >= 0 ? timelineItems[itemIndex + 1] : undefined;
+              const isExpanded = expandedTerminalBlockIds.includes(item.block.id);
+              const isSelected = selectedTerminalBlockId === item.block.id;
+              const isCollapsedBlock = shouldRenderCollapsedBlock(item.block, isExpanded, isSelected);
+              const isConversationLink = item.block.presentation === 'conversation-link';
+              const hasBottomDivider = item.block.source === 'user' && nextItem?.kind !== 'terminal-block';
+
               return (
-                <div key={item.id} className="terminal-block-row">
+                <div
+                  key={item.id}
+                  className={[
+                    'terminal-block-row',
+                    isCollapsedBlock && !isConversationLink ? '' : 'full-bleed',
+                    item.block.source === 'user' ? 'user-command' : 'assistant-command',
+                    isConversationLink ? 'conversation-link-row' : '',
+                    hasBottomDivider ? 'has-bottom-divider' : ''
+                  ].filter(Boolean).join(' ')}
+                >
                   <div className="role-avatar-container" />
                   <TerminalBlockCard
                     block={item.block}
-                    isExpanded={expandedTerminalBlockIds.includes(item.block.id)}
-                    isSelected={selectedTerminalBlockId === item.block.id}
+                    isExpanded={isExpanded}
+                    isSelected={isSelected}
                     onCollapse={(blockId) => onCollapseTerminalBlock?.(blockId)}
                     onExpand={(blockId) => onExpandTerminalBlock?.(blockId)}
+                    onOpenConversation={onOpenConversationBlock}
                     onSelect={(blockId) => onSelectTerminalBlock?.(blockId)}
                   />
                 </div>

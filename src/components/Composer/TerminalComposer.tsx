@@ -31,7 +31,7 @@ type TerminalComposerProps = {
   onCloseGitBranchMenu: () => void;
   onSelectGitBranch: (branch: string) => void;
   onOpenCommandsTray: () => void;
-  onLaunchAgentComposer: () => void;
+  onLaunchAgentComposer: (seedPrompt?: string, autoSubmit?: boolean) => void;
   onHeightChange?: (height: number) => void;
 };
 
@@ -122,15 +122,11 @@ export function TerminalComposer({
               onChange={(event) => {
                 const nextValue = event.target.value;
                 onQueryChange(nextValue);
-
-                if (nextValue === '/') {
-                  onOpenCommandsTray();
-                }
               }}
               onKeyDown={(event) => {
                 if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
                   event.preventDefault();
-                  onLaunchAgentComposer();
+                  onLaunchAgentComposer(query.trim(), true);
                   return;
                 }
 

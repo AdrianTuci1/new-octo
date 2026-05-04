@@ -1,6 +1,6 @@
-import { MessagesSquare } from 'lucide-react';
 import './TrayPanel.css';
 import { TrayCommands } from './TrayCommands';
+import { TrayConversations, type TrayConversationEntry } from './TrayConversations';
 import { TrayFooter } from './TrayFooter';
 import { TrayHelp } from './TrayHelp';
 import { TrayHistory } from './TrayHistory';
@@ -16,6 +16,9 @@ type TrayPanelProps = {
   helpItems: HelpItem[];
   commandItems: CommandItem[];
   historyEntries: HistoryEntry[];
+  conversations: TrayConversationEntry[];
+  activeConversationId: string | null;
+  conversationSearchQuery: string;
   historyTab: HistoryTab;
   modelTab: 'all' | 'saved';
   modelEntries: ModelSpec[];
@@ -28,6 +31,9 @@ type TrayPanelProps = {
   onExitShellMode: () => void;
   onHistoryTabChange: (tab: HistoryTab) => void;
   onSelectHistoryEntry: (entry: HistoryEntry) => void;
+  onSelectConversation: (conversationId: string) => void;
+  onConversationSearchChange: (value: string) => void;
+  onNewConversation: () => void;
   onSelectModel: (modelId: string) => void;
   onModelTabChange: (tab: 'all' | 'saved') => void;
   onToggleHelp: () => void;
@@ -43,6 +49,9 @@ export function TrayPanel({
   helpItems,
   commandItems,
   historyEntries,
+  conversations,
+  activeConversationId,
+  conversationSearchQuery,
   historyTab,
   modelTab,
   modelEntries,
@@ -55,6 +64,9 @@ export function TrayPanel({
   onExitShellMode,
   onHistoryTabChange,
   onSelectHistoryEntry,
+  onSelectConversation,
+  onConversationSearchChange,
+  onNewConversation,
   onSelectModel,
   onModelTabChange,
   onToggleHelp,
@@ -87,10 +99,14 @@ export function TrayPanel({
           />
         )}
         {activeMode === 'conversations' && (
-          <div className="tray-pane-placeholder">
-            <MessagesSquare size={32} strokeWidth={1.5} className="tray-header-icon" />
-            <p>Conversation history will appear here.</p>
-          </div>
+          <TrayConversations
+            activeConversationId={activeConversationId}
+            conversations={conversations}
+            searchQuery={conversationSearchQuery}
+            onNewConversation={onNewConversation}
+            onSearchQueryChange={onConversationSearchChange}
+            onSelectConversation={onSelectConversation}
+          />
         )}
       </div>
 

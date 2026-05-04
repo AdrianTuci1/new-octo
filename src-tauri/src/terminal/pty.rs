@@ -10,7 +10,7 @@ use super::session::TerminalSession;
 
 pub struct SpawnedPty {
     pub session: TerminalSession,
-    pub reader: Box<dyn Read + Send>,
+    pub reader: Option<Box<dyn Read + Send>>,
 }
 
 pub fn spawn_terminal(rows: u16, cols: u16, cwd: Option<String>) -> Result<SpawnedPty, String> {
@@ -19,14 +19,25 @@ pub fn spawn_terminal(rows: u16, cols: u16, cwd: Option<String>) -> Result<Spawn
     let integration = ShellIntegration::create(shell_kind)?;
 
     let pty_system = native_pty_system();
-    let pair = pty_system
+    let pair = match pty_system
         .openpty(PtySize {
             rows,
             cols,
             pixel_width: 0,
             pixel_height: 0,
         })
-        .map_err(|error| format!("failed to open PTY: {error}"))?;
+    {
+        Ok(pair) => pair,
+        Err(error) => {
+            eprintln!(
+                "[terminal] failed to open PTY, falling back to headless session: {error}"
+            );
+            return Ok(SpawnedPty {
+                session: TerminalSession::new_headless(shell, cwd),
+                reader: None,
+            });
+        }
+    };
 
     let mut command = CommandBuilder::new(&shell);
     shell_kind.configure_command(&mut command, &integration);
@@ -53,7 +64,7 @@ pub fn spawn_terminal(rows: u16, cols: u16, cwd: Option<String>) -> Result<Spawn
 
     Ok(SpawnedPty {
         session: TerminalSession::new(shell, cwd, pair.master, writer, child),
-        reader,
+        reader: Some(reader),
     })
 }
 

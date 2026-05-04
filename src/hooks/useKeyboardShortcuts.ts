@@ -1,9 +1,10 @@
 import { type KeyboardEvent } from 'react';
-import { useChat } from './useChat';
-import { useTray } from './useTray';
 import type { CommandApproval } from '../types/terminal';
 
 type KeyboardShortcutOptions = {
+  query: string;
+  setQuery: (query: string) => void;
+  submitQuery: () => void | Promise<void>;
   onCommandApproval?: (approval: CommandApproval) => void;
   onNewChat?: () => void;
   onTerminalCommand?: (command: string) => void;
@@ -16,6 +17,9 @@ type KeyboardShortcutOptions = {
   onAcceptPrediction?: () => void;
   onExitShellMode?: () => void;
   onToggleShellMode?: () => void;
+  onCloseTray?: () => void;
+  onToggleHelpTray?: () => void;
+  onToggleConversationsTray?: () => void;
 };
 
 function parseTerminalCommand(query: string, isShellMode?: boolean) {
@@ -26,14 +30,8 @@ function parseTerminalCommand(query: string, isShellMode?: boolean) {
   return trimmed.slice(1).trim();
 }
 
-export function useKeyboardShortcuts(options: KeyboardShortcutOptions = {}) {
-  const { query, setQuery, submitQuery } = useChat({
-    cwd: options.cwd,
-    modelId: options.modelId,
-    onCommandApproval: options.onCommandApproval,
-    onNewChat: options.onNewChat
-  });
-  const { toggleTray, closeTray } = useTray();
+export function useKeyboardShortcuts(options: KeyboardShortcutOptions) {
+  const { query, setQuery, submitQuery } = options;
 
   const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'i') {
@@ -61,7 +59,7 @@ export function useKeyboardShortcuts(options: KeyboardShortcutOptions = {}) {
       if (terminalCommand) {
         options.onTerminalCommand?.(terminalCommand);
         setQuery('');
-        closeTray();
+        options.onCloseTray?.();
         return;
       }
 
@@ -75,19 +73,19 @@ export function useKeyboardShortcuts(options: KeyboardShortcutOptions = {}) {
       if (options.isManualShellMode && query.length === 0) {
         options.onExitShellMode?.();
       }
-      closeTray();
+      options.onCloseTray?.();
       return;
     }
 
     if (!options.disableTrayShortcuts && event.key === '?' && query.length === 0) {
       event.preventDefault();
-      toggleTray('help');
+      options.onToggleHelpTray?.();
       return;
     }
 
     if (!options.disableTrayShortcuts && (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'y') {
       event.preventDefault();
-      toggleTray('conversations');
+      options.onToggleConversationsTray?.();
     }
   };
 

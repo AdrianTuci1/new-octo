@@ -2,6 +2,7 @@ export type ShellHistoryEntry = {
   value: string;
   executedAt: string;
   source: string;
+  pwd?: string | null;
 };
 
 export type HistoryTab = 'all' | 'commands' | 'prompts';

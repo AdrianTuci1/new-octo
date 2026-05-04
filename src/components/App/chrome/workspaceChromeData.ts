@@ -13,6 +13,6 @@ export const initialWorkspaceChromeTabs: WorkspaceChromeTab[] = [
   }
 ];
 
-export const defaultWorkspaceChromeTabId = 'settings';
+export const defaultWorkspaceChromeTabId = 'terminal-main';
 
 export const initialWorkspaceConversations: WorkspaceConversation[] = [];

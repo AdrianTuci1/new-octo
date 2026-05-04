@@ -9,6 +9,8 @@ use super::ansi::ShellHook;
 pub struct TerminalBlock {
     pub id: String,
     pub command: String,
+    #[serde(default)]
+    pub output: String,
     pub started_at: DateTime<Utc>,
     pub finished_at: Option<DateTime<Utc>>,
     pub exit_code: Option<i32>,
@@ -74,6 +76,21 @@ impl BlockTracker {
         self.blocks.clone()
     }
 
+    pub fn append_output(&mut self, block_id: &str, data: &str) {
+        if data.is_empty() {
+            return;
+        }
+
+        if let Some(active) = self.active.as_mut().filter(|block| block.id == block_id) {
+            active.output.push_str(data);
+            return;
+        }
+
+        if let Some(block) = self.blocks.iter_mut().find(|block| block.id == block_id) {
+            block.output.push_str(data);
+        }
+    }
+
     pub fn active_block_id(&self) -> Option<String> {
         self.active.as_ref().map(|block| block.id.clone())
     }
@@ -88,6 +105,7 @@ impl BlockTracker {
         let block = TerminalBlock {
             id: Uuid::new_v4().to_string(),
             command: command.trim().to_string(),
+            output: String::new(),
             started_at: Utc::now(),
             finished_at: None,
             exit_code: None,

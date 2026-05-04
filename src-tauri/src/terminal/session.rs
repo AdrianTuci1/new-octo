@@ -15,9 +15,9 @@ pub struct TerminalSession {
     pub id: String,
     pub shell: String,
     pub cwd: Option<String>,
-    master: Mutex<Box<dyn MasterPty + Send>>,
-    writer: Mutex<Box<dyn Write + Send>>,
-    child: Mutex<Box<dyn Child + Send>>,
+    master: Mutex<Option<Box<dyn MasterPty + Send>>>,
+    writer: Mutex<Option<Box<dyn Write + Send>>>,
+    child: Mutex<Option<Box<dyn Child + Send>>>,
     blocks: Mutex<BlockTracker>,
 }
 
@@ -41,9 +41,21 @@ impl TerminalSession {
             id: Uuid::new_v4().to_string(),
             shell,
             cwd,
-            master: Mutex::new(master),
-            writer: Mutex::new(writer),
-            child: Mutex::new(child),
+            master: Mutex::new(Some(master)),
+            writer: Mutex::new(Some(writer)),
+            child: Mutex::new(Some(child)),
+            blocks: Mutex::new(BlockTracker::default()),
+        }
+    }
+
+    pub fn new_headless(shell: String, cwd: Option<String>) -> Self {
+        Self {
+            id: Uuid::new_v4().to_string(),
+            shell,
+            cwd,
+            master: Mutex::new(None),
+            writer: Mutex::new(None),
+            child: Mutex::new(None),
             blocks: Mutex::new(BlockTracker::default()),
         }
     }
@@ -61,6 +73,9 @@ impl TerminalSession {
             .writer
             .lock()
             .map_err(|_| "terminal writer lock is poisoned".to_string())?;
+        let Some(writer) = writer.as_mut() else {
+            return Ok(());
+        };
         writer
             .write_all(data.as_bytes())
             .map_err(|error| format!("failed to write to terminal: {error}"))?;
@@ -74,6 +89,9 @@ impl TerminalSession {
             .master
             .lock()
             .map_err(|_| "terminal resize lock is poisoned".to_string())?;
+        let Some(master) = master.as_ref() else {
+            return Ok(());
+        };
         master
             .resize(PtySize {
                 rows,
@@ -89,6 +107,9 @@ impl TerminalSession {
             .child
             .lock()
             .map_err(|_| "terminal child lock is poisoned".to_string())?;
+        let Some(child) = child.as_mut() else {
+            return Ok(());
+        };
         child
             .kill()
             .map_err(|error| format!("failed to kill terminal session: {error}"))
@@ -96,7 +117,9 @@ impl TerminalSession {
 
     pub fn wait(&self) -> Option<i32> {
         let mut child = self.child.lock().ok()?;
-        child.wait().ok().map(|status| status.exit_code() as i32)
+        child
+            .as_mut()
+            .and_then(|process| process.wait().ok().map(|status| status.exit_code() as i32))
     }
 
     pub fn with_blocks<T>(&self, f: impl FnOnce(&mut BlockTracker) -> T) -> Option<T> {

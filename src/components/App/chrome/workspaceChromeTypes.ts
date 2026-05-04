@@ -5,6 +5,8 @@ export type WorkspaceChromeTab = {
   label: string;
   kind: WorkspaceChromeTabKind;
   subtitle?: string;
+  customLabel?: string | null;
+  tintColor?: string | null;
 };
 
 export type WorkspaceConversation = {

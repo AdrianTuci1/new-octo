@@ -2,11 +2,12 @@
 
 use tauri::{
     menu::{Menu, MenuItem, PredefinedMenuItem, Submenu},
-    tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
+    tray::TrayIconBuilder,
     AppHandle, Manager, PhysicalPosition, Position, Runtime, WebviewWindowBuilder,
 };
 
 mod ai;
+mod memory;
 mod terminal;
 
 #[cfg(target_os = "macos")]
@@ -17,6 +18,7 @@ use tauri_plugin_global_shortcut::{Code, Modifiers, ShortcutState};
 
 const MAIN_WINDOW_LABEL: &str = "main";
 const SETTINGS_WINDOW_LABEL: &str = "settings";
+const ONBOARDING_WINDOW_LABEL: &str = "onboarding";
 const SHOW_MENU_ID: &str = "show";
 const HIDE_MENU_ID: &str = "hide";
 const NEW_CHAT_MENU_ID: &str = "new-chat";
@@ -88,6 +90,12 @@ fn hide_settings<R: Runtime>(app: &AppHandle<R>) {
     }
 }
 
+fn hide_onboarding<R: Runtime>(app: &AppHandle<R>) {
+    if let Some(window) = app.get_webview_window(ONBOARDING_WINDOW_LABEL) {
+        let _ = window.hide();
+    }
+}
+
 fn toggle_launcher<R: Runtime>(app: &AppHandle<R>) {
     let Some(window) = app.get_webview_window(MAIN_WINDOW_LABEL) else {
         return;
@@ -107,6 +115,7 @@ fn toggle_launcher<R: Runtime>(app: &AppHandle<R>) {
 
 fn show_settings_window<R: Runtime>(app: &AppHandle<R>) {
     hide_launcher(app);
+    hide_onboarding(app);
 
     if let Some(window) = app.get_webview_window(SETTINGS_WINDOW_LABEL) {
         let _ = window.destroy();
@@ -124,6 +133,34 @@ fn show_settings_window<R: Runtime>(app: &AppHandle<R>) {
     };
 
     if let Ok(window) = WebviewWindowBuilder::from_config(app, &settings_config)
+        .and_then(|builder| builder.build())
+    {
+        let _ = window.unminimize();
+        let _ = window.show();
+        let _ = window.set_focus();
+    }
+}
+
+fn show_onboarding_window<R: Runtime>(app: &AppHandle<R>) {
+    hide_launcher(app);
+    hide_settings(app);
+
+    if let Some(window) = app.get_webview_window(ONBOARDING_WINDOW_LABEL) {
+        let _ = window.destroy();
+    }
+
+    let Some(onboarding_config) = app
+        .config()
+        .app
+        .windows
+        .iter()
+        .find(|window| window.label == ONBOARDING_WINDOW_LABEL)
+        .cloned()
+    else {
+        return;
+    };
+
+    if let Ok(window) = WebviewWindowBuilder::from_config(app, &onboarding_config)
         .and_then(|builder| builder.build())
     {
         let _ = window.unminimize();
@@ -196,6 +233,7 @@ fn main() {
     tauri::Builder::default()
         .manage(terminal::TerminalManager::default())
         .manage(ai::AgentHarnessManager::default())
+        .manage(memory::OctomusMemoryManager::default())
         .invoke_handler(tauri::generate_handler![
             ai::agent_start,
             ai::agent_cancel,
@@ -209,6 +247,7 @@ fn main() {
             terminal::terminal_run_command,
             terminal::terminal_resize,
             terminal::terminal_kill_session,
+            terminal::terminal_release_session,
             terminal::terminal_get_blocks,
             terminal::terminal_list_commands,
             terminal::terminal_get_path_context,
@@ -218,6 +257,19 @@ fn main() {
             terminal::terminal_switch_git_branch,
             terminal::terminal_get_recent_history,
             terminal::terminal_get_prediction,
+            memory::memory_bootstrap,
+            memory::memory_put_settings,
+            memory::memory_put_workspace_snapshot,
+            memory::memory_put_conversation,
+            memory::memory_get_conversation,
+            memory::memory_list_conversations,
+            memory::memory_delete_conversation,
+            memory::memory_put_cloud_object,
+            memory::memory_get_cloud_object,
+            memory::memory_list_cloud_object_index,
+            memory::memory_enqueue_sync_operation,
+            memory::memory_sync_once,
+            complete_onboarding,
         ])
         .setup(|app| {
             #[cfg(target_os = "macos")]
@@ -237,7 +289,7 @@ fn main() {
 
                 let mut tray = TrayIconBuilder::with_id("launcher-tray")
                     .menu(&tray_menu)
-                    .show_menu_on_left_click(false)
+                    .show_menu_on_left_click(true)
                     .tooltip("Octomus Launcher")
                     .on_menu_event(|app, event| match event.id.as_ref() {
                         SHOW_MENU_ID => show_launcher(app),
@@ -253,16 +305,6 @@ fn main() {
                         | MORE_SESSION_3_ID
                         | MORE_SESSION_4_ID
                         | MORE_SESSION_5_ID => show_placeholder_session(app),
-                        _ => {}
-                    })
-                    .on_tray_icon_event(|tray, event| match event {
-                        TrayIconEvent::Click {
-                            button: MouseButton::Left,
-                            button_state: MouseButtonState::Up,
-                            ..
-                        } => {
-                            toggle_launcher(&tray.app_handle());
-                        }
                         _ => {}
                     });
 
@@ -317,7 +359,7 @@ fn load_env_file() {
             }
 
             let value = parse_env_value(raw_value.trim());
-            
+
             // Overwrite if it's not set or it's empty
             let current = std::env::var(key).unwrap_or_default();
             if current.is_empty() {
@@ -328,6 +370,14 @@ fn load_env_file() {
             }
         }
     }
+}
+
+#[tauri::command]
+fn complete_onboarding<R: Runtime>(app: AppHandle<R>) {
+    if let Some(window) = app.get_webview_window(ONBOARDING_WINDOW_LABEL) {
+        let _ = window.close();
+    }
+    show_launcher(&app);
 }
 
 fn parse_env_value(value: &str) -> String {

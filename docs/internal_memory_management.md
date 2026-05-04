@@ -46,3 +46,44 @@ To handle large amounts of data without bloating memory:
 - **Reference Counting**: Use `Arc<FairMutex<T>>` for heavy models that need to be shared across threads.
 - **View Handles**: Use `ViewHandle<T>` or `ModelHandle<T>` for UI components to avoid memory leaks and ensure safe cleanup when a tab is closed.
 - **Event-Driven**: State changes are propagated via an Event system (`emit` / `subscribe`), preventing tight coupling between the data layer and the UI.
+
+## 5. Octomus Memory Module
+
+Octomus now has a local-first memory layer in `src-tauri/src/memory/mod.rs`, exposed to React through `src/lib/octomusMemory.ts` and the singleton Zustand store in `src/stores/memoryStore.ts`.
+
+### Local Storage Layout
+
+All durable local state lives under the global user path:
+
+```text
+~/.octomus/
+  ai-provider.json
+  memory/v1/
+    meta.json
+    settings.json
+    workspace_snapshot.json
+    conversation_index.json
+    conversations/<conversation-id>.json
+    cloud_objects_index.json
+    cloud_objects/<object-uid>.json
+    sync_queue.json
+```
+
+### What Is Persisted
+
+- **Workspace snapshot**: open tabs, active tab, settings section, sidebar state, agent panel state, and conversation list.
+- **Settings**: selected model, remembered working directory, terminal autodetect preference, telemetry/sync-ready values.
+- **Conversations**: raw chat messages plus a derived root task, exchange list, tool-call subtasks, artifacts, status, model, cwd, and optional server token.
+- **Drive-style objects**: lazy-loaded `CloudObject` records with a lightweight index: `objectsByUid` and `sortedOrdersByLocation`.
+- **Sync queue**: every local mutation can enqueue an operation. If no server endpoint is configured, sync remains `localOnly` and never throws user-facing errors.
+
+### Backend Connection Contract
+
+The current server handoff is intentionally simple:
+
+1. UI/Rust writes local state immediately.
+2. A sync operation is appended to `sync_queue.json`.
+3. `memory_sync_once` posts `{ schemaVersion, deviceId, operations }` to the configured endpoint when one exists.
+4. Failed sync attempts keep the queue intact and mark operations for retry instead of breaking the app.
+
+This means the app is already usable offline, while the backend can later accept the queued operation contract without changing the UI surface.

@@ -50,7 +50,8 @@
 
 .launcher-shell.chat-active .chat-stack {
   display: flex;
-  flex: 1;
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 .launcher-shell.tray-active .dock-stack {
