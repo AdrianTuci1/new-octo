@@ -22,6 +22,7 @@ type ChatPanelProps = {
   onExpandTerminalBlock?: (blockId: string) => void;
   onSelectTerminalBlock?: (blockId: string | null) => void;
   onOpenConversationBlock?: (conversationId: string) => void;
+  title?: string;
 };
 
 type TimelineItem =
@@ -72,7 +73,8 @@ export function ChatPanel({
   onCollapseTerminalBlock,
   onExpandTerminalBlock,
   onSelectTerminalBlock,
-  onOpenConversationBlock
+  onOpenConversationBlock,
+  title = 'New agent conversation'
 }: ChatPanelProps) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const hasContent = messages.length > 0 || terminalBlocks.length > 0 || Boolean(terminalError);
@@ -110,17 +112,60 @@ export function ChatPanel({
     return left.order - right.order;
   });
 
-  // Auto-scroll to bottom on new messages
+  const isAutoScrollEnabled = useRef(true);
+  const rafId = useRef<number | null>(null);
+
+  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const container = e.currentTarget;
+    // We are at bottom if we're within a reasonable margin
+    // Increased threshold to 150px to make it less "grabby" when scrolling up
+    const isAtBottom = container.scrollHeight - container.scrollTop <= container.clientHeight + 10;
+    isAutoScrollEnabled.current = isAtBottom;
+  };
+
+  // Auto-scroll to bottom on new messages or layout changes
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    const scrollContainer = scrollRef.current;
+    if (!scrollContainer || !isOpen) return;
+
+    if (isAutoScrollEnabled.current) {
+      if (rafId.current) cancelAnimationFrame(rafId.current);
+
+      rafId.current = requestAnimationFrame(() => {
+        if (scrollRef.current && isAutoScrollEnabled.current) {
+          const container = scrollRef.current;
+          const isAlreadyAtBottom = container.scrollHeight - container.scrollTop <= container.clientHeight + 5;
+
+          if (!isAlreadyAtBottom) {
+            container.scrollTo({
+              top: container.scrollHeight,
+              behavior: 'smooth'
+            });
+          }
+        }
+      });
     }
-  }, [messages, terminalBlocks]);
+
+    return () => {
+      if (rafId.current) cancelAnimationFrame(rafId.current);
+    };
+  }, [messages, terminalBlocks, terminalError, isOpen, expandedTerminalBlockIds, selectedTerminalBlockId]);
 
   return (
     <div className={`chat-region ${isOpen ? 'open' : 'closed'}`}>
+      {emptyStateVariant === 'workspace' && showEmptyTopbar && (
+        <div className="chat-empty-topbar">
+          <div className="chat-empty-topbar-leading">
+            <span className="chat-empty-topbar-arrow"><ArrowLeft size={12} /> </span>
+            <kbd className="chat-empty-topbar-key">esc</kbd>
+            <span>for terminal</span>
+          </div>
+          <div className="chat-empty-topbar-title">{title}</div>
+        </div>
+      )}
+
       {hasContent ? (
-        <div ref={scrollRef} className="chat-scroll">
+        <div ref={scrollRef} className="chat-scroll" onScroll={handleScroll}>
           <div className="chat-spacer" />
           {timelineItems.map((item, itemIndex) => {
             if (item.kind === 'message') {
@@ -176,18 +221,7 @@ export function ChatPanel({
         </div>
       ) : (
         emptyStateVariant === 'workspace' ? (
-          <div className="chat-empty chat-empty-workspace">
-            {showEmptyTopbar && (
-              <div className="chat-empty-topbar">
-                <div className="chat-empty-topbar-leading">
-                  <span className="chat-empty-topbar-arrow"><ArrowLeft size={12} /> </span>
-                  <kbd className="chat-empty-topbar-key">esc</kbd>
-                  <span>for terminal</span>
-                </div>
-                <div className="chat-empty-topbar-title">New agent conversation</div>
-              </div>
-            )}
-          </div>
+          <div className="chat-empty chat-empty-workspace" />
         ) : (
           <div className="chat-empty">
             <div className="chat-empty-kicker">Octomus AI</div>

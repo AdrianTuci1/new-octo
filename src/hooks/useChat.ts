@@ -23,6 +23,7 @@ type UseChatOptions = {
   conversationId?: string | null;
   terminalBlocks?: TerminalCommandBlock[];
   onCloseTray?: () => void;
+  active?: boolean;
 };
 
 type AssistantMessageRegistration = {
@@ -363,27 +364,26 @@ export function useChat(options: UseChatOptions = {}) {
     activeRunIdRef.current = activeRunId;
   }, [activeRunId]);
 
+  const onCommandApprovalRef = useRef(options.onCommandApproval);
+  useEffect(() => {
+    onCommandApprovalRef.current = options.onCommandApproval;
+  }, [options.onCommandApproval]);
+
   useEffect(() => {
     const owner = instanceIdRef.current;
     const streamingMessageIds = messages
       .filter((message) => message.role === 'assistant' && message.isStreaming)
       .map((message) => message.id);
 
-    deleteOwnerRegistrations(owner);
-
     for (const assistantMessageId of streamingMessageIds) {
       setAssistantRegistration(assistantMessageId, {
         owner,
         append: (text) => appendToMessage(assistantMessageId, text),
         update: (updater) => updateMessage(assistantMessageId, updater),
-        onCommandApproval: options.onCommandApproval
+        onCommandApproval: (approval) => onCommandApprovalRef.current?.(approval)
       });
     }
-
-    return () => {
-      deleteOwnerRegistrations(owner);
-    };
-  }, [appendToMessage, messages, options.onCommandApproval, updateMessage]);
+  }, [appendToMessage, messages, updateMessage]);
 
   useEffect(() => {
     return () => {
@@ -492,6 +492,12 @@ export function useChat(options: UseChatOptions = {}) {
   }, []);
 
   useEffect(() => {
+    if (options.active === false) {
+      void saveCurrentConversationRef.current();
+    }
+  }, [options.active]);
+
+  useEffect(() => {
     return () => {
       void saveCurrentConversationRef.current();
     };
@@ -559,6 +565,14 @@ export function useChat(options: UseChatOptions = {}) {
     setQuery('');
     options.onCloseTray?.();
 
+    const owner = instanceIdRef.current;
+    setAssistantRegistration(assistantMessageId, {
+      owner,
+      append: (text) => appendToMessage(assistantMessageId, text),
+      update: (updater) => updateMessage(assistantMessageId, updater),
+      onCommandApproval: (approval) => onCommandApprovalRef.current?.(approval)
+    });
+
     try {
       const requestMessages = chatHistoryFromMessages(messagesRef.current);
 
@@ -574,6 +588,10 @@ export function useChat(options: UseChatOptions = {}) {
         }
       });
 
+      const remainingTokens = pendingTokenText[response.assistantMessageId];
+      if (remainingTokens) {
+        appendToMessage(assistantMessageId, remainingTokens);
+      }
       delete pendingTokenText[response.assistantMessageId];
       activeConversationIdRef.current = response.conversationId;
       activeRunIdRef.current = response.runId;
@@ -624,6 +642,14 @@ export function useChat(options: UseChatOptions = {}) {
       createdAt: new Date().toISOString()
     });
 
+    const owner = instanceIdRef.current;
+    setAssistantRegistration(nextAssistantMessageId, {
+      owner,
+      append: (text) => appendToMessage(nextAssistantMessageId, text),
+      update: (updater) => updateMessage(nextAssistantMessageId, updater),
+      onCommandApproval: (approval) => onCommandApprovalRef.current?.(approval)
+    });
+
     try {
       const requestMessages = chatHistoryFromMessages(messagesRef.current);
 
@@ -639,6 +665,10 @@ export function useChat(options: UseChatOptions = {}) {
         }
       });
 
+      const remainingTokens = pendingTokenText[response.assistantMessageId];
+      if (remainingTokens) {
+        appendToMessage(nextAssistantMessageId, remainingTokens);
+      }
       delete pendingTokenText[response.assistantMessageId];
       activeConversationIdRef.current = response.conversationId;
       activeRunIdRef.current = response.runId;

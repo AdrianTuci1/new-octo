@@ -30,6 +30,7 @@ export function Launcher(props: LauncherProps) {
               selectedTerminalBlockId={launcher.store.composerSurface === 'agent' ? launcher.terminal.agentTerminal.selectedBlockId : launcher.terminal.terminal.selectedBlockId}
               terminalBlocks={launcher.terminal.activeTimelineBlocks}
               terminalError={launcher.terminal.activeTimelineError}
+              title={props.title}
             />
           </div>
         )}

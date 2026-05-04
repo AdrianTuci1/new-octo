@@ -186,9 +186,11 @@ export function useTerminalCommandBlocks(options: UseTerminalCommandBlocksOption
       const pendingOutput = `${pendingOutputRef.current[block.id] ?? ''}${pendingCommandOutput}`;
       const canonicalBlock = existing?.finishedAt && !block.finishedAt ? existing : block;
       const sharedMeta = sharedBlockMetaRef.current[block.id];
+      const source = existing?.source ?? sharedMeta?.source ?? blockOptionsRef.current[block.id]?.source ?? (commandInFlightRef.current && pendingCommandOutputRef.current === '' ? blockOptionsRef.current['PENDING']?.source : undefined);
+      
       const nextBlock = applySharedMeta({
         ...mergeBlock(canonicalBlock, `${existing?.output ?? ''}${pendingOutput}`, sharedMeta),
-        source: existing?.source ?? sharedMeta?.source ?? blockOptionsRef.current[block.id]?.source
+        source
       });
 
       if (pendingOutput) {
@@ -390,6 +392,7 @@ export function useTerminalCommandBlocks(options: UseTerminalCommandBlocksOption
         setError(null);
         commandInFlightRef.current = true;
         pendingCommandOutputRef.current = '';
+        blockOptionsRef.current['PENDING'] = options;
         const session = await ensureSession();
         const response = await invoke<TerminalRunCommandResponse>('terminal_run_command', {
           request: {
@@ -398,6 +401,7 @@ export function useTerminalCommandBlocks(options: UseTerminalCommandBlocksOption
           }
         });
         blockOptionsRef.current[response.block.id] = options;
+        delete blockOptionsRef.current['PENDING'];
         if (options.source) {
           upsertBlockMeta(response.block.id, {
             presentation: 'command',
@@ -410,6 +414,7 @@ export function useTerminalCommandBlocks(options: UseTerminalCommandBlocksOption
         return response;
       } catch (reason) {
         commandInFlightRef.current = false;
+        delete blockOptionsRef.current['PENDING'];
         setError(String(reason));
         return null;
       }
@@ -418,15 +423,6 @@ export function useTerminalCommandBlocks(options: UseTerminalCommandBlocksOption
   );
 
   const clearBlocks = useCallback(() => {
-    const activeSession = sessionRef.current;
-    if (activeSession) {
-      void invoke('terminal_kill_session', {
-        request: {
-          sessionId: activeSession.id
-        }
-      }).catch(() => {});
-    }
-
     activeBlockIdRef.current = null;
     blocksRef.current = [];
     commandBlocksRef.current = [];

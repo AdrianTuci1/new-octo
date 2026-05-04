@@ -38,6 +38,7 @@ export type LauncherProps = {
   sharedTerminalBlockMetaById?: Record<string, TerminalBlockSharedMeta>;
   sharedSyntheticBlocks?: import('../../../../types').TerminalCommandBlock[];
   sharedAgentTerminalBlockMetaById?: Record<string, TerminalBlockSharedMeta>;
+  title?: string;
 };
 
 /**
@@ -138,7 +139,7 @@ export function useLauncher(props: LauncherProps) {
     modelId: modelSelection.selectedModelId,
     onCloseTray: closeTray,
     terminalBlocks: agentTerminal.blocks,
-    onCommandApproval: (approval) => requestCommandApproval(approval),
+    onCommandApproval: requestCommandApproval,
     onConversationCreated: (nextConversationId) => {
       store.setLocalConversationId(nextConversationId);
       if (hasControlledConversation) {
@@ -157,7 +158,8 @@ export function useLauncher(props: LauncherProps) {
       agentTerminal.replaceBlocks([]);
       store.setComposerSurface('agent');
       store.setModeLock(null);
-    }
+    },
+    active
   });
   const { query, setQuery, messages, submitQuery, submitToolResult, clearMessages } = chat;
   const availableShellCommands = Hooks.useShellCommandIndex();

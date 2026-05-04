@@ -70,22 +70,32 @@ export function useAppWindow() {
     .map((tab) => terminalSessions[tab.id]?.activeConversationId ?? null)
     .filter((conversationId): conversationId is string => Boolean(conversationId));
   const dedupedOrderedConversationIds = Array.from(new Set(orderedConversationIds));
-  const workspaceConversations = dedupedOrderedConversationIds.map((conversationId) => {
-    const summary = memoryConversationsById.get(conversationId);
-    if (summary) {
-      return Utils.buildConversationFromSummary(summary);
-    }
-
-    const hostingSession = Object.values(terminalSessions).find((session) => session.activeConversationId === conversationId) ?? null;
-    const cwdSegments = hostingSession?.workingDirectory?.split('/').filter(Boolean) ?? [];
-    return {
-      id: conversationId,
-      title: 'New agent conversation',
-      branchLabel: cwdSegments[cwdSegments.length - 1] ?? '~',
-      timeLabel: 'just now'
-    } satisfies WorkspaceConversation;
-  });
   const openConversationIds = dedupedOrderedConversationIds;
+  const openConversationIdSet = new Set(openConversationIds);
+
+  const workspaceConversations = [
+    // First, map the active conversations (the ones in tabs)
+    ...dedupedOrderedConversationIds.map((conversationId) => {
+      const summary = memoryConversationsById.get(conversationId);
+      if (summary) {
+        return Utils.buildConversationFromSummary(summary);
+      }
+
+      const hostingSession = Object.values(terminalSessions).find((session) => session.activeConversationId === conversationId) ?? null;
+      const cwdSegments = hostingSession?.workingDirectory?.split('/').filter(Boolean) ?? [];
+      return {
+        id: conversationId,
+        title: 'New agent conversation',
+        branchLabel: cwdSegments[cwdSegments.length - 1] ?? '~',
+        timeLabel: 'just now'
+      } satisfies WorkspaceConversation;
+    }),
+    // Then, add all other conversations from memory that aren't currently open in a tab
+    ...memoryConversations
+      .filter((summary) => !openConversationIdSet.has(summary.id))
+      .map((summary) => Utils.buildConversationFromSummary(summary))
+  ];
+
   const selectedOpenConversationId = activeConversationId && memoryConversationsById.has(activeConversationId)
     ? activeConversationId
     : activeConversationId && workspaceConversations.some((conversation) => conversation.id === activeConversationId)
@@ -203,7 +213,7 @@ export function useAppWindow() {
         tabs,
         selectedTabId,
         launcherTabId,
-        conversations: [],
+        conversations: workspaceConversations.filter((c) => openConversationIdSet.has(c.id)),
         terminalSessions,
         activeSectionId,
         expandedGroupIds,
@@ -313,16 +323,25 @@ export function useAppWindow() {
   };
 
   const onSelectConversation = (conversationId: string) => {
-    const terminalTabId = resolveTerminalTabId();
+    const existingTab = tabs.find((tab) =>
+      tab.kind === 'terminal' && terminalSessions[tab.id]?.activeConversationId === conversationId
+    );
+
+    if (existingTab) {
+      setSelectedTabId(existingTab.id);
+      return;
+    }
+
+    const nextTab = createTerminalTab();
     setTerminalSessions((current) => ({
       ...current,
-      [terminalTabId]: {
-        ...current[terminalTabId],
+      [nextTab.id]: {
+        ...current[nextTab.id],
         activeConversationId: conversationId,
         composerSurface: 'agent'
       }
     }));
-    setSelectedTabId(terminalTabId);
+    setSelectedTabId(nextTab.id);
   };
 
   const onNewConversation = (options?: { seedPrompt?: string }) => {
@@ -664,6 +683,7 @@ export function useAppWindow() {
     sharedTerminalBlockMetaById: terminalSessions[tab.id]?.terminalBlockMetaById ?? Utils.EMPTY_META,
     sharedSyntheticBlocks: terminalSessions[tab.id]?.syntheticBlocks ?? [],
     sharedAgentTerminalBlockMetaById: terminalSessions[tab.id]?.agentTerminalBlockMetaById ?? Utils.EMPTY_META,
+    title: displayTabs.find((t) => t.id === tab.id)?.label,
     variant: 'workspace' as const
   });
 

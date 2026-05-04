@@ -33,7 +33,7 @@ export function TerminalBlockDetail({
 }: TerminalBlockDetailProps) {
   if (block.source === 'user') {
     return (
-      <article className="terminal-inline-command" onClick={onSelect}>
+      <article className={`terminal-inline-command ${failed ? 'failed' : ''}`} onClick={onSelect}>
         <pre className="terminal-inline-command-output">
           <strong>{block.command}</strong>
           {'\n'}

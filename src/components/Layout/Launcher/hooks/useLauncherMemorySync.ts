@@ -27,8 +27,13 @@ export function useLauncherMemorySync({
       return;
     }
 
-    store.setLocalPendingApproval(props.pendingApproval ?? null);
-  }, [hasControlledPendingApproval, props.pendingApproval]);
+    // Only sync from props if the prop is non-null OR if we don't have a local value.
+    // This avoids the race condition where a local update is overwritten by an "old" null prop
+    // before the parent component has had a chance to re-render with the new value.
+    if (props.pendingApproval || !store.localPendingApproval) {
+      store.setLocalPendingApproval(props.pendingApproval ?? null);
+    }
+  }, [hasControlledPendingApproval, props.pendingApproval, store.localPendingApproval]);
 
   useEffect(() => {
     const nextConversationId = resolvedConversationId?.trim();
