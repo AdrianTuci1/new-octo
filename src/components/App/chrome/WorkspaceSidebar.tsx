@@ -1,18 +1,20 @@
 import './WorkspaceSidebar.css';
-import { 
-  MessageSquare, 
-  Layers, 
-  Search, 
-  History, 
-  X, 
-  Plus, 
-  ChevronDown, 
-  Circle, 
+import {
+  MessageSquare,
+  Folder,
+  Search,
+  History,
+  X,
+  Plus,
+  ChevronDown,
+  Circle,
   CheckCircle2,
   MoreHorizontal
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import type { WorkspaceConversation } from './workspaceChromeTypes';
+import { FileExplorer } from './FileExplorer';
+import { useEditorStore } from '../../../stores/editorStore';
 
 interface WorkspaceSidebarProps {
   isOpen: boolean;
@@ -20,12 +22,15 @@ interface WorkspaceSidebarProps {
   conversations: WorkspaceConversation[];
   openConversationIds: string[];
   selectedConversationId: string | null;
-  onSelectConversation: (conversationId: string) => void;
-  onNewConversation: () => void | string | null;
-  onDeleteConversation: (conversationId: string) => void;
-  onForkConversationInNewPane: (conversationId: string) => void;
-  onForkConversationInNewTab: (conversationId: string) => void;
+  onSelectConversation: (id: string) => void;
+  onNewConversation: () => void;
+  onDeleteConversation: (id: string) => void;
+  onForkConversationInNewTab: (id: string) => void;
+  onForkConversationInNewPane: (id: string) => void;
+  activeWorkingDirectory?: string | null;
 }
+
+type SidebarMenu = 'chat' | 'files' | 'search' | 'history';
 
 export function WorkspaceSidebar({
   isOpen,
@@ -37,8 +42,11 @@ export function WorkspaceSidebar({
   onNewConversation,
   onDeleteConversation,
   onForkConversationInNewPane,
-  onForkConversationInNewTab
+  onForkConversationInNewTab,
+  activeWorkingDirectory
 }: WorkspaceSidebarProps) {
+  const [activeMenu, setActiveMenu] = useState<SidebarMenu>('chat');
+  const openFile = useEditorStore((state) => state.openFile);
   const [menuConversationId, setMenuConversationId] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const openConversationIdSet = new Set(openConversationIds);
@@ -140,16 +148,28 @@ export function WorkspaceSidebar({
     <div className={`workspace-sidebar ${isOpen ? 'open' : ''}`}>
       <div className="workspace-sidebar-header">
         <div className="workspace-sidebar-nav">
-          <button className="workspace-sidebar-nav-btn active">
+          <button
+            className={`workspace-sidebar-nav-btn ${activeMenu === 'chat' ? 'active' : ''}`}
+            onClick={() => setActiveMenu('chat')}
+          >
             <MessageSquare size={18} strokeWidth={1.8} />
           </button>
-          <button className="workspace-sidebar-nav-btn">
-            <Layers size={18} strokeWidth={1.8} />
+          <button
+            className={`workspace-sidebar-nav-btn ${activeMenu === 'files' ? 'active' : ''}`}
+            onClick={() => setActiveMenu('files')}
+          >
+            <Folder size={18} strokeWidth={1.8} />
           </button>
-          <button className="workspace-sidebar-nav-btn">
+          <button
+            className={`workspace-sidebar-nav-btn ${activeMenu === 'search' ? 'active' : ''}`}
+            onClick={() => setActiveMenu('search')}
+          >
             <Search size={18} strokeWidth={1.8} />
           </button>
-          <button className="workspace-sidebar-nav-btn">
+          <button
+            className={`workspace-sidebar-nav-btn ${activeMenu === 'history' ? 'active' : ''}`}
+            onClick={() => setActiveMenu('history')}
+          >
             <History size={18} strokeWidth={1.8} />
           </button>
         </div>
@@ -158,44 +178,69 @@ export function WorkspaceSidebar({
         </button>
       </div>
 
-      <div className="workspace-sidebar-search">
-        <div className="workspace-sidebar-search-container">
-          <input type="text" placeholder="Search" className="workspace-sidebar-search-input" />
-        </div>
-      </div>
+      {activeMenu === 'chat' && (
+        <>
+          <div className="workspace-sidebar-search">
+            <div className="workspace-sidebar-search-container">
+              <input type="text" placeholder="Search" className="workspace-sidebar-search-input" />
+            </div>
+          </div>
 
-      <div className="workspace-sidebar-content">
-        {activeConversations.length > 0 && (
-          <div className="workspace-sidebar-group">
-            <div className="workspace-sidebar-group-header">
-              <ChevronDown size={14} className="group-chevron" />
-              <span>ACTIVE</span>
+          <div className="workspace-sidebar-content">
+            {activeConversations.length > 0 && (
+              <div className="workspace-sidebar-group">
+                <div className="workspace-sidebar-group-header">
+                  <ChevronDown size={14} className="group-chevron" />
+                  <span>ACTIVE</span>
+                </div>
+
+                {activeConversations.map((conversation) => (
+                  renderConversationItem(conversation, conversation.id === selectedConversationId)
+                ))}
+              </div>
+            )}
+
+            <div className="workspace-sidebar-group">
+              <button className="workspace-sidebar-new-btn" type="button" onClick={onNewConversation}>
+                <Plus size={16} />
+                <span>New conversation</span>
+              </button>
             </div>
 
-            {activeConversations.map((conversation) => (
-              renderConversationItem(conversation, conversation.id === selectedConversationId)
-            ))}
-          </div>
-        )}
+            {pastConversations.length > 0 && (
+              <div className="workspace-sidebar-group">
+                <div className="workspace-sidebar-group-header">
+                  <ChevronDown size={14} className="group-chevron" />
+                  <span>PAST</span>
+                </div>
 
-        <div className="workspace-sidebar-group">
-          <button className="workspace-sidebar-new-btn" type="button" onClick={onNewConversation}>
-            <Plus size={16} />
-            <span>New conversation</span>
-          </button>
+                {pastConversations.map((conversation) => renderConversationItem(conversation))}
+              </div>
+            )}
+          </div>
+        </>
+      )}
+
+      {activeMenu === 'files' && (
+        <div className="workspace-sidebar-content no-padding">
+          <FileExplorer 
+            onFileClick={openFile} 
+            initialPath={activeWorkingDirectory}
+          />
         </div>
+      )}
 
-        {pastConversations.length > 0 && (
-          <div className="workspace-sidebar-group">
-            <div className="workspace-sidebar-group-header">
-              <ChevronDown size={14} className="group-chevron" />
-              <span>PAST</span>
-            </div>
+      {activeMenu === 'search' && (
+        <div className="workspace-sidebar-content">
+          <div className="workspace-sidebar-placeholder">Search coming soon</div>
+        </div>
+      )}
 
-            {pastConversations.map((conversation) => renderConversationItem(conversation))}
-          </div>
-        )}
-      </div>
+      {activeMenu === 'history' && (
+        <div className="workspace-sidebar-content">
+          <div className="workspace-sidebar-placeholder">History coming soon</div>
+        </div>
+      )}
     </div>
   );
 }

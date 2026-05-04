@@ -1,0 +1,166 @@
+.editor-workspace {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+  background: #050505;
+  color: #e5e7eb;
+}
+
+.editor-tabs {
+  display: flex;
+  background: #0a0a0a;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  height: 36px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.editor-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.editor-tab {
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  height: 100%;
+  border-right: 1px solid rgba(255, 255, 255, 0.05);
+  font-size: 12px;
+  color: #9ca3af;
+  cursor: pointer;
+  user-select: none;
+  gap: 8px;
+  min-width: 120px;
+  max-width: 200px;
+  transition: all 0.15s ease;
+}
+
+.editor-tab:hover {
+  background: rgba(255, 255, 255, 0.03);
+  color: #d1d5db;
+}
+
+.editor-tab.active {
+  background: #050505;
+  color: #ffffff;
+  border-bottom: 2px solid #a78bfa;
+}
+
+.tab-name {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tab-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  opacity: 0;
+  transition: all 0.1s ease;
+}
+
+.editor-tab:hover .tab-close {
+  opacity: 1;
+}
+
+.tab-close:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.tab-dirty {
+  width: 6px;
+  height: 6px;
+  background: #a78bfa;
+  border-radius: 50%;
+}
+
+.editor-header {
+  display: flex;
+  align-items: center;
+  padding: 8px 16px;
+  background: #050505;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  height: 40px;
+}
+
+.breadcrumbs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: #6b7280;
+}
+
+.breadcrumb-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.breadcrumb-item:last-child {
+  color: #d1d5db;
+  font-weight: 500;
+}
+
+.editor-container {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+}
+
+.monaco-editor-wrapper {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+}
+
+.editor-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: #4b5563;
+  gap: 16px;
+}
+
+.editor-empty-icon {
+  opacity: 0.2;
+}
+
+.editor-empty-text {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.editor-save-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: #a78bfa;
+  color: #ffffff;
+  border: none;
+  border-radius: 4px;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.editor-save-btn:hover {
+  background: #8b5cf6;
+  transform: translateY(-1px);
+}
+
+.editor-save-btn:active {
+  transform: translateY(0);
+}

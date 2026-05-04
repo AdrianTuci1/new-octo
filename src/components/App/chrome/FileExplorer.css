@@ -1,0 +1,123 @@
+.file-explorer {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: transparent;
+  color: #e5e7eb;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  overflow: hidden;
+  position: relative;
+}
+
+.file-explorer-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 0;
+}
+
+.file-tree-node {
+  display: flex;
+  align-items: center;
+  padding: 4px 12px;
+  cursor: pointer;
+  user-select: none;
+  font-size: 13px;
+  transition: background 0.1s ease;
+  position: relative;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.file-tree-node:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.file-tree-node.open {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.node-icon-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 32px;
+}
+
+.chevron-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  color: #6b7280;
+}
+
+.node-name {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: #d1d5db;
+}
+
+.file-tree-children {
+  display: block;
+  width: 100%;
+}
+
+.node-loading-spinner {
+  width: 12px;
+  height: 12px;
+  border: 2px solid rgba(255, 255, 255, 0.1);
+  border-top-color: #a78bfa;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  margin-left: 8px;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.file-context-menu {
+  position: fixed;
+  background: #111111;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 4px;
+  min-width: 180px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6);
+  z-index: 9999;
+}
+
+.file-context-menu button {
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  color: #d1d5db;
+  padding: 8px 12px;
+  font-size: 12px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.file-context-menu button:hover {
+  background: #222222;
+  color: #ffffff;
+}
+
+.menu-separator {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.08);
+  margin: 4px 0;
+}
+
+.file-icon.code { color: #60a5fa; }
+.file-icon.default { color: #9ca3af; }
+
+.file-explorer-loading {
+  padding: 20px;
+  text-align: center;
+  color: #6b7280;
+  font-size: 12px;
+}

@@ -4,6 +4,7 @@ import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { Copy, Play, Save, Check } from 'lucide-react';
 import { useState } from 'react';
+import { CodeDiffView } from './CodeDiffView';
 import type { ChatMessage } from '../../types/chat';
 import type { CommandApproval } from '../../types/terminal';
 
@@ -65,6 +66,14 @@ export function MessageBubble({ message, onRequestCommandApproval }: MessageBubb
           >
             {message.body}
           </ReactMarkdown>
+        )}
+
+        {message.fileDiffs && message.fileDiffs.length > 0 && (
+          <div className="message-diffs">
+            {message.fileDiffs.map((diff, index) => (
+              <CodeDiffView key={index} diff={diff} />
+            ))}
+          </div>
         )}
       </div>
     </div>

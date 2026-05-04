@@ -1,3 +1,5 @@
+import type { FileDiff } from './diff';
+
 export type ChatMessage = {
   id: string;
   role: 'user' | 'assistant' | 'system' | 'tool';
@@ -12,6 +14,7 @@ export type ChatMessage = {
   usage?: AgentUsage;
   toolCallId?: string;
   toolCalls?: any[];
+  fileDiffs?: FileDiff[];
 };
 
 export type Conversation = {

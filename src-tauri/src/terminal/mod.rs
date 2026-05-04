@@ -1031,3 +1031,25 @@ fn is_executable_command(path: &std::path::Path) -> bool {
         .map(|metadata| metadata.is_file())
         .unwrap_or(false)
 }
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WriteFileRequest {
+    pub path: String,
+    pub content: String,
+}
+
+#[tauri::command]
+pub fn terminal_read_file(request: PathRequest) -> Result<String, String> {
+    let path = resolve_request_path(request.path)?;
+    if !path.is_file() {
+        return Err(format!("'{}' is not a file", path.display()));
+    }
+
+    fs::read_to_string(&path).map_err(|error| format!("failed to read '{}': {error}", path.display()))
+}
+
+#[tauri::command]
+pub fn terminal_write_file(request: WriteFileRequest) -> Result<(), String> {
+    let path = PathBuf::from(&request.path);
+    fs::write(&path, &request.content).map_err(|error| format!("failed to write to '{}': {error}", path.display()))
+}

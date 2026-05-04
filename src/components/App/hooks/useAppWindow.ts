@@ -694,7 +694,10 @@ export function useAppWindow() {
       isSidebarOpen,
       isSpotlightVisible,
       launcherTabId,
-      selectedTab
+      selectedTab,
+      activeWorkingDirectory: selectedTab.kind === 'terminal' 
+        ? terminalSessions[selectedTab.id]?.workingDirectory ?? pathContext?.homeDir ?? null
+        : pathContext?.homeDir ?? null
     },
     workspace: {
       isLauncherView,

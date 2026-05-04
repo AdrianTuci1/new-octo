@@ -1,3 +1,17 @@
+/*
+** 2026 May 04
+**
+** The author disclaims copyright to this source code. In place of
+** a legal notice, here is a blessing:
+**
+**    "Everything around you that you call life was made up by people
+**    that were no smarter than you. And you can change it, you can
+**    influence it... Once you learn that, you'll never be the same again."
+**
+*************************************************************************
+** This file is part of Octomus.
+*/
+
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use tauri::{
@@ -242,6 +256,7 @@ fn main() {
             ai::agent_configure_openai_compatible,
             ai::agent_provider_status,
             ai::ai_predict_command_smart,
+            ai::diff::apply_file_diff,
             terminal::terminal_create_session,
             terminal::terminal_write,
             terminal::terminal_run_command,
@@ -257,6 +272,8 @@ fn main() {
             terminal::terminal_switch_git_branch,
             terminal::terminal_get_recent_history,
             terminal::terminal_get_prediction,
+            terminal::terminal_read_file,
+            terminal::terminal_write_file,
             memory::memory_bootstrap,
             memory::memory_put_settings,
             memory::memory_put_workspace_snapshot,

@@ -3,6 +3,7 @@ pub mod agent_management;
 pub mod artifacts;
 pub mod mcp;
 pub mod predict;
+pub mod diff;
 
 use tauri::{AppHandle, State};
 

@@ -1,3 +1,17 @@
+/*
+** 2026 May 04
+**
+** The author disclaims copyright to this source code. In place of
+** a legal notice, here is a blessing:
+**
+**    "Everything around you that you call life was made up by people
+**    that were no smarter than you. And you can change it, you can
+**    influence it... Once you learn that, you'll never be the same again."
+**
+*************************************************************************
+** This file is part of Octomus.
+*/
+
 import { ChatPanel } from '../../Chat';
 import { CommandApprovalComposer, ComposerBar, TerminalComposer } from '../../Composer';
 import { TrayPanel } from '../../Tray';
