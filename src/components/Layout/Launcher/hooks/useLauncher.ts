@@ -1,5 +1,6 @@
 
 import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { invoke } from '@tauri-apps/api/core';
 import * as SubModules from './submodules';
 import * as Hooks from '../../../../hooks';
 import { useMemoryStore } from '../../../../stores';
@@ -7,6 +8,7 @@ import { consumeShellModeActivator, getRecommendedComposerAction, getShellToggle
 import * as Utils from '../utils';
 
 import type { CommandApproval, TerminalBlockSharedMeta, ShellModeSource } from '../../../../types';
+import type { ChatMessage } from '../../../../types/chat';
 
 type LauncherVariant = 'panel' | 'workspace';
 
@@ -40,6 +42,32 @@ export type LauncherProps = {
   sharedAgentTerminalBlockMetaById?: Record<string, TerminalBlockSharedMeta>;
   title?: string;
 };
+
+function buildConversationLinkTitle(
+  conversationId: string,
+  messages: ChatMessage[],
+  memoryConversations: Array<{ id: string; title: string }>
+) {
+  const summaryTitle = memoryConversations.find((conversation) => conversation.id === conversationId)?.title?.trim();
+  if (summaryTitle) {
+    return summaryTitle;
+  }
+
+  const firstMeaningfulMessage = messages.find((message) => (
+    (message.role === 'assistant' || message.role === 'user')
+    && message.body.trim().length > 0
+  ));
+  const fallbackTitle = firstMeaningfulMessage?.body
+    .replace(/[`*_>#-]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (!fallbackTitle) {
+    return 'Return to AI conversation';
+  }
+
+  return fallbackTitle.length > 80 ? `${fallbackTitle.slice(0, 77)}...` : fallbackTitle;
+}
 
 /**
  * `useLauncher` - Main orchestrator hook for the Launcher component.
@@ -141,6 +169,12 @@ export function useLauncher(props: LauncherProps) {
     terminalBlocks: agentTerminal.blocks,
     onCommandApproval: requestCommandApproval,
     onConversationCreated: (nextConversationId) => {
+      if (pendingConversationAnchorRef.current) {
+        pendingConversationAnchorRef.current = {
+          ...pendingConversationAnchorRef.current,
+          conversationId: nextConversationId
+        };
+      }
       store.setLocalConversationId(nextConversationId);
       if (hasControlledConversation) {
         props.onConversationChange?.(nextConversationId);
@@ -456,10 +490,14 @@ export function useLauncher(props: LauncherProps) {
       status: 'finished',
       presentation: 'conversation-link',
       conversationId: pendingAnchor.conversationId,
-      conversationTitle: 'Return to AI conversation'
+      conversationTitle: buildConversationLinkTitle(
+        pendingAnchor.conversationId,
+        messages,
+        memoryConversations
+      )
     });
     pendingConversationAnchorRef.current = null;
-  }, [messages.length, resolvedConversationId, terminal.upsertSyntheticBlock]);
+  }, [memoryConversations, messages, messages.length, resolvedConversationId, terminal.upsertSyntheticBlock]);
 
   const launchAgentComposer = useCallback((seedPrompt?: string, autoSubmit = false) => {
     const trimmedSeedPrompt = seedPrompt?.trim();
@@ -520,11 +558,21 @@ export function useLauncher(props: LauncherProps) {
     }
   }, [activeTrayMode, closeTray, isTerminalSurface, isTrayOpen]);
 
+  const openAppWindow = useCallback(() => {
+    if (!(window as any).__TAURI_INTERNALS__) {
+      return;
+    }
+
+    void invoke('show_app_window').catch((error) => {
+      console.warn('[Launcher] failed to open app window', error);
+    });
+  }, []);
+
   const shortcuts = SubModules.useLauncherShortcuts({
     active, chat, tray, store, terminal, agentTerminal,
     historyEntries, modelSelection, isTerminalSurface,
     dockRef, saveSettings, visibleModels, toggleComposerSurface: handlers.toggleComposerSurface,
-    clearTerminalSurface, handleKeyDown
+    clearTerminalSurface, handleKeyDown, openAppWindow, variant
   });
 
   const launcherTerminal = {
@@ -565,6 +613,7 @@ export function useLauncher(props: LauncherProps) {
   const launcherActions = {
     ...handlers,
     ...shortcuts,
+    openAppWindow,
     requestCommandApproval,
     setResolvedPendingApproval,
     saveSettings,

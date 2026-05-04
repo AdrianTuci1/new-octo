@@ -7,6 +7,7 @@ import { SettingsSidebar } from './settings/SettingsSidebar';
 import { WorkspaceSidebar } from './chrome/WorkspaceSidebar';
 import { useAppWindow } from './hooks/useAppWindow';
 import { EditorWorkspace } from '../Editor/EditorWorkspace';
+import { AgentsView } from './agents/AgentsView';
 import { useEditorStore } from '../../stores/editorStore';
 
 export function AppWindow() {
@@ -196,6 +197,14 @@ export function AppWindow() {
               </div>
             )}
           </div>
+
+          {app.chrome.isAgentsActive && (
+            <div className="app-window-overlay" role="presentation">
+              <div className="app-window-overlay-panel">
+                <AgentsView />
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

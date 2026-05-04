@@ -13,8 +13,29 @@ export function useLauncherShortcuts({
   active, chat, tray, store, terminal, agentTerminal,
   historyEntries, modelSelection, isTerminalSurface,
   dockRef, saveSettings, visibleModels, toggleComposerSurface,
-  clearTerminalSurface, handleKeyDown
+  clearTerminalSurface, handleKeyDown, openAppWindow, variant
 }: any) {
+  useEffect(() => {
+    if (!active || variant !== 'panel' || !openAppWindow) {
+      return;
+    }
+
+    const handleOpenAppShortcut = (event: globalThis.KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== 'x') {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      openAppWindow();
+    };
+
+    window.addEventListener('keydown', handleOpenAppShortcut, true);
+    return () => {
+      window.removeEventListener('keydown', handleOpenAppShortcut, true);
+    };
+  }, [active, openAppWindow, variant]);
+
   useEffect(() => {
     if (!active) {
       return;

@@ -142,14 +142,20 @@ export function useTerminalCommandBlocks(options: UseTerminalCommandBlocksOption
   }, [applySharedMeta, commitTimeline]);
 
   const upsertBlockMeta = useCallback((blockId: string, meta: TerminalBlockSharedMeta) => {
-    publishBlockMeta({
+    const nextMetaById = {
       ...sharedBlockMetaRef.current,
       [blockId]: {
         ...(sharedBlockMetaRef.current[blockId] ?? {}),
         ...meta
       }
-    });
-  }, [publishBlockMeta]);
+    };
+
+    // Keep metadata available locally immediately so a session re-sync cannot
+    // temporarily rebuild the block as an assistant command before parent state catches up.
+    sharedBlockMetaRef.current = nextMetaById;
+    publishBlockMeta(nextMetaById);
+    commitTimeline(commandBlocksRef.current, syntheticBlocksRef.current);
+  }, [commitTimeline, publishBlockMeta]);
 
   const ensureSession = useCallback(async () => {
     if (sessionRef.current) return sessionRef.current;

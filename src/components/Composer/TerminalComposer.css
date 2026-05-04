@@ -110,3 +110,41 @@
 .terminal-composer-helper-command {
   color: rgba(244, 247, 246, 0.64);
 }
+
+.terminal-composer-footer-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.terminal-open-app-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: rgba(244, 247, 246, 0.46);
+  font-size: 11px;
+  line-height: 1.35;
+  font-family: var(--font-mono);
+  cursor: pointer;
+}
+
+.terminal-open-app-button:hover {
+  color: rgba(244, 247, 246, 0.78);
+}
+
+.terminal-open-app-button svg,
+.terminal-open-app-key-letter {
+  color: rgba(244, 247, 246, 0.58);
+}
+
+.terminal-open-app-key-letter {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: lowercase;
+}

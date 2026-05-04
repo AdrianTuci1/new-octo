@@ -62,6 +62,25 @@
   position: relative;
 }
 
+.app-window-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 25;
+  background: rgba(3, 5, 7, 0.82);
+  backdrop-filter: blur(10px);
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+}
+
+.app-window-overlay-panel {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  overflow: hidden;
+}
+
 .app-window-content-wrapper {
   display: flex;
   flex: 1;

@@ -32,7 +32,9 @@ type TerminalComposerProps = {
   onSelectGitBranch: (branch: string) => void;
   onOpenCommandsTray: () => void;
   onLaunchAgentComposer: (seedPrompt?: string, autoSubmit?: boolean) => void;
+  onOpenApp?: () => void;
   onHeightChange?: (height: number) => void;
+  showOpenInApp?: boolean;
 };
 
 export function TerminalComposer({
@@ -59,7 +61,9 @@ export function TerminalComposer({
   onSelectGitBranch,
   onOpenCommandsTray,
   onLaunchAgentComposer,
-  onHeightChange
+  onOpenApp,
+  onHeightChange,
+  showOpenInApp = false
 }: TerminalComposerProps) {
   const { inputRef, shellRef } = useComposerBar(query, onHeightChange);
   const showRecommendation = Boolean(recommendedAction) && query.trim().length === 0;
@@ -150,12 +154,22 @@ export function TerminalComposer({
           </div>
         </div>
 
-        <div className="terminal-composer-helper">
-          <Command size={12} />
-          <CornerDownLeft size={12} />
-          <span>new</span>
-          <span className="terminal-composer-helper-command">/agent</span>
-          <span>conversation</span>
+        <div className="terminal-composer-footer-row">
+          <div className="terminal-composer-helper">
+            <Command size={12} />
+            <CornerDownLeft size={12} />
+            <span>new</span>
+            <span className="terminal-composer-helper-command">/agent</span>
+            <span>conversation</span>
+          </div>
+
+          {showOpenInApp && onOpenApp && (
+            <button className="terminal-open-app-button" type="button" onClick={onOpenApp}>
+              <Command size={12} />
+              <span className="terminal-open-app-key-letter">x</span>
+              <span>open in app</span>
+            </button>
+          )}
         </div>
       </div>
     </div>

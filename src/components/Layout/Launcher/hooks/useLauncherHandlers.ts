@@ -78,7 +78,11 @@ export function useLauncherHandlers({
     pendingConversationAnchorRef.current = null;
     if (hasControlledConversation) {
       store.setLocalConversationId(nextConversationId);
-      props.onSelectConversation?.(nextConversationId);
+      if (props.onSelectConversation) {
+        props.onSelectConversation(nextConversationId);
+      } else {
+        props.onConversationChange?.(nextConversationId);
+      }
     } else {
       store.setLocalConversationId(nextConversationId);
     }
@@ -86,6 +90,7 @@ export function useLauncherHandlers({
   }, [
     chat.saveCurrentConversation,
     hasControlledConversation,
+    props.onConversationChange,
     props.onSelectConversation,
     setResolvedPendingApproval,
     store.setComposerSurface,
@@ -117,6 +122,10 @@ export function useLauncherHandlers({
       return;
     }
 
+    if (hasControlledConversation) {
+      props.onConversationChange?.(nextConversationId);
+    }
+
     store.setLocalConversationId(nextConversationId);
     store.setComposerSurface('agent');
     store.setModeLock(null);
@@ -124,6 +133,7 @@ export function useLauncherHandlers({
     chat.saveCurrentConversation,
     chat.setQuery,
     hasControlledConversation,
+    props.onConversationChange,
     props.onSelectConversation,
     store.setComposerSurface,
     store.setConversationSearchQuery,
@@ -264,13 +274,34 @@ export function useLauncherHandlers({
   ]);
 
   const handleTerminalRecommendationClick = useCallback((action: any) => {
+    if (action.mode === 'shell') {
+      void runCommandInSurface(
+        action.value,
+        'terminal',
+        terminal,
+        agentTerminal,
+        clearTerminalSurface,
+        'user'
+      );
+      chat.setQuery('');
+      return;
+    }
+
     store.setComposerSurface('agent');
     store.setModeLock(null);
     chat.setQuery(action.value);
     window.requestAnimationFrame(() => {
       void chat.submitQuery();
     });
-  }, [chat.setQuery, chat.submitQuery, store.setComposerSurface, store.setModeLock]);
+  }, [
+    agentTerminal,
+    chat.setQuery,
+    chat.submitQuery,
+    clearTerminalSurface,
+    store.setComposerSurface,
+    store.setModeLock,
+    terminal
+  ]);
 
   const handleComposerRecommendationClick = useCallback((action: any) => {
     store.setComposerSurface('agent');

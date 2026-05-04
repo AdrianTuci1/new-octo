@@ -287,6 +287,7 @@ fn main() {
             memory::memory_enqueue_sync_operation,
             memory::memory_sync_once,
             complete_onboarding,
+            show_app_window,
         ])
         .setup(|app| {
             #[cfg(target_os = "macos")]
@@ -395,6 +396,11 @@ fn complete_onboarding<R: Runtime>(app: AppHandle<R>) {
         let _ = window.close();
     }
     show_launcher(&app);
+}
+
+#[tauri::command]
+fn show_app_window<R: Runtime>(app: AppHandle<R>) {
+    show_settings_window(&app);
 }
 
 fn parse_env_value(value: &str) -> String {

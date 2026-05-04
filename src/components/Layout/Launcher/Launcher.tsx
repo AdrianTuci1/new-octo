@@ -65,6 +65,7 @@ export function Launcher(props: LauncherProps) {
               showFooter={!launcher.ui.isTerminalSurface || launcher.tray.activeTrayMode === 'commands'}
               modelTab={launcher.store.modelTab}
               modelEntries={launcher.ui.visibleModels}
+              onOpenApp={launcher.actions.openAppWindow}
               onConversationSearchChange={launcher.store.setConversationSearchQuery}
               onExitShellMode={() => launcher.store.setModeLock(launcher.chat.query.trim().length > 0 ? 'chat' : null)}
               onHistoryTabChange={launcher.store.setHistoryTab}
@@ -76,6 +77,7 @@ export function Launcher(props: LauncherProps) {
               onSelectModel={(modelId: string) => launcher.ui.modelSelection.selectModel(modelId, false)}
               shellSource={launcher.terminal.shellSource}
               shellShortcutTokens={launcher.terminal.shellShortcutTokens}
+              showOpenInApp={launcher.ui.variant === 'panel'}
               selectedHistoryIndex={launcher.store.selectedHistoryIndex}
               selectedModelId={launcher.ui.modelSelection.selectedModelId}
               selectedModelIndex={launcher.store.selectedModelIndex}
@@ -98,6 +100,7 @@ export function Launcher(props: LauncherProps) {
               gitContext={launcher.ui.gitContext.gitContext}
               onLaunchAgentComposer={launcher.actions.launchAgentComposer}
               onOpenCommandsTray={launcher.actions.openCommandsTray}
+              onOpenApp={launcher.ui.variant === 'panel' ? launcher.actions.openAppWindow : undefined}
               onCloseGitBranchMenu={() => launcher.ui.gitContext.setIsBranchMenuOpen(false)}
               onCloseWorkingDirectoryPicker={launcher.ui.workingDirectory.closePicker}
               onHeightChange={() => { }}
@@ -113,6 +116,7 @@ export function Launcher(props: LauncherProps) {
               query={launcher.chat.query}
               recommendedAction={launcher.terminal.terminalComposerAction}
               runtimeNodeVersion={launcher.ui.runtimeContext?.nodeVersion ?? null}
+              showOpenInApp={launcher.ui.variant === 'panel'}
               workingDirectory={launcher.ui.workingDirectory.currentPath}
               workingDirectoryLabel={launcher.ui.workingDirectory.buttonLabel}
               workingDirectoryListing={launcher.ui.workingDirectory.listing}

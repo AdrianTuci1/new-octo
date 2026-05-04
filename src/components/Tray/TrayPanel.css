@@ -65,6 +65,14 @@
   background: var(--launcher-bg);
 }
 
+.tray-footer-compact-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
 .tray-switcher {
   display: flex;
   align-items: center;
@@ -251,4 +259,30 @@
 .tray-pane-placeholder p {
   font-size: 13px;
   margin: 0;
+}
+
+.tray-open-app-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-soft);
+  font-size: 11px;
+  line-height: 1.35;
+  font-family: var(--font-mono);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.tray-open-app-button:hover {
+  color: var(--text-main);
+}
+
+.tray-open-app-shortcut {
+  width: auto;
+  min-width: 18px;
+  padding: 0 5px;
 }

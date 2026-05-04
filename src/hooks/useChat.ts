@@ -597,6 +597,9 @@ export function useChat(options: UseChatOptions = {}) {
       activeRunIdRef.current = response.runId;
       setActiveConversationId(response.conversationId);
       setActiveRunId(response.runId);
+      if (response.conversationId !== conversationId) {
+        options.onConversationCreated?.(response.conversationId);
+      }
       updateMessage(assistantMessageId, (message) => ({
         ...message,
         conversationId: response.conversationId,
@@ -674,6 +677,9 @@ export function useChat(options: UseChatOptions = {}) {
       activeRunIdRef.current = response.runId;
       setActiveConversationId(response.conversationId);
       setActiveRunId(response.runId);
+      if (response.conversationId !== conversationId) {
+        options.onConversationCreated?.(response.conversationId);
+      }
       updateMessage(nextAssistantMessageId, (message) => ({
         ...message,
         conversationId: response.conversationId,

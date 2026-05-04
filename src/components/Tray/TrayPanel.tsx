@@ -1,4 +1,5 @@
 import './TrayPanel.css';
+import { Command } from 'lucide-react';
 import { TrayCommands } from './TrayCommands';
 import { TrayConversations, type TrayConversationEntry } from './TrayConversations';
 import { TrayFooter } from './TrayFooter';
@@ -12,6 +13,7 @@ import type { CommandItem, ComposerMode, HelpItem, ShellModeSource, TrayContentM
 type TrayPanelProps = {
   isOpen: boolean;
   showFooter?: boolean;
+  showOpenInApp?: boolean;
   activeMode: TrayContentMode;
   helpItems: HelpItem[];
   commandItems: CommandItem[];
@@ -40,11 +42,13 @@ type TrayPanelProps = {
   onToggleCommands: () => void;
   onToggleConversations: () => void;
   onInsertCommand: (command: string) => void;
+  onOpenApp?: () => void;
 };
 
 export function TrayPanel({
   isOpen,
   showFooter = true,
+  showOpenInApp = false,
   activeMode,
   helpItems,
   commandItems,
@@ -72,7 +76,8 @@ export function TrayPanel({
   onToggleHelp,
   onToggleCommands,
   onToggleConversations,
-  onInsertCommand
+  onInsertCommand,
+  onOpenApp
 }: TrayPanelProps) {
   return (
     <div className={`tray-region ${isOpen ? 'open' : 'closed'}`}>
@@ -113,17 +118,29 @@ export function TrayPanel({
       {showFooter && (
         <div className={`tray-footer ${isOpen ? 'expanded' : 'collapsed'}`}>
           {!isOpen && (
-            <TrayFooter
-              activeMode={activeMode}
-              inputMode={inputMode}
-              isOpen={false}
-              onExitShellMode={onExitShellMode}
-              onToggleCommands={onToggleCommands}
-              onToggleConversations={onToggleConversations}
-              onToggleHelp={onToggleHelp}
-              shellShortcutTokens={shellShortcutTokens}
-              shellSource={shellSource}
-            />
+            <div className="tray-footer-compact-row">
+              <TrayFooter
+                activeMode={activeMode}
+                inputMode={inputMode}
+                isOpen={false}
+                onExitShellMode={onExitShellMode}
+                onToggleCommands={onToggleCommands}
+                onToggleConversations={onToggleConversations}
+                onToggleHelp={onToggleHelp}
+                shellShortcutTokens={shellShortcutTokens}
+                shellSource={shellSource}
+              />
+
+              {showOpenInApp && onOpenApp && (
+                <button className="tray-open-app-button" type="button" onClick={onOpenApp}>
+                  <span className="mode-button tray-open-app-shortcut" aria-hidden="true">
+                    <Command size={10} />
+                  </span>
+                  <span className="mode-button tray-open-app-shortcut" aria-hidden="true">X</span>
+                  <span>open in app</span>
+                </button>
+              )}
+            </div>
           )}
 
           {isOpen && (
