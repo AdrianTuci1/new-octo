@@ -1,9 +1,9 @@
-import { Command, CornerDownLeft, SquareTerminal } from 'lucide-react';
+import { ArrowRight, Command, CornerDownLeft, SquareTerminal } from 'lucide-react';
 import type { KeyboardEventHandler } from 'react';
 import { GitBranchPicker } from './GitBranchPicker';
 import { useComposerBar } from './useComposerBar';
 import { WorkingDirectoryPicker } from './WorkingDirectoryPicker';
-import type { RecommendedComposerAction } from '../../lib/composerIntelligence';
+import type { RecommendedComposerAction, ShellPrediction } from '../../lib/composerIntelligence';
 import type { FilesystemDirectoryListing } from '../../types/filesystem';
 import type { GitRepoContext } from '../../types/git';
 import './TerminalComposer.css';
@@ -18,6 +18,7 @@ type TerminalComposerProps = {
   workingDirectoryListing: FilesystemDirectoryListing | null;
   workingDirectorySearch: string;
   runtimeNodeVersion: string | null;
+  prediction: ShellPrediction | null;
   recommendedAction: RecommendedComposerAction | null;
   onQueryChange: (query: string) => void;
   onKeyDown: KeyboardEventHandler<HTMLTextAreaElement>;
@@ -47,6 +48,7 @@ export function TerminalComposer({
   workingDirectoryListing,
   workingDirectorySearch,
   runtimeNodeVersion,
+  prediction,
   recommendedAction,
   onQueryChange,
   onKeyDown,
@@ -67,6 +69,7 @@ export function TerminalComposer({
 }: TerminalComposerProps) {
   const { inputRef, shellRef } = useComposerBar(query, onHeightChange);
   const showRecommendation = Boolean(recommendedAction) && query.trim().length === 0;
+  const predictionSuffix = prediction?.completionText ?? '';
 
   return (
     <div ref={shellRef} className="composer-shell terminal-composer-shell">
@@ -116,6 +119,21 @@ export function TerminalComposer({
                 >
                   <span className="recommendation-label">{recommendedAction.value}</span>
                 </button>
+              </div>
+            )}
+
+            {predictionSuffix && (
+              <div className="composer-suggestion-overlay" aria-hidden="true">
+                <span className="composer-suggestion-prefix">{query}</span>
+                <span className="composer-suggestion-text">{predictionSuffix}</span>
+                <span className="composer-suggestion-accept-group" title={prediction?.hint}>
+                  <span className="composer-suggestion-accept-main">
+                    <ArrowRight size={11} />
+                  </span>
+                  <span className="composer-suggestion-accept-tail">
+                    <span className="composer-suggestion-accept-tail-mark" />
+                  </span>
+                </span>
               </div>
             )}
 

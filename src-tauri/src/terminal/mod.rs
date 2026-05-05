@@ -144,7 +144,7 @@ pub struct TerminalRuntimeContext {
     pub node_version: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ShellHistoryEntry {
     pub value: String,
@@ -625,6 +625,22 @@ pub async fn terminal_get_prediction(
 }
 
 #[tauri::command]
+pub async fn terminal_get_composer_intelligence(
+    ai_manager: State<'_, crate::ai::AgentHarnessManager>,
+    composer_manager: State<'_, crate::ai::predict::composer::ComposerIntelligenceManager>,
+    request: crate::ai::predict::composer::ComposerIntelligenceRequest,
+) -> Result<crate::ai::predict::composer::ComposerIntelligenceResponse, String> {
+    Ok(
+        crate::ai::predict::composer::get_composer_intelligence(
+            composer_manager.inner(),
+            ai_manager.inner(),
+            request,
+        )
+        .await,
+    )
+}
+
+#[tauri::command]
 pub fn terminal_get_recent_history() -> Result<Vec<ShellHistoryEntry>, String> {
     let cutoff = Utc::now() - Duration::days(180);
     let mut raw_entries = Vec::new();
@@ -633,44 +649,30 @@ pub fn terminal_get_recent_history() -> Result<Vec<ShellHistoryEntry>, String> {
     raw_entries.extend(read_bash_history(cutoff));
     raw_entries.extend(read_fish_history(cutoff));
 
-    // Smart ranking: keep only the most recent shape of each command while
-    // preserving which shell it came from.
-    use std::collections::HashMap;
-    let mut stats: HashMap<String, ShellHistoryEntry> = HashMap::new();
+    let mut entries = raw_entries
+        .into_iter()
+        .filter_map(|entry| {
+            let normalized_value = entry.value.trim().to_string();
+            if normalized_value.is_empty() {
+                return None;
+            }
 
-    for entry in raw_entries {
-        let normalized_value = entry.value.trim().to_string();
-        if normalized_value.is_empty() {
-            continue;
-        }
-
-        let should_replace = match stats.get(&normalized_value) {
-            Some(existing) => entry.executed_at > existing.executed_at,
-            None => true,
-        };
-
-        if should_replace {
-            stats.insert(
-                normalized_value.clone(),
-                ShellHistoryEntry {
-                    value: normalized_value,
-                    executed_at: entry.executed_at,
-                    source: entry.source,
-                    pwd: entry.pwd,
-                },
-            );
-        }
-    }
-
-    let mut entries: Vec<ShellHistoryEntry> = stats.into_values().collect();
+            Some(ShellHistoryEntry {
+                value: normalized_value,
+                executed_at: entry.executed_at,
+                source: entry.source,
+                pwd: entry.pwd,
+            })
+        })
+        .collect::<Vec<_>>();
 
     // Sort by most recent
     entries.sort_by(|a, b| b.executed_at.cmp(&a.executed_at));
 
-    // Keep the tray focused on recent, relevant commands instead of exposing
-    // a full terminal dump.
-    if entries.len() > 120 {
-        entries.truncate(120);
+    // Keep enough ordered history to preserve command sequences for prediction
+    // while still bounding the payload size sent to the frontend.
+    if entries.len() > 400 {
+        entries.truncate(400);
     }
 
     Ok(entries)
@@ -778,7 +780,7 @@ fn run_shell_command(
     Ok((output.status.code().unwrap_or(1), output_text))
 }
 
-fn home_dir() -> Option<std::path::PathBuf> {
+pub(crate) fn home_dir() -> Option<std::path::PathBuf> {
     env::var_os("HOME").map(std::path::PathBuf::from)
 }
 

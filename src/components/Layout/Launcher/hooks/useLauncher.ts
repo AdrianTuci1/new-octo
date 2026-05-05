@@ -4,7 +4,7 @@ import { invoke } from '@tauri-apps/api/core';
 import * as SubModules from './submodules';
 import * as Hooks from '../../../../hooks';
 import { useMemoryStore } from '../../../../stores';
-import { consumeShellModeActivator, getRecommendedComposerAction, getShellToggleShortcutTokens, resolveComposerState } from '../../../../lib';
+import { consumeShellModeActivator, getShellToggleShortcutTokens } from '../../../../lib';
 import * as Utils from '../utils';
 
 import type { CommandApproval, TerminalBlockSharedMeta, ShellModeSource } from '../../../../types';
@@ -201,9 +201,18 @@ export function useLauncher(props: LauncherProps) {
     () => terminal.blocks.filter(Utils.isCommandBlock),
     [terminal.blocks]
   );
+  const agentTerminalCommandBlocks = useMemo(
+    () => agentTerminal.blocks.filter(Utils.isCommandBlock),
+    [agentTerminal.blocks]
+  );
+  const isTerminalSurface = store.composerSurface === 'terminal';
   const activeTimelineBlocks = store.composerSurface === 'agent' ? agentTerminal.blocks : terminal.blocks;
   const activeTimelineError = store.composerSurface === 'agent' ? agentTerminal.error : terminal.error;
   const activeMessages = store.composerSurface === 'agent' ? messages : [];
+  const intelligenceTerminalBlocks = isTerminalSurface ? terminalCommandBlocks : agentTerminalCommandBlocks;
+  const composerIntelligenceContextKey = isTerminalSurface
+    ? `terminal:${terminal.sessionId ?? 'local'}:${workingDirectory.currentPath ?? ''}`
+    : `composer:${resolvedConversationId ?? 'none'}:${agentTerminal.sessionId ?? 'local'}:${workingDirectory.currentPath ?? ''}`;
   const uiState = SubModules.useLauncherUIState({
     store, tray, props, modelSelection, memoryConversations,
     activeMessages, activeTimelineBlocks, activeTimelineError,
@@ -215,13 +224,26 @@ export function useLauncher(props: LauncherProps) {
     seededConversationAnchorTimesRef.current = {};
     terminal.clearBlocks();
   }, [terminal.clearBlocks]);
-  const baseComposerState = resolveComposerState(
-    query,
-    store.modeLock,
-    availableShellCommands,
-    store.terminalAutoDetectEnabled
-  );
   const { value: queryWithoutActivator } = consumeShellModeActivator(query);
+  const composerIntelligence = Hooks.useComposerIntelligence({
+    contextKey: composerIntelligenceContextKey,
+    query: queryWithoutActivator,
+    cwd: workingDirectory.currentPath,
+    availableCommands: availableShellCommands,
+    historyEntries: commandHistory,
+    terminalBlocks: intelligenceTerminalBlocks,
+    messages: activeMessages,
+    lockedMode: store.modeLock,
+    autodetectEnabled: store.terminalAutoDetectEnabled,
+    allowSingleCharacterPrediction: store.allowSingleCharacterCommandPrediction,
+    forceShellMode: isTerminalSurface,
+    enableZeroStatePrediction: isTerminalSurface,
+    surface: isTerminalSurface ? 'terminal' : 'composerBar'
+  });
+  const baseComposerState = {
+    mode: composerIntelligence.mode,
+    shellSource: composerIntelligence.shellSource
+  };
   const composerState = store.modeLock === null
     && store.autodetectedShellLatch
     && baseComposerState.mode === 'chat'
@@ -233,34 +255,9 @@ export function useLauncher(props: LauncherProps) {
     : baseComposerState;
   const composerMode = composerState.mode;
   const shellSource: ShellModeSource | null = composerState.shellSource;
-
-  const shellPrediction = Hooks.useUnifiedShellPrediction(
-    queryWithoutActivator,
-    composerMode,
-    terminal.blocks,
-    workingDirectory.currentPath ?? '',
-    availableShellCommands,
-    store.allowSingleCharacterCommandPrediction
-  );
-
-
-  const shellPathPrediction = Hooks.useShellPathPrediction(
-    query,
-    composerMode === 'shell',
-    workingDirectory.currentPath,
-    workingDirectory.homeDir
-  );
-
-  const activeShellPrediction = shellPathPrediction ?? shellPrediction;
-
-  const recommendedAction = getRecommendedComposerAction({
-    mode: composerMode,
-    query,
-    messages,
-    terminalBlocks: store.composerSurface === 'agent' ? agentTerminal.blocks : terminalCommandBlocks,
-    terminalError: activeTimelineError
-  });
-  const terminalState = SubModules.useLauncherTerminalState(terminalCommandBlocks);
+  const activeShellPrediction = composerIntelligence.prediction;
+  const recommendedAction = !isTerminalSurface ? composerIntelligence.recommendedAction : null;
+  const terminalComposerAction = isTerminalSurface ? composerIntelligence.recommendedAction : null;
   const shellShortcutTokens = getShellToggleShortcutTokens();
   const historyState = SubModules.useLauncherHistory(
     messages,
@@ -271,9 +268,6 @@ export function useLauncher(props: LauncherProps) {
     store.historyTab
   );
   const { historyEntries } = historyState;
-
-
-  const isTerminalSurface = store.composerSurface === 'terminal';
   const isTerminalCommandsTrayOpen = isTerminalSurface && isTrayOpen && activeTrayMode === 'commands';
 
   SubModules.useLauncherMemorySync({
@@ -341,14 +335,15 @@ export function useLauncher(props: LauncherProps) {
         'user'
       );
     },
-    isShellMode: composerMode === 'shell',
-    isManualShellMode: shellSource === 'manual',
-    hasPrediction: Boolean(shellPrediction),
+    isShellMode: isTerminalSurface || composerMode === 'shell',
+    isManualShellMode: !isTerminalSurface && shellSource === 'manual',
+    hasPrediction: Boolean(activeShellPrediction),
     onAcceptPrediction: () => {
-      if (shellPrediction) {
-        setQuery(shellPrediction.fullCommand);
+      if (activeShellPrediction) {
+        setQuery(activeShellPrediction.fullCommand);
       }
     },
+    onCyclePrediction: composerIntelligence.cyclePrediction,
     onExitShellMode: () => {
       store.setModeLock(query.trim().length > 0 ? 'chat' : null);
     },
@@ -576,13 +571,13 @@ export function useLauncher(props: LauncherProps) {
   });
 
   const launcherTerminal = {
-    ...terminalState,
     agentTerminal,
     terminal,
     activeTimelineBlocks,
     activeTimelineError,
     shellRef,
     shellSource,
+    terminalComposerAction,
     shellShortcutTokens,
     clearTerminalSurface
   };

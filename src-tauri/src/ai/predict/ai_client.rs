@@ -5,6 +5,7 @@ pub async fn predict_with_llm(
     input: &str,
     last_command: Option<&str>,
     context_messages: Vec<ContextMessageInput>,
+    history_context: String,
     api_key: &str,
     base_url: &str,
     model_id: &str,
@@ -50,15 +51,16 @@ pub async fn predict_with_llm(
             "messages": [
                 {
                     "role": "system",
-                    "content": "You are a professional shell completion engine. You will receive recent terminal history, current directory file listing, and user input. Output ONLY the most likely full shell command starting with the user's input. Aim for complete, high-quality commands. No explanations, no markdown."
+                    "content": "You are a professional shell completion engine. You will receive recent terminal history, similar historical command sequences, current directory file listing, and user input. Output ONLY the most likely full shell command starting with the user's input. Aim for complete, high-quality commands. No explanations, no markdown."
                 },
                 {
                     "role": "user",
                     "content": format!(
-                        "FILES IN DIRECTORY: {:?}\nGIT BRANCH: {:?}\n\nRECENT HISTORY:\n{}\n\nCURRENT INPUT: {}\nLAST COMMAND: {}", 
+                        "FILES IN DIRECTORY: {:?}\nGIT BRANCH: {:?}\n\nRECENT HISTORY:\n{}\n\nSIMILAR HISTORY CONTEXT:\n{}\n\nCURRENT INPUT: {}\nLAST COMMAND: {}", 
                         local_context.files,
                         local_context.git_branch,
                         context_history,
+                        history_context,
                         trimmed, 
                         last_command.unwrap_or("none")
                     )

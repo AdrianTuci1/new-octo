@@ -247,6 +247,7 @@ fn main() {
     tauri::Builder::default()
         .manage(terminal::TerminalManager::default())
         .manage(ai::AgentHarnessManager::default())
+        .manage(ai::predict::composer::ComposerIntelligenceManager::default())
         .manage(memory::OctomusMemoryManager::default())
         .invoke_handler(tauri::generate_handler![
             ai::agent_start,
@@ -272,6 +273,7 @@ fn main() {
             terminal::terminal_switch_git_branch,
             terminal::terminal_get_recent_history,
             terminal::terminal_get_prediction,
+            terminal::terminal_get_composer_intelligence,
             terminal::terminal_read_file,
             terminal::terminal_write_file,
             memory::memory_bootstrap,

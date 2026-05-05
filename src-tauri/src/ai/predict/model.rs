@@ -161,10 +161,15 @@ pub fn predict_from_sequences(
     use std::collections::HashMap;
     let mut successors: HashMap<String, usize> = HashMap::new();
 
-    // Look for occurrences of last_cmd in history and see what follows it
-    for i in 0..history.len().saturating_sub(1) {
-        if history[i].value.trim() == last_cmd {
-            let next_val = history[i + 1].value.trim().to_string();
+    // History is stored in reverse chronological order, so each pair is
+    // (newer_command, older_command). To learn what followed `last_cmd`,
+    // we need to treat the older entry as the antecedent and the newer one
+    // as the successor.
+    for pair in history.windows(2) {
+        let newer = &pair[0];
+        let older = &pair[1];
+        if older.value.trim() == last_cmd {
+            let next_val = newer.value.trim().to_string();
             if !next_val.is_empty() && next_val != last_cmd {
                 *successors.entry(next_val).or_insert(0) += 1;
             }

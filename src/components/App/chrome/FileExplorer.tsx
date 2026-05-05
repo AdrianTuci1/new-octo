@@ -17,7 +17,7 @@ import type {
   FilesystemEntry, 
   FilesystemDirectoryListing, 
   FilesystemPathContext 
-} from '../../../types/terminal';
+} from '../../../types/filesystem';
 import './FileExplorer.css';
 
 interface FileExplorerProps {
@@ -80,12 +80,13 @@ export function FileExplorer({
         path = context.currentDir || '.';
       }
 
-      const entries = await fetchEntries(path);
+      const resolvedPath = path ?? '.';
+      const entries = await fetchEntries(resolvedPath);
       
-      const rootName = path.split('/').pop() || 'Project';
+      const rootName = resolvedPath.split('/').pop() || 'Project';
       const rootNode: TreeEntry = {
         name: rootName,
-        path: path,
+        path: resolvedPath,
         isDirectory: true,
         isOpen: true,
         children: entries.map(entry => ({ ...entry }))

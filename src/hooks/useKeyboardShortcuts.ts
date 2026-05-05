@@ -15,6 +15,7 @@ type KeyboardShortcutOptions = {
   isManualShellMode?: boolean;
   hasPrediction?: boolean;
   onAcceptPrediction?: () => void;
+  onCyclePrediction?: () => void;
   onExitShellMode?: () => void;
   onToggleShellMode?: () => void;
   onCloseTray?: () => void;
@@ -40,9 +41,15 @@ export function useKeyboardShortcuts(options: KeyboardShortcutOptions) {
       return;
     }
 
-    if (event.key === 'ArrowRight' && options.isShellMode && options.hasPrediction) {
+    if ((event.key === 'ArrowRight' || event.key === 'Tab') && options.isShellMode && options.hasPrediction) {
       event.preventDefault();
       options.onAcceptPrediction?.();
+      return;
+    }
+
+    if (event.key === 'ArrowDown' && options.isShellMode && options.hasPrediction) {
+      event.preventDefault();
+      options.onCyclePrediction?.();
       return;
     }
 

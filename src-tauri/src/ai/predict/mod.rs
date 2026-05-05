@@ -1,5 +1,6 @@
 pub mod model;
 pub mod ai_client;
+pub mod composer;
 pub mod scoring;
 pub mod context;
 
@@ -9,11 +10,21 @@ pub async fn predict_command_with_ai(
     input: &str,
     last_command: Option<&str>,
     context_messages: Vec<model::ContextMessageInput>,
+    history_context: String,
     api_key: &str,
     base_url: &str,
     model_id: &str,
 ) -> Option<CommandPrediction> {
-    ai_client::predict_with_llm(input, last_command, context_messages, api_key, base_url, model_id).await
+    ai_client::predict_with_llm(
+        input,
+        last_command,
+        context_messages,
+        history_context,
+        api_key,
+        base_url,
+        model_id,
+    )
+    .await
 }
 
 pub fn recommended_tip(last_exit_code: Option<i32>) -> Option<&'static str> {

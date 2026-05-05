@@ -1,5 +1,4 @@
 export * from './useLauncherHistory';
-export * from './useLauncherTerminalState';
 export * from './useLauncherShortcuts';
 export * from './useLauncherHandlers';
 export * from './useLauncherMemorySync';

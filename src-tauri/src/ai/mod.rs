@@ -77,6 +77,7 @@ pub async fn ai_predict_command_smart(
         &input,
         last_command.as_deref(),
         Vec::new(),
+        String::new(),
         &provider_config.api_key,
         &provider_config.base_url,
         &provider_config.model_id,
