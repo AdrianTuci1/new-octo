@@ -15,6 +15,11 @@ export type ChatMessage = {
   toolCallId?: string;
   toolCalls?: any[];
   fileDiffs?: FileDiff[];
+  followUpSuggestion?: {
+    label: string;
+    value: string;
+    description?: string;
+  };
 };
 
 export type Conversation = {

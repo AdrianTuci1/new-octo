@@ -6,8 +6,8 @@ use uuid::Uuid;
 use crate::memory::{
     paths::MemoryPaths,
     storage::{
-        now_string, read_json_or_default, relative_time_label, safe_file_component,
-        truncate_chars, write_json_atomic,
+        now_string, read_json_or_default, relative_time_label, safe_file_component, truncate_chars,
+        write_json_atomic,
     },
     types::{
         MemoryConversationIndex, MemoryConversationRecord, MemoryConversationSummary,
@@ -19,8 +19,9 @@ pub(crate) fn upsert_conversation_summary(
     paths: &MemoryPaths,
     summary: MemoryConversationSummary,
 ) -> Result<(), String> {
-    let mut index = read_json_or_default::<MemoryConversationIndex>(&paths.conversation_index_path())
-        .unwrap_or_default();
+    let mut index =
+        read_json_or_default::<MemoryConversationIndex>(&paths.conversation_index_path())
+            .unwrap_or_default();
     index
         .conversations
         .retain(|conversation| conversation.id != summary.id);
@@ -31,7 +32,9 @@ pub(crate) fn upsert_conversation_summary(
     write_json_atomic(&paths.conversation_index_path(), &index)
 }
 
-pub(crate) fn summary_from_conversation(record: &MemoryConversationRecord) -> MemoryConversationSummary {
+pub(crate) fn summary_from_conversation(
+    record: &MemoryConversationRecord,
+) -> MemoryConversationSummary {
     MemoryConversationSummary {
         id: record.id.clone(),
         title: record.title.clone(),
@@ -152,7 +155,10 @@ pub(crate) fn derive_task_store(
         kind: "root".to_string(),
         title: title.to_string(),
         status: status.to_string(),
-        exchange_ids: exchanges.iter().map(|exchange| exchange.id.clone()).collect(),
+        exchange_ids: exchanges
+            .iter()
+            .map(|exchange| exchange.id.clone())
+            .collect(),
         child_task_ids: tool_task_ids,
         created_at: created_at.to_string(),
         updated_at: updated_at.to_string(),
@@ -294,5 +300,8 @@ fn tool_calls_from_message(message: &Value) -> Vec<(String, Option<String>)> {
 }
 
 fn message_string(value: &Value, key: &str) -> Option<String> {
-    value.get(key).and_then(Value::as_str).map(|value| value.to_string())
+    value
+        .get(key)
+        .and_then(Value::as_str)
+        .map(|value| value.to_string())
 }

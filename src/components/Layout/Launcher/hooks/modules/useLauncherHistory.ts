@@ -1,19 +1,28 @@
-import { useMemo } from 'react';
-import type { HistoryEntry, HistoryTab, TerminalCommandBlock, ChatMessage } from '../../../../types';
-import { formatHistoryDetail, dedupeHistoryEntries } from '../utils';
 
-export function useLauncherHistory(
-  messages: ChatMessage[],
-  queryWithoutActivator: string,
-  savedPromptEntries: HistoryEntry[],
-  terminalCommandBlocks: TerminalCommandBlock[],
-  commandHistory: { source: string; value: string; executedAt: string }[],
-  historyTab: HistoryTab
-) {
+import { useMemo } from 'react';
+import type { HistoryEntry } from '../../../../../types';
+import { formatHistoryDetail, dedupeHistoryEntries } from '../../utils';
+
+export function useLauncherHistory({
+  runtime, store
+}: {
+  runtime: any;
+  store: any;
+}) {
+  const {
+    chat,
+    queryWithoutActivator,
+    terminalCommandBlocks,
+    commandHistory
+  } = runtime;
+
+  const { messages } = chat;
+  const { savedPromptEntries, historyTab } = store;
+
   const promptHistoryEntries = useMemo<HistoryEntry[]>(
     () => {
       const currentPromptEntries = messages
-        .filter((message) => {
+        .filter((message: any) => {
           if (message.role !== 'user' || message.body.trim().length === 0) {
             return false;
           }
@@ -24,7 +33,7 @@ export function useLauncherHistory(
 
           return message.body.toLowerCase().includes(queryWithoutActivator.toLowerCase());
         })
-        .map((message) => ({
+        .map((message: any) => ({
           id: message.id,
           label: message.body,
           detail: `current · ${formatHistoryDetail(message.createdAt ?? new Date().toISOString())}`,
@@ -32,7 +41,7 @@ export function useLauncherHistory(
           createdAt: message.createdAt ?? new Date().toISOString()
         }));
 
-      const persistedPromptEntries = savedPromptEntries.filter((entry) => (
+      const persistedPromptEntries = savedPromptEntries.filter((entry: any) => (
         queryWithoutActivator.trim().length === 0
         || entry.label.toLowerCase().includes(queryWithoutActivator.toLowerCase())
       ));
@@ -45,11 +54,12 @@ export function useLauncherHistory(
     },
     [messages, queryWithoutActivator, savedPromptEntries]
   );
+
   const commandHistoryEntries = useMemo<HistoryEntry[]>(
     () => {
       const currentTerminalEntries = terminalCommandBlocks
-        .filter((block) => block.command.trim().length > 0)
-        .map((block) => ({
+        .filter((block: any) => block.command.trim().length > 0)
+        .map((block: any) => ({
           id: `octomus-${block.id}`,
           label: block.command,
           detail: `octomus · ${formatHistoryDetail(block.startedAt)}`,
@@ -57,7 +67,7 @@ export function useLauncherHistory(
           createdAt: block.startedAt
         }));
 
-      const shellEntries = commandHistory.map((entry, index) => ({
+      const shellEntries = commandHistory.map((entry: any, index: number) => ({
         id: `${entry.source}-${entry.executedAt}-${index}`,
         label: entry.value,
         detail: `${entry.source} · ${formatHistoryDetail(entry.executedAt)}`,
@@ -66,7 +76,7 @@ export function useLauncherHistory(
       }));
 
       const filteredEntries = [...currentTerminalEntries, ...shellEntries]
-        .filter((entry) => (
+        .filter((entry: any) => (
           queryWithoutActivator.trim().length === 0
           || entry.label.toLowerCase().includes(queryWithoutActivator.toLowerCase())
         ))
@@ -76,6 +86,7 @@ export function useLauncherHistory(
     },
     [commandHistory, queryWithoutActivator, terminalCommandBlocks]
   );
+
   const historyEntries = useMemo(() => {
     if (historyTab === 'commands') {
       return commandHistoryEntries;
@@ -89,5 +100,5 @@ export function useLauncherHistory(
       .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
   }, [commandHistoryEntries, historyTab, promptHistoryEntries]);
 
-  return { historyEntries };
+  return useMemo(() => ({ historyEntries }), [historyEntries]);
 }

@@ -13,7 +13,8 @@ pub(crate) fn enqueue_sync_operation_inner(
     paths: &MemoryPaths,
     request: MemorySyncOperationRequest,
 ) -> Result<(), String> {
-    let mut queue = read_json_or_default::<MemorySyncQueue>(&paths.sync_queue_path()).unwrap_or_default();
+    let mut queue =
+        read_json_or_default::<MemorySyncQueue>(&paths.sync_queue_path()).unwrap_or_default();
     let now = now_string();
     if let Some(existing) = queue.operations.iter_mut().rev().find(|operation| {
         operation.status != "synced"

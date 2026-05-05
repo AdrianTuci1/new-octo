@@ -1,24 +1,37 @@
-/**
- * `useLauncherHandlers` - Event handlers and callbacks for UI interactions.
- * 
- * Responsibilities:
- * 1. Provide actions to open/close surfaces (e.g. `closeAgentSurface`, `toggleComposerSurface`, `openCommandsTray`).
- * 2. Manage conversation transitions (`openConversationFromBlock`, `handleTrayConversationSelect`, `handleNewConversation`).
- * 3. Ensure proper state clearing and sync when switching views.
- */
+
 import { useCallback } from 'react';
-import { createConversationId } from '../utils';
-import { runCommandInSurface } from '../utils/terminal';
-import { consumeShellModeActivator } from '../../../../lib';
+import { createConversationId } from '../../utils';
+import { runCommandInSurface } from '../../utils/terminal';
+import { consumeShellModeActivator } from '../../../../../lib';
+import type { LauncherProps } from '../types';
 
 export function useLauncherHandlers({
-  store, chat, tray, props, terminal, agentTerminal,
-  resolvedConversationId, memoryConversations,
+  store, tray, props, runtime, 
   seededConversationAnchorTimesRef, pendingConversationAnchorRef,
-  setResolvedPendingApproval, launchAgentComposer, clearTerminalSurface,
-  resolvedPendingApproval, saveSettings
-}: any) {
-  const hasControlledConversation = props.conversationId !== undefined;
+  launchAgentComposer, clearTerminalSurface, 
+}: {
+  store: any;
+  tray: any;
+  props: LauncherProps;
+  runtime: any;
+  seededConversationAnchorTimesRef: any;
+  pendingConversationAnchorRef: any;
+  launchAgentComposer: any;
+  clearTerminalSurface: any;
+}) {
+  const { 
+    chat, 
+    terminal, 
+    agentTerminal, 
+    resolvedConversationId, 
+    resolvedPendingApproval, 
+    setResolvedPendingApproval,
+    memoryStore,
+    hasControlledConversation
+  } = runtime;
+
+  const memoryConversations = memoryStore.conversations;
+  const saveSettings = memoryStore.saveSettings;
 
   const openCommandsTray = useCallback(() => {
     store.setSelectedHistoryIndex(0);
@@ -26,6 +39,7 @@ export function useLauncherHandlers({
       tray.toggleTray('commands');
     }
   }, [store.setSelectedHistoryIndex, tray.activeTrayMode, tray.isTrayOpen, tray.toggleTray]);
+
   const closeAgentSurface = useCallback(() => {
     void chat.saveCurrentConversation?.();
 
@@ -107,8 +121,6 @@ export function useLauncherHandlers({
 
     launchAgentComposer(chat.query.trim() || undefined);
   }, [chat.query, closeAgentSurface, store.composerSurface, launchAgentComposer]);
-
-
 
   const handleTrayConversationSelect = useCallback((nextConversationId: string) => {
     void chat.saveCurrentConversation?.();
@@ -289,10 +301,8 @@ export function useLauncherHandlers({
 
     store.setComposerSurface('agent');
     store.setModeLock(null);
-    chat.setQuery(action.value);
-    window.requestAnimationFrame(() => {
-      void chat.submitQuery();
-    });
+    chat.setQuery('');
+    void chat.submitQuery(action.value);
   }, [
     agentTerminal,
     chat.setQuery,
@@ -326,7 +336,6 @@ export function useLauncherHandlers({
     chat.setQuery(entry.label);
     tray.toggleTray('history');
   }, [chat.setQuery, store.setModeLock, tray.toggleTray]);
-
 
   return {
     openCommandsTray,

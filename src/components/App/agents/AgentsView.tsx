@@ -82,13 +82,13 @@ export function AgentsView() {
                 </div>
               ) : run.status === 'running' ? (
                 <div className="status-icon-running-wrapper">
-                   <Moon size={14} fill="currentColor" />
+                  <Moon size={14} fill="currentColor" />
                 </div>
               ) : (
                 <Circle size={16} className="status-icon-idle" />
               )}
             </div>
-            
+
             <div className="run-card-content">
               <div className="run-card-top">
                 <span className="run-card-title">{run.title}</span>

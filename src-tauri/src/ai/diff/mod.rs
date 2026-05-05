@@ -1,8 +1,8 @@
-pub mod validation;
 pub mod compute;
+pub mod validation;
 
-pub use validation::*;
 pub use compute::*;
+pub use validation::*;
 
 use std::fs;
 use std::path::Path;
@@ -25,14 +25,19 @@ pub async fn apply_file_diff(file_path: String, diff: DiffType) -> Result<(), St
         DiffType::Update { deltas, rename } => {
             // Apply deltas in reverse order to keep indices valid
             let mut sorted_deltas = deltas;
-            sorted_deltas.sort_by(|a, b| b.replacement_line_range.start.cmp(&a.replacement_line_range.start));
+            sorted_deltas.sort_by(|a, b| {
+                b.replacement_line_range
+                    .start
+                    .cmp(&a.replacement_line_range.start)
+            });
 
             for delta in sorted_deltas {
                 let start = delta.replacement_line_range.start.saturating_sub(1);
                 let end = delta.replacement_line_range.end.saturating_sub(1);
-                
-                let insertion_lines: Vec<String> = delta.insertion.lines().map(|s| s.to_string()).collect();
-                
+
+                let insertion_lines: Vec<String> =
+                    delta.insertion.lines().map(|s| s.to_string()).collect();
+
                 if start <= lines.len() {
                     let end_clamped = end.min(lines.len());
                     lines.splice(start..end_clamped, insertion_lines);

@@ -1,8 +1,8 @@
-pub mod model;
 pub mod ai_client;
 pub mod composer;
-pub mod scoring;
 pub mod context;
+pub mod model;
+pub mod scoring;
 
 pub use model::CommandPrediction;
 
@@ -11,6 +11,7 @@ pub async fn predict_command_with_ai(
     last_command: Option<&str>,
     context_messages: Vec<model::ContextMessageInput>,
     history_context: String,
+    rejected_suggestions: Vec<String>,
     api_key: &str,
     base_url: &str,
     model_id: &str,
@@ -20,6 +21,7 @@ pub async fn predict_command_with_ai(
         last_command,
         context_messages,
         history_context,
+        rejected_suggestions,
         api_key,
         base_url,
         model_id,

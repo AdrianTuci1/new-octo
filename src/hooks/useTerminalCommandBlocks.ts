@@ -114,7 +114,14 @@ export function useTerminalCommandBlocks(options: UseTerminalCommandBlocksOption
     setBlocks(nextBlocks);
   }, [applySharedMeta]);
 
+  const lastSharedSyntheticBlocksRef = useRef<TerminalCommandBlock[]>(sharedSyntheticBlocks);
+
   useEffect(() => {
+    if (lastSharedSyntheticBlocksRef.current === sharedSyntheticBlocks && syntheticBlocksRef.current.length === sharedSyntheticBlocks.length) {
+      return;
+    }
+    lastSharedSyntheticBlocksRef.current = sharedSyntheticBlocks;
+
     const normalizedSyntheticBlocks = sharedSyntheticBlocks.map((block) => applySharedMeta({
       ...block,
       presentation: block.presentation ?? 'conversation-link'
@@ -344,9 +351,19 @@ export function useTerminalCommandBlocks(options: UseTerminalCommandBlocksOption
     ]);
 
     return () => {
+      let hasUnlistened = false;
       void subscriptions.then((unlisteners) => {
-        unlisteners.forEach((unlisten) => unlisten());
+        if (hasUnlistened) return;
+        hasUnlistened = true;
+        unlisteners.forEach((unlisten) => {
+          try {
+            unlisten();
+          } catch (e) {
+            console.warn('[terminal-blocks] failed to unlisten safely', e);
+          }
+        });
       });
+      hasUnlistened = true;
 
       const activeSession = sessionRef.current;
       if (activeSession) {

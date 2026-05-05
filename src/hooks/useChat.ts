@@ -36,6 +36,34 @@ type AssistantMessageRegistration = {
 let agentBridgeReady: Promise<void> | null = null;
 const pendingTokenText: Record<string, string> = {};
 const assistantMessageRegistry = new Map<string, Map<symbol, AssistantMessageRegistration>>();
+const pendingFollowUpPayloads: Record<string, string> = {};
+const FOLLOW_UP_START = '<octomus_follow_up>';
+const FOLLOW_UP_END = '</octomus_follow_up>';
+const STRUCTURED_FOLLOW_UP_HEADINGS = [
+  'Sugestie de continuare',
+  'Recomandare de continuare',
+  'Follow up suggestion',
+  'Follow-up suggestion',
+  'Follow‐up suggestion',
+  'Follow‑up suggestion',
+  'Follow–up suggestion',
+  'Follow—up suggestion',
+  'Follow up',
+  'Follow-up',
+  'Follow‐up',
+  'Follow‑up',
+  'Follow–up',
+  'Follow—up',
+  'Suggested follow-up'
+];
+const STRUCTURED_FOLLOW_UP_FIELDS = [
+  'Descriere',
+  'Description',
+  'Etichetă',
+  'Eticheta',
+  'Label',
+  'Prompt'
+];
 
 function assistantRegistrations(assistantMessageId: string) {
   return Array.from(assistantMessageRegistry.get(assistantMessageId)?.values() ?? []);
@@ -114,6 +142,19 @@ function ensureAgentEventBridge(): Promise<void> {
       const registrations = assistantRegistrations(assistantMessageId);
 
       if (!toolCall || registrations.length === 0) return;
+
+      if (toolCall.name === 'suggest_follow_up') {
+        const followUpSuggestion = normalizeToolFollowUpSuggestion(toolCall.args);
+        if (!followUpSuggestion) return;
+
+        registrations.forEach((registration) => {
+          registration.update((message) => ({
+            ...message,
+            followUpSuggestion
+          }));
+        });
+        return;
+      }
 
       registrations.forEach((registration) => {
         registration.update((message) => ({
@@ -203,10 +244,14 @@ function chatHistoryFromMessages(messages: ChatMessage[]): AgentInputMessage[] {
     })
     .map((message) => ({
       role: message.role,
-      content: message.body,
+      content: stripFollowUpMetadata(message.body),
       toolCallId: message.toolCallId,
       toolCalls: message.toolCalls
     }));
+}
+
+function stripFollowUpMetadata(value: string) {
+  return visibleChatMessageBody(value);
 }
 
 function cleanTitleText(value: string) {
@@ -262,6 +307,7 @@ function sameMessages(left: ChatMessage[], right: ChatMessage[]) {
       && candidate.isError === message.isError
       && candidate.toolCallId === message.toolCallId
       && JSON.stringify(candidate.toolCalls ?? []) === JSON.stringify(message.toolCalls ?? [])
+      && JSON.stringify(candidate.followUpSuggestion ?? null) === JSON.stringify(message.followUpSuggestion ?? null)
       && JSON.stringify(candidate.usage ?? null) === JSON.stringify(message.usage ?? null);
   });
 }
@@ -276,6 +322,215 @@ function statusFromMessages(messages: ChatMessage[]) {
   }
 
   return 'success';
+}
+
+function normalizeFollowUpLabel(value: string) {
+  return value
+    .replace(/[`*_>#-]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .split(' ')
+    .slice(0, 10)
+    .join(' ');
+}
+
+function pendingFollowUpPrefixLength(value: string) {
+  const maxLength = Math.min(value.length, FOLLOW_UP_START.length - 1);
+  for (let length = maxLength; length > 0; length -= 1) {
+    if (FOLLOW_UP_START.startsWith(value.slice(value.length - length))) {
+      return length;
+    }
+  }
+
+  return 0;
+}
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function markdownLinePrefixPattern() {
+  return String.raw`\s*(?:[-*+>]\s*)?(?:[*_]{1,2})?`;
+}
+
+function markdownLineSuffixPattern() {
+  return String.raw`(?:[*_]{1,2})?\s*:\s*(?:[*_]{1,2})?\s*`;
+}
+
+function pendingStructuredFollowUpPrefixLength(value: string) {
+  const suffixes = STRUCTURED_FOLLOW_UP_HEADINGS.flatMap((heading) => [
+    heading,
+    `\n${heading}`,
+    `${heading}:`,
+    `\n${heading}:`
+  ]);
+  const maxLength = Math.min(value.length, Math.max(...suffixes.map((suffix) => suffix.length)) - 1);
+
+  for (let length = maxLength; length > 0; length -= 1) {
+    const suffix = value.slice(value.length - length).toLowerCase();
+    if (suffixes.some((candidate) => candidate.toLowerCase().startsWith(suffix))) {
+      return length;
+    }
+  }
+
+  return 0;
+}
+
+function structuredFollowUpHeadingMatch(value: string) {
+  const headingPattern = STRUCTURED_FOLLOW_UP_HEADINGS.map(escapeRegExp).join('|');
+  return new RegExp(
+    `(?:^|\\n)${markdownLinePrefixPattern()}(?:${headingPattern})${markdownLineSuffixPattern()}`,
+    'i'
+  ).exec(value);
+}
+
+function stripPromptQuotes(value: string) {
+  return value
+    .trim()
+    .replace(/^[“”„"']+/, '')
+    .replace(/[“”„"']+$/, '')
+    .trim();
+}
+
+function structuredFollowUpField(block: string, names: string[]) {
+  const allFieldPattern = STRUCTURED_FOLLOW_UP_FIELDS.map(escapeRegExp).join('|');
+  const fieldPattern = names.map(escapeRegExp).join('|');
+  const match = new RegExp(
+    `(?:^|\\n)${markdownLinePrefixPattern()}(?:${fieldPattern})${markdownLineSuffixPattern()}([\\s\\S]*?)(?=\\n${markdownLinePrefixPattern()}(?:${allFieldPattern})${markdownLineSuffixPattern()}|$)`,
+    'i'
+  ).exec(block);
+
+  return match?.[1]?.trim() ?? '';
+}
+
+function extractStructuredFollowUpSuggestion(raw: string) {
+  const headingMatch = structuredFollowUpHeadingMatch(raw);
+  if (!headingMatch || headingMatch.index === undefined) {
+    const pendingLength = pendingStructuredFollowUpPrefixLength(raw);
+    if (pendingLength === 0) return null;
+
+    return {
+      visibleBody: raw.slice(0, raw.length - pendingLength),
+      pendingPayload: raw.slice(raw.length - pendingLength),
+      suggestion: undefined as ChatMessage['followUpSuggestion'] | undefined
+    };
+  }
+
+  const startIndex = headingMatch.index;
+  const block = raw.slice(startIndex);
+  const prompt = stripPromptQuotes(structuredFollowUpField(block, ['Prompt']));
+  if (!prompt) {
+    return {
+      visibleBody: raw.slice(0, startIndex).trimEnd(),
+      pendingPayload: block,
+      suggestion: undefined as ChatMessage['followUpSuggestion'] | undefined
+    };
+  }
+
+  const description = stripPromptQuotes(structuredFollowUpField(block, ['Descriere', 'Description']));
+  const label = stripPromptQuotes(structuredFollowUpField(block, ['Etichetă', 'Eticheta', 'Label']));
+
+  return {
+    visibleBody: raw.slice(0, startIndex).trimEnd(),
+    pendingPayload: '',
+    suggestion: normalizeToolFollowUpSuggestion({
+      prompt,
+      label,
+      description
+    })
+  };
+}
+
+function normalizeToolFollowUpSuggestion(args: any): ChatMessage['followUpSuggestion'] | undefined {
+  const rawValue = typeof args?.prompt === 'string'
+    ? args.prompt
+    : typeof args?.value === 'string'
+      ? args.value
+      : typeof args?.query === 'string'
+        ? args.query
+        : '';
+  const value = rawValue.trim();
+  if (!value) {
+    return undefined;
+  }
+
+  const rawLabel = typeof args?.label === 'string' ? args.label.trim() : '';
+  const description = typeof args?.description === 'string' ? args.description.trim() : '';
+  const displayLabel = normalizeFollowUpLabel(value) || normalizeFollowUpLabel(rawLabel);
+
+  return {
+    label: displayLabel,
+    value,
+    description: description || undefined
+  };
+}
+
+function extractFollowUpSuggestion(raw: string) {
+  const startIndex = raw.indexOf(FOLLOW_UP_START);
+  if (startIndex < 0) {
+    const structured = extractStructuredFollowUpSuggestion(raw);
+    if (structured) {
+      return structured;
+    }
+
+    const pendingLength = pendingFollowUpPrefixLength(raw);
+    if (pendingLength === 0) {
+      return {
+        visibleBody: raw,
+        pendingPayload: '',
+        suggestion: undefined as ChatMessage['followUpSuggestion'] | undefined
+      };
+    }
+
+    return {
+      visibleBody: raw.slice(0, raw.length - pendingLength),
+      pendingPayload: raw.slice(raw.length - pendingLength),
+      suggestion: undefined as ChatMessage['followUpSuggestion'] | undefined
+    };
+  }
+
+  const endIndex = raw.indexOf(FOLLOW_UP_END, startIndex + FOLLOW_UP_START.length);
+  if (endIndex < 0) {
+    return {
+      visibleBody: raw.slice(0, startIndex),
+      pendingPayload: raw.slice(startIndex),
+      suggestion: undefined as ChatMessage['followUpSuggestion'] | undefined
+    };
+  }
+
+  const visibleBody = raw.slice(0, startIndex);
+  const payload = raw
+    .slice(startIndex + FOLLOW_UP_START.length, endIndex)
+    .trim();
+  const trailing = raw.slice(endIndex + FOLLOW_UP_END.length);
+
+  let suggestion: ChatMessage['followUpSuggestion'] | undefined;
+  try {
+    const parsed = JSON.parse(payload) as {
+      label?: string;
+      value?: string;
+      description?: string;
+    };
+    if (parsed.value?.trim()) {
+      suggestion = normalizeToolFollowUpSuggestion(parsed);
+    }
+  } catch {
+    suggestion = undefined;
+  }
+
+  return {
+    visibleBody: `${visibleBody}${trailing}`.trimEnd(),
+    pendingPayload: '',
+    suggestion
+  };
+}
+
+export function visibleChatMessageBody(value: string) {
+  return extractFollowUpSuggestion(value).visibleBody;
+}
+
+export function followUpSuggestionFromMessageBody(value: string) {
+  return extractFollowUpSuggestion(value).suggestion;
 }
 
 function statusFromConversationContent(messages: ChatMessage[], terminalBlocks: TerminalCommandBlock[]) {
@@ -297,7 +552,7 @@ export function useChat(options: UseChatOptions = {}) {
   const [activeRunId, setActiveRunId] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [messages, setMessagesState] = useState<ChatMessage[]>([]);
-  const conversationRecords = useMemoryStore((state) => state.conversationRecords);
+  const conversationRecord = useMemoryStore((state) => options.conversationId ? state.conversationRecords[options.conversationId] : undefined);
 
   const setMessages = useCallback((nextMessages: ChatMessage[] | ((prev: ChatMessage[]) => ChatMessage[])) => {
     setMessagesState((currentMessages) => {
@@ -335,9 +590,30 @@ export function useChat(options: UseChatOptions = {}) {
       }
 
       didAppend = true;
+      const bufferedFollowUp = pendingFollowUpPayloads[messageId] ?? '';
+      const combinedRaw = bufferedFollowUp
+        ? `${bufferedFollowUp}${text}`
+        : `${message.body}${text}`;
+      const extracted = extractFollowUpSuggestion(combinedRaw);
+      if (!extracted) {
+        return {
+          ...message,
+          body: `${message.body}${text}`
+        };
+      }
+
+      if (extracted.pendingPayload) {
+        pendingFollowUpPayloads[messageId] = extracted.pendingPayload;
+      } else {
+        delete pendingFollowUpPayloads[messageId];
+      }
+
       return {
         ...message,
-        body: `${message.body}${text}`
+        body: bufferedFollowUp
+          ? `${message.body}${extracted.visibleBody}`
+          : extracted.visibleBody,
+        followUpSuggestion: extracted.suggestion ?? message.followUpSuggestion
       };
     }));
 
@@ -432,12 +708,7 @@ export function useChat(options: UseChatOptions = {}) {
 
   useEffect(() => {
     const conversationId = options.conversationId?.trim();
-    if (!conversationId) {
-      return;
-    }
-
-    const conversation = conversationRecords[conversationId];
-    if (!conversation) {
+    if (!conversationId || !conversationRecord) {
       return;
     }
 
@@ -445,12 +716,12 @@ export function useChat(options: UseChatOptions = {}) {
       return;
     }
 
-    if (sameMessages(messagesRef.current, conversation.messages)) {
+    if (sameMessages(messagesRef.current, conversationRecord.messages)) {
       return;
     }
 
-    setMessages(conversation.messages);
-  }, [conversationRecords, options.conversationId, setMessages]);
+    setMessages(conversationRecord.messages);
+  }, [conversationRecord, options.conversationId, setMessages]);
 
   const saveCurrentConversation = useCallback(async () => {
     const currentMessages = messagesRef.current;
@@ -517,8 +788,9 @@ export function useChat(options: UseChatOptions = {}) {
     };
   }, [messages, options.terminalBlocks?.length, saveCurrentConversation]);
 
-  const submitQuery = async () => {
-    const trimmed = query.trim();
+  const submitQuery = async (promptOverride?: string) => {
+    const prompt = typeof promptOverride === 'string' ? promptOverride : query;
+    const trimmed = prompt.trim();
     if (!trimmed) return;
 
     if (trimmed === '/new') {

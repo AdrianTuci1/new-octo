@@ -115,6 +115,7 @@
   from {
     transform: translateX(100%);
   }
+
   to {
     transform: translateX(0);
   }
@@ -175,8 +176,13 @@
   opacity: 0.8;
 }
 
-.app-window-settings-body > *,
-.app-window-workspace > *,
-.app-window-panel > * {
+.app-window-settings-body>*,
+.app-window-workspace>*,
+.app-window-panel>* {
   min-width: 0;
+}
+
+.app-window-editor-drawer-wrapper.model-drawer-wrapper {
+  box-shadow: -10px 0 30px rgba(0, 0, 0, 0.5);
+  border-left: 1px solid rgba(255, 255, 255, 0.1);
 }

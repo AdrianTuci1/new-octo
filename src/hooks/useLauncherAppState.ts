@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 import type { LauncherProps } from '../components/Layout/Launcher/hooks';
 import { initialWorkspaceChromeTabs } from '../components/App/chrome';
 import type { TerminalSessionState } from '../components/App/utils';
@@ -79,6 +80,13 @@ export function useLauncherAppState(): UseLauncherAppStateResult {
     tabId: string;
   } | null>(null);
   const launcherSessionSaveTimeoutRef = useRef<number | null>(null);
+  const [isLauncherWindowVisible, setIsLauncherWindowVisible] = useState(() => {
+    if (!(window as any).__TAURI_INTERNALS__) {
+      return true;
+    }
+
+    return document.visibilityState !== 'hidden';
+  });
   const [isOnboardingCompleted, setIsOnboardingCompleted] = useState(() => {
     return localStorage.getItem('onboarding_completed') === 'true';
   });
@@ -86,6 +94,33 @@ export function useLauncherAppState(): UseLauncherAppStateResult {
   useEffect(() => {
     void bootstrapMemory();
   }, [bootstrapMemory]);
+
+  useEffect(() => {
+    if (!(window as any).__TAURI_INTERNALS__) {
+      return;
+    }
+
+    let cancelled = false;
+    let intervalId = 0;
+
+    const syncVisibility = async () => {
+      const currentWindow = getCurrentWindow();
+      const visible = await currentWindow.isVisible().catch(() => document.visibilityState !== 'hidden');
+      if (!cancelled) {
+        setIsLauncherWindowVisible(visible);
+      }
+    };
+
+    void syncVisibility();
+    intervalId = window.setInterval(() => {
+      void syncVisibility();
+    }, 250);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
+  }, []);
 
   useEffect(() => {
     if (panelMode !== 'launcher' || !memoryWorkspace) {
@@ -165,6 +200,7 @@ export function useLauncherAppState(): UseLauncherAppStateResult {
   const isLinkedToWorkspace = Boolean(
     launcherTabId && launcherWorkspace.tabs.some((tab) => tab.id === launcherTabId)
   );
+  const canSpotlightControlWorkspace = panelMode === 'launcher' && isLinkedToWorkspace && isLauncherWindowVisible;
   const [launcherSessionOverride, setLauncherSessionOverride] = useState<TerminalSessionState | null>(null);
 
   const effectiveLauncherSession = useMemo(() => {
@@ -197,7 +233,7 @@ export function useLauncherAppState(): UseLauncherAppStateResult {
     pendingLauncherSessionSaveRef.current = null;
     launcherSessionSaveTimeoutRef.current = null;
 
-    if (!pendingSave) {
+    if (!pendingSave || !canSpotlightControlWorkspace) {
       return;
     }
 
@@ -214,7 +250,7 @@ export function useLauncherAppState(): UseLauncherAppStateResult {
       },
       updatedAt: new Date().toISOString()
     });
-  }, [saveWorkspace]);
+  }, [canSpotlightControlWorkspace, saveWorkspace]);
 
   useEffect(() => {
     return () => {
@@ -226,6 +262,10 @@ export function useLauncherAppState(): UseLauncherAppStateResult {
   }, [flushLauncherSessionSave]);
 
   const scheduleLauncherSessionSave = useCallback((session: TerminalSessionState, tabId: string) => {
+    if (!canSpotlightControlWorkspace) {
+      return;
+    }
+
     pendingLauncherSessionSaveRef.current = { session, tabId };
 
     if (launcherSessionSaveTimeoutRef.current !== null) {
@@ -235,12 +275,12 @@ export function useLauncherAppState(): UseLauncherAppStateResult {
     launcherSessionSaveTimeoutRef.current = window.setTimeout(() => {
       void flushLauncherSessionSave();
     }, 120);
-  }, [flushLauncherSessionSave]);
+  }, [canSpotlightControlWorkspace, flushLauncherSessionSave]);
 
   const updateLauncherSession = useCallback((
     updater: (session: TerminalSessionState) => TerminalSessionState
   ) => {
-    if (!isLinkedToWorkspace || !launcherTabId) {
+    if (!canSpotlightControlWorkspace || !launcherTabId) {
       return;
     }
 
@@ -250,7 +290,7 @@ export function useLauncherAppState(): UseLauncherAppStateResult {
       scheduleLauncherSessionSave(nextSession, launcherTabId);
       return nextSession;
     });
-  }, [isLinkedToWorkspace, launcherSession, launcherTabId, scheduleLauncherSessionSave]);
+  }, [canSpotlightControlWorkspace, launcherSession, launcherTabId, scheduleLauncherSessionSave]);
 
   const handleLauncherConversationChange = useCallback((conversationId: string | null) => {
     updateLauncherSession((session) => ({
@@ -261,7 +301,7 @@ export function useLauncherAppState(): UseLauncherAppStateResult {
   }, [updateLauncherSession]);
 
   const handleLauncherNewConversation = useCallback(() => {
-    if (!isLinkedToWorkspace || !launcherTabId) {
+    if (!canSpotlightControlWorkspace || !launcherTabId) {
       return null;
     }
 
@@ -272,7 +312,7 @@ export function useLauncherAppState(): UseLauncherAppStateResult {
       composerSurface: 'agent'
     }));
     return conversationId;
-  }, [isLinkedToWorkspace, launcherTabId, updateLauncherSession]);
+  }, [canSpotlightControlWorkspace, launcherTabId, updateLauncherSession]);
 
   const handleLauncherComposerSurfaceChange = useCallback((composerSurface: 'agent' | 'terminal') => {
     updateLauncherSession((session) => ({
@@ -337,12 +377,12 @@ export function useLauncherAppState(): UseLauncherAppStateResult {
   }, [updateLauncherSession]);
 
   const launcherProps: LauncherProps = useMemo(() => ({
-    active: true,
-    conversationId: isLinkedToWorkspace ? effectiveLauncherSession?.activeConversationId ?? null : undefined,
-    initialComposerSurface: isLinkedToWorkspace ? effectiveLauncherSession?.composerSurface ?? 'terminal' : 'terminal',
-    initialTerminalSessionId: isLinkedToWorkspace ? effectiveLauncherSession?.terminalSessionId ?? null : null,
-    initialAgentTerminalSessionId: isLinkedToWorkspace ? effectiveLauncherSession?.agentTerminalSessionId ?? null : null,
-    initialWorkingDirectory: isLinkedToWorkspace ? effectiveLauncherSession?.workingDirectory ?? null : null,
+    active: isLauncherWindowVisible,
+    conversationId: canSpotlightControlWorkspace ? effectiveLauncherSession?.activeConversationId ?? null : undefined,
+    initialComposerSurface: canSpotlightControlWorkspace ? effectiveLauncherSession?.composerSurface ?? 'terminal' : 'terminal',
+    initialTerminalSessionId: canSpotlightControlWorkspace ? effectiveLauncherSession?.terminalSessionId ?? null : null,
+    initialAgentTerminalSessionId: canSpotlightControlWorkspace ? effectiveLauncherSession?.agentTerminalSessionId ?? null : null,
+    initialWorkingDirectory: canSpotlightControlWorkspace ? effectiveLauncherSession?.workingDirectory ?? null : null,
     onConversationChange: handleLauncherConversationChange,
     onComposerSurfaceChange: handleLauncherComposerSurfaceChange,
     onNewConversation: handleLauncherNewConversation,
@@ -353,13 +393,14 @@ export function useLauncherAppState(): UseLauncherAppStateResult {
     onAgentTerminalBlockMetaChange: handleLauncherAgentTerminalBlockMetaChange,
     onAgentTerminalSessionChange: handleLauncherAgentTerminalSessionChange,
     onWorkingDirectoryChange: handleLauncherWorkingDirectoryChange,
-    pendingApproval: isLinkedToWorkspace ? effectiveLauncherSession?.pendingApproval ?? null : undefined,
-    persistWorkingDirectory: !isLinkedToWorkspace,
-    persistTerminalSession: isLinkedToWorkspace,
-    sharedTerminalBlockMetaById: isLinkedToWorkspace ? effectiveLauncherSession?.terminalBlockMetaById ?? EMPTY_META : undefined,
-    sharedSyntheticBlocks: isLinkedToWorkspace ? effectiveLauncherSession?.syntheticBlocks ?? [] : undefined,
-    sharedAgentTerminalBlockMetaById: isLinkedToWorkspace ? effectiveLauncherSession?.agentTerminalBlockMetaById ?? EMPTY_META : undefined
+    pendingApproval: canSpotlightControlWorkspace ? effectiveLauncherSession?.pendingApproval ?? null : undefined,
+    persistWorkingDirectory: !canSpotlightControlWorkspace,
+    persistTerminalSession: canSpotlightControlWorkspace,
+    sharedTerminalBlockMetaById: canSpotlightControlWorkspace ? effectiveLauncherSession?.terminalBlockMetaById ?? EMPTY_META : undefined,
+    sharedSyntheticBlocks: canSpotlightControlWorkspace ? effectiveLauncherSession?.syntheticBlocks ?? [] : undefined,
+    sharedAgentTerminalBlockMetaById: canSpotlightControlWorkspace ? effectiveLauncherSession?.agentTerminalBlockMetaById ?? EMPTY_META : undefined
   }), [
+    canSpotlightControlWorkspace,
     effectiveLauncherSession,
     handleLauncherAgentTerminalBlockMetaChange,
     handleLauncherAgentTerminalSessionChange,
@@ -371,7 +412,7 @@ export function useLauncherAppState(): UseLauncherAppStateResult {
     handleLauncherTerminalBlockMetaChange,
     handleLauncherTerminalSessionChange,
     handleLauncherWorkingDirectoryChange,
-    isLinkedToWorkspace
+    isLauncherWindowVisible
   ]);
 
   return {

@@ -1,5 +1,6 @@
 import React, { type ReactNode } from 'react';
-import { ChevronDown } from 'lucide-react';
+import { ChevronDown, Plus } from 'lucide-react';
+import { useUIStore } from '../../../../stores';
 
 function SettingsToggle({ checked = false }: { checked?: boolean }) {
   return (
@@ -45,6 +46,8 @@ function SettingsRow({
 }
 
 export function AgentSection() {
+  const setIsModelDrawerOpen = useUIStore((state) => state.setIsModelDrawerOpen);
+
   return (
     <section className="settings-panel">
       <div className="settings-panel-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -117,30 +120,38 @@ export function AgentSection() {
       </div>
 
       <div className="settings-group">
-        <SectionHeader title="API Keys" />
+        <SectionHeader title="Connected Models" />
         <div className="settings-group-description">
-          Use your own API keys from model providers for the Octo Agent to use. API keys are stored locally and never synced to the cloud. Using auto models or models from providers you have not provided API keys for will consume Octo credits.
+          Add and manage model configurations from different providers. Your API keys are stored locally.
         </div>
 
-        <div className="settings-field">
-          <label className="settings-field-label">OpenAI API Key</label>
-          <div className="settings-input-wrapper">
-            <input type="text" className="settings-text-input" placeholder="sk- ..." />
+        <div className="settings-models-list">
+          {/* Mock models for now */}
+          <div className="settings-model-card" onClick={() => setIsModelDrawerOpen(true)}>
+            <div className="settings-model-card-info">
+              <div className="settings-model-card-name">GPT-4o Mini</div>
+              <div className="settings-model-card-provider">OpenAI</div>
+            </div>
+            <div className="settings-model-card-status">Active</div>
           </div>
-        </div>
 
-        <div className="settings-field">
-          <label className="settings-field-label">Anthropic API Key</label>
-          <div className="settings-input-wrapper">
-            <input type="text" className="settings-text-input" placeholder="sk-ant- ..." />
+          <div className="settings-model-card" onClick={() => setIsModelDrawerOpen(true)}>
+            <div className="settings-model-card-info">
+              <div className="settings-model-card-name">Claude 3.5 Sonnet</div>
+              <div className="settings-model-card-provider">Anthropic</div>
+            </div>
+            <div className="settings-model-card-status">Configured</div>
           </div>
-        </div>
 
-        <div className="settings-field">
-          <label className="settings-field-label">Google API Key</label>
-          <div className="settings-input-wrapper">
-            <input type="text" className="settings-text-input" placeholder="AIzaSy ..." />
-          </div>
+          <button 
+            className="settings-add-model-btn" 
+            onClick={() => setIsModelDrawerOpen(true)}
+          >
+            <div className="add-icon-wrapper">
+              <Plus size={16} />
+            </div>
+            <span>Add new model</span>
+          </button>
         </div>
 
         <div className="settings-promo">
@@ -197,4 +208,3 @@ export function AgentSection() {
     </section>
   );
 }
-

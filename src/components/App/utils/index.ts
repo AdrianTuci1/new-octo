@@ -182,3 +182,5 @@ export function buildComparableFromWorkspace(
 }
 
 export const EMPTY_META: Record<string, TerminalBlockSharedMeta> = {};
+export const EMPTY_SYNTHETIC_BLOCKS: TerminalCommandBlock[] = [];
+

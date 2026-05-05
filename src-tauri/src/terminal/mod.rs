@@ -6,8 +6,7 @@ mod session;
 use std::{
     collections::BTreeSet,
     collections::HashMap,
-    env,
-    fs,
+    env, fs,
     io::Read,
     path::{Path, PathBuf},
     process::Command,
@@ -243,7 +242,11 @@ pub fn terminal_create_session(
     manager: State<'_, TerminalManager>,
     request: CreateTerminalSessionRequest,
 ) -> Result<TerminalSessionInfo, String> {
-    if let Some(existing_session_id) = request.session_id.as_deref().filter(|value| !value.trim().is_empty()) {
+    if let Some(existing_session_id) = request
+        .session_id
+        .as_deref()
+        .filter(|value| !value.trim().is_empty())
+    {
         if let Some(session) = manager.attach(existing_session_id)? {
             return Ok(session.info());
         }
@@ -421,7 +424,9 @@ pub fn terminal_get_path_context() -> Result<FilesystemPathContext, String> {
 }
 
 #[tauri::command]
-pub fn terminal_get_runtime_context(request: PathRequest) -> Result<TerminalRuntimeContext, String> {
+pub fn terminal_get_runtime_context(
+    request: PathRequest,
+) -> Result<TerminalRuntimeContext, String> {
     let cwd = resolve_request_path(request.path)?;
 
     Ok(TerminalRuntimeContext {
@@ -437,7 +442,10 @@ pub fn terminal_list_directory_entries(
         .path
         .filter(|value| !value.trim().is_empty())
         .map(PathBuf::from)
-        .unwrap_or(env::current_dir().map_err(|error| format!("failed to read current directory: {error}"))?);
+        .unwrap_or(
+            env::current_dir()
+                .map_err(|error| format!("failed to read current directory: {error}"))?,
+        );
     let normalized_path = target_path
         .canonicalize()
         .map_err(|error| format!("failed to open '{}': {error}", target_path.display()))?;
@@ -479,14 +487,17 @@ pub fn terminal_list_directory_entries(
     }
 
     entries.sort_by(|left, right| {
-        right.is_directory
+        right
+            .is_directory
             .cmp(&left.is_directory)
             .then_with(|| left.name.to_lowercase().cmp(&right.name.to_lowercase()))
     });
 
     Ok(FilesystemDirectoryListing {
         current_path: normalized_path.to_string_lossy().to_string(),
-        parent_path: normalized_path.parent().map(|path| path.to_string_lossy().to_string()),
+        parent_path: normalized_path
+            .parent()
+            .map(|path| path.to_string_lossy().to_string()),
         entries,
     })
 }
@@ -544,12 +555,15 @@ pub async fn terminal_get_prediction(
         history.extend(read_bash_history(cutoff));
         history.extend(read_fish_history(cutoff));
 
-        if let Some(prediction) = crate::ai::predict::model::predict_from_sequences(last_command.as_deref(), &history) {
+        if let Some(prediction) =
+            crate::ai::predict::model::predict_from_sequences(last_command.as_deref(), &history)
+        {
             return Ok(Some(prediction));
         }
 
         // Fallback to folder-based zero state
-        let zero_state = crate::ai::predict::model::get_zero_state_suggestions(cwd.as_deref().unwrap_or("."));
+        let zero_state =
+            crate::ai::predict::model::get_zero_state_suggestions(cwd.as_deref().unwrap_or("."));
         if let Some(first) = zero_state.first() {
             return Ok(Some(crate::ai::predict::CommandPrediction {
                 input: "".to_string(),
@@ -563,7 +577,7 @@ pub async fn terminal_get_prediction(
     // 1. Combine session history with system history
     let cutoff = Utc::now() - Duration::days(180);
     let mut history = Vec::new();
-    
+
     // Add commands from the current session first (highest priority)
     for msg in &context_messages {
         if !msg.input.is_empty() {
@@ -583,8 +597,13 @@ pub async fn terminal_get_prediction(
     let mut best_prediction: Option<crate::ai::predict::CommandPrediction> = None;
 
     // 2. Try local history (immediate) - with PWD prioritization
-    if let Some(prediction) = crate::ai::predict::model::predict_from_history(trimmed, cwd.as_deref(), &history) {
-        println!("[Predict] History match: '{}' (conf: {:.2})", prediction.suggestion, prediction.confidence);
+    if let Some(prediction) =
+        crate::ai::predict::model::predict_from_history(trimmed, cwd.as_deref(), &history)
+    {
+        println!(
+            "[Predict] History match: '{}' (conf: {:.2})",
+            prediction.suggestion, prediction.confidence
+        );
         if prediction.suggestion.contains(' ') {
             return Ok(Some(prediction));
         }
@@ -592,7 +611,9 @@ pub async fn terminal_get_prediction(
     }
 
     // 3. Try Heuristics
-    if let Some(prediction) = crate::ai::predict::model::predict_next_command(trimmed, last_command.as_deref()) {
+    if let Some(prediction) =
+        crate::ai::predict::model::predict_next_command(trimmed, last_command.as_deref())
+    {
         println!("[Predict] Heuristic match: '{}'", prediction.suggestion);
         if prediction.suggestion.contains(' ') {
             return Ok(Some(prediction));
@@ -603,7 +624,9 @@ pub async fn terminal_get_prediction(
     }
 
     // 4. Try available commands (system executables)
-    if let Some(prediction) = crate::ai::predict::model::predict_from_executables(trimmed, &available_commands) {
+    if let Some(prediction) =
+        crate::ai::predict::model::predict_from_executables(trimmed, &available_commands)
+    {
         // Only take executable if it's longer than input and we have nothing better
         if prediction.suggestion.len() > trimmed.len() {
             println!("[Predict] Executable match: '{}'", prediction.suggestion);
@@ -630,14 +653,12 @@ pub async fn terminal_get_composer_intelligence(
     composer_manager: State<'_, crate::ai::predict::composer::ComposerIntelligenceManager>,
     request: crate::ai::predict::composer::ComposerIntelligenceRequest,
 ) -> Result<crate::ai::predict::composer::ComposerIntelligenceResponse, String> {
-    Ok(
-        crate::ai::predict::composer::get_composer_intelligence(
-            composer_manager.inner(),
-            ai_manager.inner(),
-            request,
-        )
-        .await,
+    Ok(crate::ai::predict::composer::get_composer_intelligence(
+        composer_manager.inner(),
+        ai_manager.inner(),
+        request,
     )
+    .await)
 }
 
 #[tauri::command]
@@ -712,7 +733,9 @@ fn spawn_reader_thread(
                                 };
                                 let data = clean_terminal_text(&bytes);
                                 if !data.is_empty() {
-                                    let _ = session.with_blocks(|blocks| blocks.append_output(&block_id, &data));
+                                    let _ = session.with_blocks(|blocks| {
+                                        blocks.append_output(&block_id, &data)
+                                    });
                                     let _ = app.emit(
                                         EVENT_BLOCK_OUTPUT,
                                         TerminalBlockOutputEvent {
@@ -787,7 +810,10 @@ pub(crate) fn home_dir() -> Option<std::path::PathBuf> {
 fn resolve_request_path(path: Option<String>) -> Result<PathBuf, String> {
     path.filter(|value| !value.trim().is_empty())
         .map(PathBuf::from)
-        .unwrap_or(env::current_dir().map_err(|error| format!("failed to read current directory: {error}"))?)
+        .unwrap_or(
+            env::current_dir()
+                .map_err(|error| format!("failed to read current directory: {error}"))?,
+        )
         .canonicalize()
         .map_err(|error| format!("failed to resolve path: {error}"))
 }
@@ -803,7 +829,9 @@ fn git_repo_context(cwd: &Path) -> Result<Option<GitRepoContext>, String> {
         return Ok(None);
     };
 
-    if !inside_repo.status.success() || String::from_utf8_lossy(&inside_repo.stdout).trim() != "true" {
+    if !inside_repo.status.success()
+        || String::from_utf8_lossy(&inside_repo.stdout).trim() != "true"
+    {
         return Ok(None);
     }
 
@@ -876,13 +904,18 @@ fn read_zsh_history(cutoff: DateTime<Utc>) -> Vec<ShellHistoryEntry> {
     };
 
     let count = contents.lines().count();
-    println!("[History] Reading Zsh history: {} lines from {:?}", count, path);
+    println!(
+        "[History] Reading Zsh history: {} lines from {:?}",
+        count, path
+    );
 
     contents
         .lines()
         .filter_map(|line| {
             let trimmed_line = line.trim();
-            if trimmed_line.is_empty() { return None; }
+            if trimmed_line.is_empty() {
+                return None;
+            }
 
             let (executed_at, value) = if trimmed_line.starts_with(": ") {
                 // Extended format: : 1234567890:0;command
@@ -890,7 +923,10 @@ fn read_zsh_history(cutoff: DateTime<Utc>) -> Vec<ShellHistoryEntry> {
                     if let Some((timestamp, command_part)) = rest.split_once(':') {
                         if let Some((_, command)) = command_part.split_once(';') {
                             let timestamp = timestamp.parse::<i64>().ok().unwrap_or(0);
-                            let time = Utc.timestamp_opt(timestamp, 0).single().unwrap_or_else(Utc::now);
+                            let time = Utc
+                                .timestamp_opt(timestamp, 0)
+                                .single()
+                                .unwrap_or_else(Utc::now);
                             (time, command.trim())
                         } else {
                             (Utc::now(), command_part.trim())
@@ -937,7 +973,10 @@ fn read_bash_history(cutoff: DateTime<Utc>) -> Vec<ShellHistoryEntry> {
     let mut entries = Vec::new();
 
     for line in contents.lines() {
-        if let Some(timestamp) = line.strip_prefix('#').and_then(|value| value.parse::<i64>().ok()) {
+        if let Some(timestamp) = line
+            .strip_prefix('#')
+            .and_then(|value| value.parse::<i64>().ok())
+        {
             current_timestamp = Some(timestamp);
             continue;
         }
@@ -987,7 +1026,10 @@ fn read_fish_history(cutoff: DateTime<Utc>) -> Vec<ShellHistoryEntry> {
             continue;
         }
 
-        let Some(timestamp) = trimmed.strip_prefix("when: ").and_then(|value| value.parse::<i64>().ok()) else {
+        let Some(timestamp) = trimmed
+            .strip_prefix("when: ")
+            .and_then(|value| value.parse::<i64>().ok())
+        else {
             continue;
         };
         let Some(command) = current_command.take() else {
@@ -1047,11 +1089,13 @@ pub fn terminal_read_file(request: PathRequest) -> Result<String, String> {
         return Err(format!("'{}' is not a file", path.display()));
     }
 
-    fs::read_to_string(&path).map_err(|error| format!("failed to read '{}': {error}", path.display()))
+    fs::read_to_string(&path)
+        .map_err(|error| format!("failed to read '{}': {error}", path.display()))
 }
 
 #[tauri::command]
 pub fn terminal_write_file(request: WriteFileRequest) -> Result<(), String> {
     let path = PathBuf::from(&request.path);
-    fs::write(&path, &request.content).map_err(|error| format!("failed to write to '{}': {error}", path.display()))
+    fs::write(&path, &request.content)
+        .map_err(|error| format!("failed to write to '{}': {error}", path.display()))
 }

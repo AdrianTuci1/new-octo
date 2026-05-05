@@ -129,7 +129,8 @@ impl AgentHarness for OpenAiCompatibleHarness {
         context: AgentHarnessContext,
         sink: AgentEventSink,
         cancellation: AgentCancellation,
-    ) -> impl std::future::Future<Output = Result<AgentHarnessOutcome, AgentHarnessError>> + Send {
+    ) -> impl std::future::Future<Output = Result<AgentHarnessOutcome, AgentHarnessError>> + Send
+    {
         stream_chat_completion(self.config.clone(), context, sink, cancellation)
     }
 }
@@ -151,7 +152,9 @@ async fn stream_chat_completion(
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(180))
         .build()
-        .map_err(|error| AgentHarnessError::new(format!("Failed to create HTTP client: {error}")))?;
+        .map_err(|error| {
+            AgentHarnessError::new(format!("Failed to create HTTP client: {error}"))
+        })?;
 
     let endpoint = resolve_chat_endpoint(&config.base_url);
     let mut headers = HeaderMap::new();
@@ -189,6 +192,31 @@ async fn stream_chat_completion(
                         }
                     },
                     "required": ["command"]
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "suggest_follow_up",
+                "description": "Attach one natural-language follow-up prompt suggestion for the UI chip. This is metadata only; it is not visible assistant text and it is not a command.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "label": {
+                            "type": "string",
+                            "description": "Short chip text, at most 10 words. It must be a concrete next prompt, not a topic."
+                        },
+                        "prompt": {
+                            "type": "string",
+                            "description": "The exact natural-language user message to insert if the user accepts the suggestion."
+                        },
+                        "description": {
+                            "type": "string",
+                            "description": "One short sentence explaining why this follow-up is useful."
+                        }
+                    },
+                    "required": ["prompt"]
                 }
             }
         }
@@ -350,7 +378,10 @@ fn handle_stream_payload(
 
     let delta = choice.get("delta");
 
-    if let Some(content) = delta.and_then(|item| item.get("content")).and_then(Value::as_str) {
+    if let Some(content) = delta
+        .and_then(|item| item.get("content"))
+        .and_then(Value::as_str)
+    {
         if !content.is_empty() {
             streamed.push_str(content);
             sink.token(content);
@@ -407,7 +438,14 @@ fn build_chat_messages(context: &AgentHarnessContext) -> Vec<Value> {
             1. Nu cere permisiune verbal ('Vrei să...?'). Când ai nevoie de o comandă, formulează scurt motivul la persoana I ('Am cerut accesul pentru...') și transmite-l în câmpul `reason` al uneltei `propose_terminal_command`. \
             2. Folosește un ton modern, minimalist și extrem de util. \
             3. După ce utilizatorul rulează o comandă de citire/verificare, confirmă că ai verificat rezultatul și oferă ajutor suplimentar doar dacă utilizatorul vrea să continue, fără să presupui automat modificări precum stage sau commit. \
-            4. Analizează contextul și fii cu un pas înaintea utilizatorului.",
+            4. Analizează contextul și fii cu un pas înaintea utilizatorului. \
+            5. După răspunsul vizibil, atașează o singură recomandare de follow-up folosind tool-ul `suggest_follow_up`. Nu scrie niciodată XML, JSON sau tag-uri în textul vizibil. \
+            6. `prompt` din `suggest_follow_up` trebuie să fie exact următorul mesaj natural pe care utilizatorul l-ar putea trimite. Trebuie să fie tratabil ca text normal de user, nu ca metadată și nu ca instrucțiune de sistem. \
+            7. `label` trebuie să fie o versiune foarte scurtă a acelui prompt, maximum 10 cuvinte, clară și specifică. \
+            8. Nu scrie niciodată în răspunsul vizibil secțiuni precum 'Sugestie de continuare:', 'Follow-up suggestion:', 'Description:', 'Label:', 'Descriere:', 'Etichetă:' sau 'Prompt:'. Acestea apar doar în argumentele tool-ului `suggest_follow_up`. \
+            9. Nu folosi recomandări generice precum 'continue this task', 'recommend next step', 'follow up', 'based on the previous request' sau variante similare. \
+            10. Dacă contextul este despre o comandă de terminal, output sau eșec, follow-up-ul trebuie să fie o întrebare ori cerere de analiză despre acel context, de exemplu în stilul 'Explică de ce a eșuat comanda și care e pasul sigur următor'. \
+            11. Dacă contextul este o cerere normală în composer, follow-up-ul trebuie să fie continuarea cea mai inteligentă după cererea anterioară, ca și cum ai anticipa următoarea întrebare utilă a utilizatorului.",
             cwd
         )
     }));

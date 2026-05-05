@@ -1,4 +1,4 @@
-import { ArrowRight, Command, CornerDownLeft, SquareTerminal } from 'lucide-react';
+import { ArrowRight, Command, CornerDownLeft, Sparkles, SquareTerminal } from 'lucide-react';
 import type { KeyboardEventHandler } from 'react';
 import { GitBranchPicker } from './GitBranchPicker';
 import { useComposerBar } from './useComposerBar';
@@ -116,8 +116,16 @@ export function TerminalComposer({
                   className="composer-recommendation-chip"
                   onClick={() => onRecommendedActionClick(recommendedAction)}
                   type="button"
+                  title={recommendedAction.description}
                 >
-                  <span className="recommendation-label">{recommendedAction.value}</span>
+                  <Sparkles size={12} className="recommendation-icon" />
+                  <span className="recommendation-label">{recommendedAction.label}</span>
+                  <span className="recommendation-accept-group" aria-hidden="true">
+                    <span className="recommendation-accept-key">↑</span>
+                    <span className="recommendation-accept-key">
+                      <CornerDownLeft size={10} />
+                    </span>
+                  </span>
                 </button>
               </div>
             )}

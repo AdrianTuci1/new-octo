@@ -35,19 +35,23 @@ export function useKeyboardShortcuts(options: KeyboardShortcutOptions) {
   const { query, setQuery, submitQuery } = options;
 
   const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    const selectionStart = event.currentTarget.selectionStart ?? query.length;
+    const selectionEnd = event.currentTarget.selectionEnd ?? query.length;
+    const isCaretAtEnd = selectionStart === selectionEnd && selectionEnd === query.length;
+
     if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'i') {
       event.preventDefault();
       options.onToggleShellMode?.();
       return;
     }
 
-    if ((event.key === 'ArrowRight' || event.key === 'Tab') && options.isShellMode && options.hasPrediction) {
+    if ((event.key === 'ArrowRight' || event.key === 'Tab') && options.isShellMode && options.hasPrediction && isCaretAtEnd) {
       event.preventDefault();
       options.onAcceptPrediction?.();
       return;
     }
 
-    if (event.key === 'ArrowDown' && options.isShellMode && options.hasPrediction) {
+    if (event.key === 'ArrowDown' && options.isShellMode && options.hasPrediction && isCaretAtEnd) {
       event.preventDefault();
       options.onCyclePrediction?.();
       return;

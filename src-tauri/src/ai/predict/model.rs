@@ -39,21 +39,26 @@ pub fn predict_from_history(
     history: &[crate::terminal::ShellHistoryEntry],
 ) -> Option<CommandPrediction> {
     let normalized_input = input.to_lowercase();
-    use std::collections::HashMap;
     use chrono::{DateTime, Utc};
-    
+    use std::collections::HashMap;
+
     // 1. Filter and group by command value to count frequency and collect metadata
     // Map: command -> (frequency, is_same_dir, last_executed_at)
     let mut stats_map: HashMap<String, (usize, bool, DateTime<Utc>)> = HashMap::new();
-    
+
     for entry in history {
-        if entry.value.to_lowercase().starts_with(&normalized_input) && entry.value.len() > input.len() {
-            let is_same_dir = cwd.map_or(false, |dir| entry.pwd.as_ref().map_or(false, |p| p == dir));
+        if entry.value.to_lowercase().starts_with(&normalized_input)
+            && entry.value.len() > input.len()
+        {
+            let is_same_dir =
+                cwd.map_or(false, |dir| entry.pwd.as_ref().map_or(false, |p| p == dir));
             let executed_at = DateTime::parse_from_rfc3339(&entry.executed_at)
                 .map(|dt| dt.with_timezone(&Utc))
                 .unwrap_or_else(|_| Utc::now());
 
-            let stats = stats_map.entry(entry.value.clone()).or_insert((0, false, executed_at));
+            let stats = stats_map
+                .entry(entry.value.clone())
+                .or_insert((0, false, executed_at));
             stats.0 += 1;
             if is_same_dir {
                 stats.1 = true;
@@ -71,16 +76,24 @@ pub fn predict_from_history(
     // 2. Rank based on our scoring module
     let now = Utc::now();
     let mut ranked_matches: Vec<_> = stats_map.into_iter().collect();
-    ranked_matches.sort_by(|(val_a, (freq_a, same_dir_a, last_a)), (val_b, (freq_b, same_dir_b, last_b))| {
-        let hours_a = (now - *last_a).num_hours() as f32;
-        let hours_b = (now - *last_b).num_hours() as f32;
-        
-        let score_a = super::scoring::PredictionScore::calculate(val_a, *freq_a, *same_dir_a, hours_a).total_score;
-        let score_b = super::scoring::PredictionScore::calculate(val_b, *freq_b, *same_dir_b, hours_b).total_score;
-        
-        score_b.partial_cmp(&score_a).unwrap_or(std::cmp::Ordering::Equal)
-            .then_with(|| val_b.len().cmp(&val_a.len())) // Prefer LONGER (more complete) commands
-    });
+    ranked_matches.sort_by(
+        |(val_a, (freq_a, same_dir_a, last_a)), (val_b, (freq_b, same_dir_b, last_b))| {
+            let hours_a = (now - *last_a).num_hours() as f32;
+            let hours_b = (now - *last_b).num_hours() as f32;
+
+            let score_a =
+                super::scoring::PredictionScore::calculate(val_a, *freq_a, *same_dir_a, hours_a)
+                    .total_score;
+            let score_b =
+                super::scoring::PredictionScore::calculate(val_b, *freq_b, *same_dir_b, hours_b)
+                    .total_score;
+
+            score_b
+                .partial_cmp(&score_a)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then_with(|| val_b.len().cmp(&val_a.len())) // Prefer LONGER (more complete) commands
+        },
+    );
 
     let (suggestion, (freq, is_same_dir, _)) = ranked_matches.first()?;
 
@@ -94,7 +107,11 @@ pub fn predict_from_history(
     Some(CommandPrediction {
         input: input.to_string(),
         suggestion: suggestion.clone(),
-        confidence: if *is_same_dir { 0.95 } else { 0.85 + (0.1 * (*freq as f32 / 100.0).min(1.0)) },
+        confidence: if *is_same_dir {
+            0.95
+        } else {
+            0.85 + (0.1 * (*freq as f32 / 100.0).min(1.0))
+        },
         kind: PredictionKind::History,
     })
 }
@@ -177,7 +194,7 @@ pub fn predict_from_sequences(
     }
 
     let (best_successor, count) = successors.into_iter().max_by_key(|&(_, count)| count)?;
-    
+
     // Only suggest if it happened more than once to avoid noise
     if count < 2 {
         return None;
@@ -227,7 +244,10 @@ pub fn predict_next_command(input: &str, last_command: Option<&str>) -> Option<C
     })
 }
 
-pub fn predict_from_executables(input: &str, available_commands: &[String]) -> Option<CommandPrediction> {
+pub fn predict_from_executables(
+    input: &str,
+    available_commands: &[String],
+) -> Option<CommandPrediction> {
     let normalized_input = input.to_lowercase();
     if input.contains(' ') {
         return None;

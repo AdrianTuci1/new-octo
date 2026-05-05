@@ -156,12 +156,14 @@
 }
 
 .status-icon-completed-wrapper {
-  color: #4ade80; /* Green */
+  color: #4ade80;
+  /* Green */
   opacity: 0.9;
 }
 
 .status-icon-running-wrapper {
-  color: #d946ef; /* Fuchsia/Purple */
+  color: #d946ef;
+  /* Fuchsia/Purple */
   display: flex;
   align-items: center;
   justify-content: center;

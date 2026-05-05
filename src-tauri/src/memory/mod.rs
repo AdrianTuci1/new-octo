@@ -14,8 +14,8 @@ use uuid::Uuid;
 use crate::memory::{
     cloud::{summary_from_cloud_object, upsert_cloud_object_summary},
     conversations::{
-        derive_task_store, first_message_created_at, status_from_messages, summary_from_conversation,
-        title_from_messages, upsert_conversation_summary,
+        derive_task_store, first_message_created_at, status_from_messages,
+        summary_from_conversation, title_from_messages, upsert_conversation_summary,
     },
     storage::{merge_values, now_string, read_json_or_default, write_json_atomic},
     sync::{enqueue_sync_operation_inner, sync_status_from_queue},
@@ -537,10 +537,7 @@ pub async fn memory_sync_once(
 mod tests {
     use serde_json::json;
 
-    use crate::memory::{
-        conversations::derive_task_store,
-        storage::merge_values,
-    };
+    use crate::memory::{conversations::derive_task_store, storage::merge_values};
 
     #[test]
     fn derives_root_task_exchanges_and_tool_subtasks() {
@@ -582,7 +579,10 @@ mod tests {
         assert_eq!(root_task_id, "task_root_conversation-01");
         assert_eq!(exchanges.len(), 1);
         assert_eq!(exchanges[0].input_message_ids, vec!["user-1"]);
-        assert_eq!(exchanges[0].output_message_ids, vec!["assistant-1", "tool-1"]);
+        assert_eq!(
+            exchanges[0].output_message_ids,
+            vec!["assistant-1", "tool-1"]
+        );
         assert_eq!(exchanges[0].tool_call_ids, vec!["call-1"]);
         assert!(tasks.iter().any(|task| task.kind == "tool"));
     }

@@ -19,19 +19,15 @@ pub fn spawn_terminal(rows: u16, cols: u16, cwd: Option<String>) -> Result<Spawn
     let integration = ShellIntegration::create(shell_kind)?;
 
     let pty_system = native_pty_system();
-    let pair = match pty_system
-        .openpty(PtySize {
-            rows,
-            cols,
-            pixel_width: 0,
-            pixel_height: 0,
-        })
-    {
+    let pair = match pty_system.openpty(PtySize {
+        rows,
+        cols,
+        pixel_width: 0,
+        pixel_height: 0,
+    }) {
         Ok(pair) => pair,
         Err(error) => {
-            eprintln!(
-                "[terminal] failed to open PTY, falling back to headless session: {error}"
-            );
+            eprintln!("[terminal] failed to open PTY, falling back to headless session: {error}");
             return Ok(SpawnedPty {
                 session: TerminalSession::new_headless(shell, cwd),
                 reader: None,

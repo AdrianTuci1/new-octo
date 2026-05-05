@@ -3,9 +3,7 @@ use std::collections::HashMap;
 use crate::memory::{
     paths::MemoryPaths,
     storage::{read_json_or_default, write_json_atomic},
-    types::{
-        MemoryCloudObjectIndex, MemoryCloudObjectRecord, MemoryCloudObjectSummary,
-    },
+    types::{MemoryCloudObjectIndex, MemoryCloudObjectRecord, MemoryCloudObjectSummary},
 };
 
 pub(crate) fn upsert_cloud_object_summary(

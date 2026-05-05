@@ -1,0 +1,151 @@
+
+/**
+ * Module: useLauncherShortcuts
+ */
+import { useEffect, type KeyboardEvent } from 'react';
+import * as Hooks from '../../../../../hooks';
+import * as Utils from '../../utils';
+import type { LauncherProps } from '../types';
+
+export function useLauncherShortcuts({
+  active, store, tray, props, runtime, history, ui, handlers, refs, actions
+}: {
+  active: boolean;
+  store: any;
+  tray: any;
+  props: LauncherProps;
+  runtime: any;
+  history: any;
+  ui: any;
+  handlers: any;
+  refs: any;
+  actions: any;
+}) {
+  const { chat, terminal, agentTerminal, workingDirectory, modelSelection, requestCommandApproval, setResolvedPendingApproval } = runtime;
+  const { historyEntries } = history;
+  const { visibleModels } = ui;
+  const { clearTerminalSurface, openAppWindow, launchAgentComposer } = actions;
+  const { variant = 'panel' } = props;
+
+  // 1. Internal Keyboard Logic (Advanced Keyboard Shortcuts)
+  const { handleKeyDown } = Hooks.useKeyboardShortcuts({
+    query: chat.query,
+    setQuery: chat.setQuery,
+    submitQuery: chat.submitQuery,
+    cwd: workingDirectory.currentPath,
+    modelId: modelSelection.selectedModelId,
+    disableTrayShortcuts: store.composerSurface === 'terminal' && tray.isTrayOpen && tray.activeTrayMode === 'commands',
+    onCommandApproval: requestCommandApproval,
+    onNewChat: () => {
+      setResolvedPendingApproval(null);
+      store.setModeLock(null);
+      store.setComposerSurface('agent');
+      clearTerminalSurface();
+    },
+    onTerminalCommand: (cmd) => Utils.runCommandInSurface(
+      cmd,
+      store.composerSurface,
+      terminal,
+      agentTerminal,
+      clearTerminalSurface,
+      'user'
+    ),
+    isShellMode: store.composerSurface === 'terminal' || store.modeLock === 'shell',
+    isManualShellMode: store.composerSurface !== 'terminal' && store.modeLock === 'shell',
+    hasPrediction: false, // This will be updated if needed
+    onAcceptPrediction: () => {}, 
+    onCyclePrediction: () => {},
+    onExitShellMode: () => store.setModeLock(chat.query.trim().length > 0 ? 'chat' : null),
+    onToggleShellMode: () => store.setModeLock(store.modeLock === 'shell' ? 'chat' : 'shell'),
+    onCloseTray: tray.closeTray,
+    onToggleHelpTray: tray.openHelp,
+    onToggleConversationsTray: tray.openConversations
+  });
+
+  // 2. Global Event Listeners
+  useEffect(() => {
+    if (!active || variant !== 'panel' || !openAppWindow) return;
+    const handleOpenAppShortcut = (event: globalThis.KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== 'x') return;
+      event.preventDefault();
+      event.stopPropagation();
+      openAppWindow();
+    };
+    window.addEventListener('keydown', handleOpenAppShortcut, true);
+    return () => window.removeEventListener('keydown', handleOpenAppShortcut, true);
+  }, [active, openAppWindow, variant]);
+
+  // 3. UI Interaction Handlers
+  const handleComposerKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      event.stopPropagation();
+      if (tray.isTrayOpen) {
+        tray.closeTray();
+        return;
+      }
+      if (store.composerSurface === 'terminal') return;
+      handlers.toggleComposerSurface();
+      return;
+    }
+
+    if (store.composerSurface === 'terminal') {
+      if (event.key === 'Enter' && !event.shiftKey) {
+        event.preventDefault();
+        const command = chat.query.trim();
+        if (!command) return;
+        if (command === 'clear') {
+          clearTerminalSurface();
+          chat.setQuery('');
+          return;
+        }
+        void Utils.runCommandInSurface(command, 'terminal', terminal, agentTerminal, clearTerminalSurface, 'user').then(() => chat.setQuery(''));
+        return;
+      }
+      return;
+    }
+
+    // Tray Navigation
+    if (tray.isTrayOpen && (tray.activeTrayMode === 'history' || tray.activeTrayMode === 'models')) {
+      const items = tray.activeTrayMode === 'history' ? historyEntries : visibleModels;
+      const setter = tray.activeTrayMode === 'history' ? store.setSelectedHistoryIndex : store.setSelectedModelIndex;
+      const index = tray.activeTrayMode === 'history' ? store.selectedHistoryIndex : store.selectedModelIndex;
+
+      if (event.key === 'ArrowDown') {
+        event.preventDefault();
+        setter((i: number) => Math.min(i + 1, Math.max(0, items.length - 1)));
+        return;
+      }
+      if (event.key === 'ArrowUp') {
+        event.preventDefault();
+        setter((i: number) => Math.max(i - 1, 0));
+        return;
+      }
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        const item = items[index];
+        if (item) {
+          if (tray.activeTrayMode === 'history') {
+            store.setModeLock(item.kind === 'command' ? 'shell' : 'chat');
+            chat.setQuery(item.label);
+          } else {
+            modelSelection.selectModel(item.id, event.metaKey || event.ctrlKey);
+          }
+          tray.toggleTray(tray.activeTrayMode);
+        }
+        return;
+      }
+    }
+
+    if (event.key === 'ArrowUp' && !event.shiftKey && chat.query.trim().length === 0 && !tray.isTrayOpen) {
+      event.preventDefault();
+      store.setSelectedHistoryIndex(0);
+      tray.toggleTray('history');
+      return;
+    }
+
+    handleKeyDown(event);
+  };
+
+  return { handleComposerKeyDown };
+}

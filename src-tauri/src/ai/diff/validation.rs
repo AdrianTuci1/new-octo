@@ -1,7 +1,9 @@
+use derivative::Derivative;
 use itertools::{EitherOrBoth, Itertools};
 use lazy_static::lazy_static;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use std::{
     cmp::Ordering,
     fmt::{self, Display},
@@ -10,8 +12,6 @@ use std::{
     sync::LazyLock,
 };
 use strsim::jaro_winkler;
-use derivative::Derivative;
-use serde_json::json;
 
 lazy_static! {
     /// Regex to parse a line number from a string in the format "{number}|{line}"
@@ -81,18 +81,14 @@ impl Display for ParsedDiff {
 #[serde(tag = "kind")]
 pub enum DiffType {
     #[serde(rename = "create")]
-    Create {
-        delta: DiffDelta,
-    },
+    Create { delta: DiffDelta },
     #[serde(rename = "update")]
     Update {
         deltas: Vec<DiffDelta>,
         rename: Option<PathBuf>,
     },
     #[serde(rename = "delete")]
-    Delete {
-        delta: DiffDelta,
-    },
+    Delete { delta: DiffDelta },
 }
 
 impl DiffType {
@@ -212,7 +208,8 @@ fn unmatched_line_suffix<'a>(search_line: &str, file_line: &'a str) -> Option<&'
 
 fn remove_extra_line_num_prefix(replace: String) -> String {
     lazy_static! {
-        static ref LINE_NUMBER_PATTERN: Regex = Regex::new(r"^\d+\|").expect("line number regex must compile");
+        static ref LINE_NUMBER_PATTERN: Regex =
+            Regex::new(r"^\d+\|").expect("line number regex must compile");
     }
 
     lines(&replace)
@@ -798,13 +795,7 @@ fn find_v4a_match(edit: &V4AHunk, file_lines: &[&str]) -> Option<Range<usize>> {
     .concat()
     .join("\n");
 
-    if let Some(range) = match_diff(
-        &combined_search,
-        None,
-        search_lines,
-        1.0,
-        MakeExactMatch,
-    ) {
+    if let Some(range) = match_diff(&combined_search, None, search_lines, 1.0, MakeExactMatch) {
         return calculate_old_range(search_start, range, &pre_context_lines, &old_lines);
     }
 

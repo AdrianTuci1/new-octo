@@ -1,19 +1,31 @@
-/**
- * `useLauncherUIState` - Computes the UI flags and class names for the Launcher.
- * 
- * Responsibilities:
- * 1. Filter and compute `visibleModels` and `visibleTrayConversations`.
- * 2. Evaluate boolean flags (`isChatOpen`, `isExpanded`, etc.) to control component rendering.
- * 3. Generate dynamic CSS classes for the root and shell containers.
- */
+
 import { useMemo } from 'react';
-import { buildConversationBranchLabel } from '../utils';
+import { buildConversationBranchLabel } from '../../utils';
+import type { LauncherProps } from '../types';
 
 export function useLauncherUIState({
-  store, tray, props, modelSelection, memoryConversations,
-  activeMessages, activeTimelineBlocks, activeTimelineError,
-  chatMode
-}: any) {
+  store, tray, props, runtime
+}: {
+  store: any;
+  tray: any;
+  props: LauncherProps;
+  runtime: any;
+}) {
+  const { 
+    modelSelection, 
+    memoryStore, 
+    chat, 
+    agentTerminal, 
+    terminal, 
+    activeTimelineError 
+  } = runtime;
+
+  const chatMode = props.chatMode || 'auto';
+  const memoryConversations = memoryStore.conversations;
+  const isTerminalSurface = store.composerSurface === 'terminal';
+  const activeMessages = isTerminalSurface ? [] : chat.messages;
+  const activeTimelineBlocks = isTerminalSurface ? terminal.blocks : agentTerminal.blocks;
+
   const visibleModels = useMemo(() => {
     if (store.modelTab !== 'saved') {
       return modelSelection.models;
@@ -22,6 +34,7 @@ export function useLauncherUIState({
     const savedModels = modelSelection.models.filter((model: any) => model.id === modelSelection.selectedModelId);
     return savedModels.length > 0 ? savedModels : modelSelection.models;
   }, [modelSelection.models, modelSelection.selectedModelId, store.modelTab]);
+
   const visibleTrayConversations = useMemo(() => {
     const normalizedQuery = store.conversationSearchQuery.trim().toLowerCase();
     const filteredConversations = normalizedQuery.length === 0
@@ -38,10 +51,12 @@ export function useLauncherUIState({
       timeLabel: conversation.timeLabel
     }));
   }, [store.conversationSearchQuery, memoryConversations]);
+
   const hasChatContent = activeMessages.length > 0 || activeTimelineBlocks.length > 0 || Boolean(activeTimelineError);
   const isChatOpen = chatMode === 'always-open' ? true : hasChatContent;
   const isChatVisible = chatMode === 'always-open' ? true : hasChatContent && !tray.isTrayOpen;
   const isExpanded = chatMode === 'always-open' ? true : tray.isTrayOpen || hasChatContent;
+
   const launcherRootClassName = props.variant === 'workspace' ? 'launcher-workspace-root' : 'prototype-root';
   const launcherShellClassName = [
     'launcher-shell',
@@ -50,12 +65,20 @@ export function useLauncherUIState({
     tray.isTrayOpen ? 'tray-active' : '',
     isExpanded ? 'expanded' : 'collapsed'
   ].filter(Boolean).join(' ');
-  return {
+
+  return useMemo(() => ({
     visibleModels,
     visibleTrayConversations,
     isChatOpen,
     isExpanded,
     launcherRootClassName,
     launcherShellClassName
-  };
+  }), [
+    visibleModels,
+    visibleTrayConversations,
+    isChatOpen,
+    isExpanded,
+    launcherRootClassName,
+    launcherShellClassName
+  ]);
 }

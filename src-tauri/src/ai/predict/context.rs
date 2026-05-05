@@ -1,6 +1,6 @@
+use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
-use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -12,7 +12,7 @@ pub struct TerminalLocalContext {
 
 pub fn gather_local_context(cwd: &str) -> TerminalLocalContext {
     let mut files = Vec::new();
-    
+
     // List first 20 files/dirs in CWD to give AI context
     if let Ok(entries) = fs::read_dir(cwd) {
         for entry in entries.flatten().take(20) {

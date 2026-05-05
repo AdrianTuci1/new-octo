@@ -1,5 +1,5 @@
 import { useState, useEffect, type KeyboardEvent } from 'react';
-import { ArrowRight, Bot, MonitorSmartphone, Plus, Sparkles } from 'lucide-react';
+import { ArrowRight, Bot, CornerDownLeft, MonitorSmartphone, Plus, Sparkles } from 'lucide-react';
 import { GitBranchPicker } from './GitBranchPicker';
 import { useComposerBar } from './useComposerBar';
 import { WorkingDirectoryPicker } from './WorkingDirectoryPicker';
@@ -109,9 +109,16 @@ export function ComposerBar({
                     className="composer-recommendation-chip"
                     onClick={() => onRecommendedActionClick(recommendedAction)}
                     type="button"
+                    title={recommendedAction.description}
                   >
                     <Sparkles size={12} className="recommendation-icon" />
-                    <span className="recommendation-label">{recommendedAction.value}</span>
+                    <span className="recommendation-label">{recommendedAction.label}</span>
+                    <span className="recommendation-accept-group" aria-hidden="true">
+                      <span className="recommendation-accept-key">↑</span>
+                      <span className="recommendation-accept-key">
+                        <CornerDownLeft size={10} />
+                      </span>
+                    </span>
                   </button>
                 </div>
               )}

@@ -1,18 +1,19 @@
-use super::model::{CommandPrediction, PredictionKind, ContextMessageInput};
 use super::context::gather_local_context;
+use super::model::{CommandPrediction, ContextMessageInput, PredictionKind};
 
 pub async fn predict_with_llm(
     input: &str,
     last_command: Option<&str>,
     context_messages: Vec<ContextMessageInput>,
     history_context: String,
+    rejected_suggestions: Vec<String>,
     api_key: &str,
     base_url: &str,
     model_id: &str,
 ) -> Option<CommandPrediction> {
     let trimmed = input.trim();
     println!("[AI] Requesting smart prediction for: {}", trimmed);
-    
+
     // Gather local file and git context
     let local_context = if let Some(first_msg) = context_messages.first() {
         if let Some(pwd) = &first_msg.context.pwd {
@@ -32,16 +33,22 @@ pub async fn predict_with_llm(
     };
 
     // Format context for the prompt
-    let context_history = context_messages.iter().rev().take(3).map(|m| {
-        format!(
-            "Input: {}\nOutput: {}\nExit Code: {}\nGit Branch: {}\nPWD: {}\n---",
-            m.input,
-            m.output.chars().take(200).collect::<String>(),
-            m.context.exit_code,
-            m.context.git_branch.as_deref().unwrap_or("none"),
-            m.context.pwd.as_deref().unwrap_or("none")
-        )
-    }).collect::<Vec<_>>().join("\n");
+    let context_history = context_messages
+        .iter()
+        .rev()
+        .take(3)
+        .map(|m| {
+            format!(
+                "Input: {}\nOutput: {}\nExit Code: {}\nGit Branch: {}\nPWD: {}\n---",
+                m.input,
+                m.output.chars().take(200).collect::<String>(),
+                m.context.exit_code,
+                m.context.git_branch.as_deref().unwrap_or("none"),
+                m.context.pwd.as_deref().unwrap_or("none")
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
 
     let response = client
         .post(&url)
@@ -56,12 +63,13 @@ pub async fn predict_with_llm(
                 {
                     "role": "user",
                     "content": format!(
-                        "FILES IN DIRECTORY: {:?}\nGIT BRANCH: {:?}\n\nRECENT HISTORY:\n{}\n\nSIMILAR HISTORY CONTEXT:\n{}\n\nCURRENT INPUT: {}\nLAST COMMAND: {}", 
+                        "FILES IN DIRECTORY: {:?}\nGIT BRANCH: {:?}\n\nRECENT HISTORY:\n{}\n\nSIMILAR HISTORY CONTEXT:\n{}\n\nREJECTED SUGGESTIONS:\n{:?}\n\nCURRENT INPUT: {}\nLAST COMMAND: {}",
                         local_context.files,
                         local_context.git_branch,
                         context_history,
                         history_context,
-                        trimmed, 
+                        rejected_suggestions,
+                        trimmed,
                         last_command.unwrap_or("none")
                     )
                 }
@@ -83,12 +91,19 @@ pub async fn predict_with_llm(
         .trim()
         .to_string();
 
-    if suggestion.to_lowercase().starts_with(&trimmed.to_lowercase()) && suggestion.len() > trimmed.len() {
+    if suggestion
+        .to_lowercase()
+        .starts_with(&trimmed.to_lowercase())
+        && suggestion.len() > trimmed.len()
+    {
         // Disk Validation for AI suggestions (AI might hallucinate paths)
         let parts: Vec<&str> = suggestion.split_whitespace().collect();
         if let Some(first_part) = parts.first() {
-            if (first_part.starts_with('/') || first_part.starts_with("./") || first_part.starts_with("../")) 
-               && !std::path::Path::new(first_part).exists() {
+            if (first_part.starts_with('/')
+                || first_part.starts_with("./")
+                || first_part.starts_with("../"))
+                && !std::path::Path::new(first_part).exists()
+            {
                 return None;
             }
         }

@@ -70,10 +70,13 @@ export function WorkspaceSidebar({
     return () => window.removeEventListener('mousedown', handlePointerDown);
   }, [menuConversationId]);
 
-  const renderConversationItem = (conversation: WorkspaceConversation, active = false) => (
+  const renderConversationItem = (
+    conversation: WorkspaceConversation,
+    options?: { isActiveGroup?: boolean; isSelected?: boolean }
+  ) => (
     <div
       key={conversation.id}
-      className={`workspace-sidebar-item ${active ? 'active' : ''}`}
+      className={`workspace-sidebar-item ${options?.isSelected ? 'active' : ''}`}
     >
       <button
         className="workspace-sidebar-item-button"
@@ -81,7 +84,7 @@ export function WorkspaceSidebar({
         onClick={() => onSelectConversation(conversation.id)}
       >
         <div className="item-icon-container">
-          {active ? (
+          {options?.isActiveGroup ? (
             <Circle size={14} fill="#c084fc" color="#c084fc" />
           ) : (
             <CheckCircle2 size={14} color="#5ef1a1" />
@@ -195,7 +198,10 @@ export function WorkspaceSidebar({
                 </div>
 
                 {activeConversations.map((conversation) => (
-                  renderConversationItem(conversation, conversation.id === selectedConversationId)
+                  renderConversationItem(conversation, {
+                    isActiveGroup: true,
+                    isSelected: conversation.id === selectedConversationId
+                  })
                 ))}
               </div>
             )}
@@ -214,7 +220,9 @@ export function WorkspaceSidebar({
                   <span>PAST</span>
                 </div>
 
-                {pastConversations.map((conversation) => renderConversationItem(conversation))}
+                {pastConversations.map((conversation) => renderConversationItem(conversation, {
+                  isSelected: conversation.id === selectedConversationId
+                }))}
               </div>
             )}
           </div>

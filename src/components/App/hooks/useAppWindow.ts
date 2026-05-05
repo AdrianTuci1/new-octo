@@ -1,6 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow, Window } from '@tauri-apps/api/window';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { initialWorkspaceChromeTabs, defaultWorkspaceChromeTabId } from '../chrome';
 import { settingsDefaultExpandedGroupIds, settingsDefaultSectionId } from '../settings/settingsData';
 import { formatCompactPathLabel } from '../../../lib/pathLabels';
@@ -49,15 +49,18 @@ export function useAppWindow() {
   const [pathContext, setPathContext] = useState<FilesystemPathContext | null>(null);
   const [isAgentsActive, setIsAgentsActive] = useState(false);
   const [isSpotlightVisible, setIsSpotlightVisible] = useState(false);
+  const [openPastConversationBaselineById, setOpenPastConversationBaselineById] = useState<Record<string, number>>({});
   const didRestoreWorkspaceRef = useRef(false);
   const isClosingWorkspaceRef = useRef(false);
+  const latestLocalWorkspaceComparableRef = useRef<ReturnType<typeof Utils.buildWorkspaceComparableSnapshot> | null>(null);
+  const lastSavedWorkspaceSignatureRef = useRef<string | null>(null);
   const memoryStatus = useMemoryStore((state) => state.status);
   const memoryWorkspace = useMemoryStore((state) => state.workspace);
   const memoryConversations = useMemoryStore((state) => state.conversations);
   const saveWorkspace = useMemoryStore((state) => state.saveWorkspace);
   const deleteConversation = useMemoryStore((state) => state.deleteConversation);
   const saveSettings = useMemoryStore((state) => state.saveSettings);
-  const memoryConversationsById = new Map(memoryConversations.map((conversation) => [conversation.id, conversation]));
+  const memoryConversationsById = useMemo(() => new Map(memoryConversations.map((conversation) => [conversation.id, conversation])), [memoryConversations]);
 
   const selectedTab = tabs.find((tab) => tab.id === selectedTabId) ?? tabs[0] ?? initialWorkspaceChromeTabs[0];
   const activeConversationId = selectedTab.kind === 'terminal'
@@ -65,17 +68,20 @@ export function useAppWindow() {
     : null;
   const isSettingsView = selectedTab.kind === 'settings';
   const isLauncherView = !isAgentsActive && selectedTab.kind === 'terminal';
-  const orderedConversationIds = tabs
+  const orderedConversationIds = useMemo(() => tabs
     .filter((tab) => tab.kind === 'terminal')
     .map((tab) => terminalSessions[tab.id]?.activeConversationId ?? null)
-    .filter((conversationId): conversationId is string => Boolean(conversationId));
-  const dedupedOrderedConversationIds = Array.from(new Set(orderedConversationIds));
-  const openConversationIds = dedupedOrderedConversationIds;
-  const openConversationIdSet = new Set(openConversationIds);
+    .filter((conversationId): conversationId is string => Boolean(conversationId)), [tabs, terminalSessions]);
+  const dedupedOrderedConversationIds = useMemo(() => Array.from(new Set(orderedConversationIds)), [orderedConversationIds]);
+  const openConversationIds = useMemo(
+    () => dedupedOrderedConversationIds.filter((conversationId) => !(conversationId in openPastConversationBaselineById)),
+    [dedupedOrderedConversationIds, openPastConversationBaselineById]
+  );
+  const openConversationIdSet = useMemo(() => new Set(openConversationIds), [openConversationIds]);
 
-  const workspaceConversations = [
+  const workspaceConversations = useMemo(() => [
     // First, map the active conversations (the ones in tabs)
-    ...dedupedOrderedConversationIds.map((conversationId) => {
+    ...openConversationIds.map((conversationId) => {
       const summary = memoryConversationsById.get(conversationId);
       if (summary) {
         return Utils.buildConversationFromSummary(summary);
@@ -94,14 +100,43 @@ export function useAppWindow() {
     ...memoryConversations
       .filter((summary) => !openConversationIdSet.has(summary.id))
       .map((summary) => Utils.buildConversationFromSummary(summary))
-  ];
+  ], [memoryConversations, memoryConversationsById, openConversationIdSet, openConversationIds, terminalSessions]);
 
   const selectedOpenConversationId = activeConversationId && memoryConversationsById.has(activeConversationId)
     ? activeConversationId
     : activeConversationId && workspaceConversations.some((conversation) => conversation.id === activeConversationId)
       ? activeConversationId
       : null;
-  const displayTabs = tabs.map((tab) => {
+
+  useEffect(() => {
+    const openConversationIdSet = new Set(dedupedOrderedConversationIds);
+
+    setOpenPastConversationBaselineById((current) => {
+      let changed = false;
+      let next = current;
+
+      Object.entries(current).forEach(([conversationId, baselineMessageCount]) => {
+        const summary = memoryConversationsById.get(conversationId);
+        const currentMessageCount = summary?.messageCount ?? baselineMessageCount;
+        const shouldRemove = !openConversationIdSet.has(conversationId) || currentMessageCount > baselineMessageCount;
+
+        if (!shouldRemove) {
+          return;
+        }
+
+        if (!changed) {
+          next = { ...current };
+          changed = true;
+        }
+
+        delete next[conversationId];
+      });
+
+      return changed ? next : current;
+    });
+  }, [dedupedOrderedConversationIds, memoryConversationsById]);
+
+  const displayTabs = useMemo(() => tabs.map((tab) => {
     if (tab.kind !== 'terminal') {
       return tab;
     }
@@ -119,7 +154,31 @@ export function useAppWindow() {
       ...tab,
       label: tab.customLabel?.trim() || activeConversation?.title || (session?.activeConversationId ? 'New agent conversation' : pathLabel)
     };
-  });
+  }), [tabs, terminalSessions, memoryConversationsById, pathContext]);
+
+  useEffect(() => {
+    latestLocalWorkspaceComparableRef.current = Utils.buildWorkspaceComparableSnapshot(
+      tabs,
+      selectedTabId,
+      launcherTabId,
+      terminalSessions,
+      activeSectionId,
+      expandedGroupIds,
+      isSidebarOpen,
+      isAgentsActive,
+      nextTerminalIndex
+    );
+  }, [
+    activeSectionId,
+    expandedGroupIds,
+    isAgentsActive,
+    isSidebarOpen,
+    launcherTabId,
+    nextTerminalIndex,
+    selectedTabId,
+    tabs,
+    terminalSessions
+  ]);
 
   useEffect(() => {
     void invoke<FilesystemPathContext>('terminal_get_path_context')
@@ -173,23 +232,15 @@ export function useAppWindow() {
     }
 
     const nextComparable = Utils.buildComparableFromWorkspace(memoryWorkspace, pathContext?.homeDir ?? null);
-    const currentComparable = Utils.buildWorkspaceComparableSnapshot(
-      tabs,
-      selectedTabId,
-      launcherTabId,
-      terminalSessions,
-      activeSectionId,
-      expandedGroupIds,
-      isSidebarOpen,
-      isAgentsActive,
-      nextTerminalIndex
-    );
+    const currentComparable = latestLocalWorkspaceComparableRef.current;
+    const nextSignature = JSON.stringify(nextComparable);
 
-    if (didRestoreWorkspaceRef.current && JSON.stringify(currentComparable) === JSON.stringify(nextComparable)) {
+    if (didRestoreWorkspaceRef.current && currentComparable && JSON.stringify(currentComparable) === nextSignature) {
       return;
     }
 
     didRestoreWorkspaceRef.current = true;
+    lastSavedWorkspaceSignatureRef.current = nextSignature;
     setTabs(nextComparable.tabs);
     setSelectedTabId(nextComparable.selectedTabId);
     setLauncherTabId(nextComparable.launcherTabId);
@@ -206,7 +257,18 @@ export function useAppWindow() {
       return;
     }
 
+    const comparable = latestLocalWorkspaceComparableRef.current;
+    if (!comparable) {
+      return;
+    }
+
+    const comparableSignature = JSON.stringify(comparable);
+    if (lastSavedWorkspaceSignatureRef.current === comparableSignature) {
+      return;
+    }
+
     const timeoutId = window.setTimeout(() => {
+      lastSavedWorkspaceSignatureRef.current = comparableSignature;
       void saveWorkspace({
         id: 'workspace-main',
         schemaVersion: 1,
@@ -229,20 +291,22 @@ export function useAppWindow() {
       window.clearTimeout(timeoutId);
     };
   }, [
+    memoryStatus,
     activeSectionId,
     expandedGroupIds,
     isAgentsActive,
     isSidebarOpen,
-    memoryStatus,
-    nextTerminalIndex,
     saveWorkspace,
-    selectedTabId,
     launcherTabId,
+    nextTerminalIndex,
+    selectedTabId,
+    tabs,
     terminalSessions,
-    tabs
+    workspaceConversations,
+    openConversationIdSet
   ]);
 
-  const createTerminalTab = () => {
+  const createTerminalTab = useCallback(() => {
     const nextTab = Utils.buildTerminalTab(nextTerminalIndex, '~');
     setTabs((current) => [...current, nextTab]);
     setTerminalSessions((current) => ({
@@ -261,9 +325,9 @@ export function useAppWindow() {
     }));
     setNextTerminalIndex((value) => value + 1);
     return nextTab;
-  };
+  }, [nextTerminalIndex, pathContext]);
 
-  const closeAppWindowWithFreshWorkspace = async () => {
+  const closeAppWindowWithFreshWorkspace = useCallback(async () => {
     isClosingWorkspaceRef.current = true;
     const sessionIds = Object.values(terminalSessions)
       .flatMap((session) => [session.terminalSessionId, session.agentTerminalSessionId])
@@ -285,14 +349,16 @@ export function useAppWindow() {
     if ((window as any).__TAURI_INTERNALS__) {
       await getCurrentWindow().close();
     }
-  };
+  }, [terminalSessions, saveWorkspace, activeSectionId, expandedGroupIds, isAgentsActive, isSidebarOpen]);
 
-  const resolveTerminalTabId = () => {
-    if (selectedTab.kind === 'terminal') {
+  const resolveTerminalTabId = useCallback(() => {
+    if (selectedTab.kind === 'terminal' && (!isSpotlightVisible || selectedTab.id !== launcherTabId)) {
       return selectedTab.id;
     }
 
-    const firstTerminalTab = tabs.find((tab) => tab.kind === 'terminal');
+    const firstTerminalTab = tabs.find((tab) => (
+      tab.kind === 'terminal' && (!isSpotlightVisible || tab.id !== launcherTabId)
+    ));
     if (firstTerminalTab) {
       setSelectedTabId(firstTerminalTab.id);
       return firstTerminalTab.id;
@@ -301,34 +367,48 @@ export function useAppWindow() {
     const nextTab = createTerminalTab();
     setSelectedTabId(nextTab.id);
     return nextTab.id;
-  };
+  }, [createTerminalTab, isSpotlightVisible, launcherTabId, selectedTab, tabs]);
 
-  const onToggleGroup = (groupId: string) => {
+  const onToggleGroup = useCallback((groupId: string) => {
     setExpandedGroupIds((current) =>
       current.includes(groupId) ? current.filter((id) => id !== groupId) : [...current, groupId]
     );
-  };
+  }, []);
 
-  const onSelectSection = (sectionId: string) => {
+  const onSelectSection = useCallback((sectionId: string) => {
     setActiveSectionId(sectionId);
-  };
+  }, []);
 
-  const onSelectTab = (tabId: string) => {
+  const onSelectTab = useCallback((tabId: string) => {
+    if (selectedTabId === tabId) return;
     setSelectedTabId(tabId);
-  };
+  }, [selectedTabId]);
 
-  const onNewTerminalTab = () => {
+  const onNewTerminalTab = useCallback(() => {
     const nextTab = createTerminalTab();
     setSelectedTabId(nextTab.id);
-  };
+  }, [createTerminalTab]);
 
-  const onSelectConversation = (conversationId: string) => {
+  const onSelectConversation = useCallback((conversationId: string) => {
     const existingTab = tabs.find((tab) =>
       tab.kind === 'terminal' && terminalSessions[tab.id]?.activeConversationId === conversationId
     );
+    const shouldKeepConversationInPast = memoryConversationsById.has(conversationId);
+
+    if (shouldKeepConversationInPast) {
+      const baselineMessageCount = memoryConversationsById.get(conversationId)?.messageCount ?? 0;
+      setOpenPastConversationBaselineById((current) => (
+        current[conversationId] === baselineMessageCount
+          ? current
+          : {
+              ...current,
+              [conversationId]: baselineMessageCount
+            }
+      ));
+    }
 
     if (existingTab) {
-      setSelectedTabId(existingTab.id);
+      if (selectedTabId !== existingTab.id) setSelectedTabId(existingTab.id);
       return;
     }
 
@@ -342,27 +422,49 @@ export function useAppWindow() {
       }
     }));
     setSelectedTabId(nextTab.id);
-  };
+  }, [createTerminalTab, memoryConversationsById, selectedTabId, tabs, terminalSessions]);
 
-  const onNewConversation = (options?: { seedPrompt?: string }) => {
+  const onNewConversation = useCallback((_options?: { seedPrompt?: string }) => {
     const nextConversationId = Utils.createConversationId();
     const terminalTabId = resolveTerminalTabId();
 
-    setTerminalSessions((current) => ({
-      ...current,
-      [terminalTabId]: {
-        ...current[terminalTabId],
-        activeConversationId: nextConversationId,
-        composerSurface: 'agent'
+    setOpenPastConversationBaselineById((current) => {
+      if (!(nextConversationId in current)) {
+        return current;
       }
-    }));
-    void options?.seedPrompt;
-    return nextConversationId;
-  };
 
-  const onNewConversationInNewTab = (options?: { seedPrompt?: string }) => {
+      const next = { ...current };
+      delete next[nextConversationId];
+      return next;
+    });
+
+    setTerminalSessions((current) => {
+      if (current[terminalTabId]?.activeConversationId === nextConversationId) return current;
+      return {
+        ...current,
+        [terminalTabId]: {
+          ...current[terminalTabId],
+          activeConversationId: nextConversationId,
+          composerSurface: 'agent'
+        }
+      };
+    });
+    return nextConversationId;
+  }, [resolveTerminalTabId]);
+
+  const onNewConversationInNewTab = useCallback((_options?: { seedPrompt?: string }) => {
     const nextConversationId = Utils.createConversationId();
     const nextTab = createTerminalTab();
+
+    setOpenPastConversationBaselineById((current) => {
+      if (!(nextConversationId in current)) {
+        return current;
+      }
+
+      const next = { ...current };
+      delete next[nextConversationId];
+      return next;
+    });
 
     setTerminalSessions((current) => ({
       ...current,
@@ -373,11 +475,10 @@ export function useAppWindow() {
       }
     }));
     setSelectedTabId(nextTab.id);
-    void options?.seedPrompt;
     return nextConversationId;
-  };
+  }, [createTerminalTab]);
 
-  const onCloseTab = (tabId: string) => {
+  const onCloseTab = useCallback((tabId: string) => {
     if (tabs.length <= 1) {
       void closeAppWindowWithFreshWorkspace();
       return;
@@ -401,7 +502,7 @@ export function useAppWindow() {
       }
 
       const fallbackTabId = nextTabs[0]?.id ?? defaultWorkspaceChromeTabId;
-      setSelectedTabId((active) => active === tabId ? fallbackTabId : active);
+      if (selectedTabId === tabId) setSelectedTabId(fallbackTabId);
 
       return nextTabs;
     });
@@ -418,123 +519,163 @@ export function useAppWindow() {
       delete nextSessions[tabId];
       return nextSessions;
     });
-  };
+  }, [closeAppWindowWithFreshWorkspace, tabs, terminalSessions, selectedTabId]);
 
-  const handleTerminalWorkingDirectoryChange = (tabId: string, path: string | null) => {
-    setTerminalSessions((current) => ({
-      ...current,
-      [tabId]: {
-        ...current[tabId],
-        workingDirectory: path
-      }
-    }));
-  };
+  const handleTerminalWorkingDirectoryChange = useCallback((tabId: string, path: string | null) => {
+    setTerminalSessions((current) => {
+      if (current[tabId]?.workingDirectory === path) return current;
+      return {
+        ...current,
+        [tabId]: {
+          ...current[tabId],
+          workingDirectory: path
+        }
+      };
+    });
+  }, []);
 
-  const handleTerminalSessionChange = (tabId: string, sessionId: string | null) => {
-    setTerminalSessions((current) => ({
-      ...current,
-      [tabId]: {
-        ...current[tabId],
-        terminalSessionId: sessionId
-      }
-    }));
-  };
+  const handleTerminalSessionChange = useCallback((tabId: string, sessionId: string | null) => {
+    setTerminalSessions((current) => {
+      if (current[tabId]?.terminalSessionId === sessionId) return current;
+      return {
+        ...current,
+        [tabId]: {
+          ...current[tabId],
+          terminalSessionId: sessionId
+        }
+      };
+    });
+  }, []);
 
-  const handleAgentTerminalSessionChange = (tabId: string, sessionId: string | null) => {
-    setTerminalSessions((current) => ({
-      ...current,
-      [tabId]: {
-        ...current[tabId],
-        agentTerminalSessionId: sessionId
-      }
-    }));
-  };
+  const handleAgentTerminalSessionChange = useCallback((tabId: string, sessionId: string | null) => {
+    setTerminalSessions((current) => {
+      if (current[tabId]?.agentTerminalSessionId === sessionId) return current;
+      return {
+        ...current,
+        [tabId]: {
+          ...current[tabId],
+          agentTerminalSessionId: sessionId
+        }
+      };
+    });
+  }, []);
 
-  const handleTerminalPendingApprovalChange = (tabId: string, approval: CommandApproval | null) => {
-    setTerminalSessions((current) => ({
-      ...current,
-      [tabId]: {
-        ...current[tabId],
-        pendingApproval: approval
-      }
-    }));
-  };
+  const handleTerminalPendingApprovalChange = useCallback((tabId: string, approval: CommandApproval | null) => {
+    setTerminalSessions((current) => {
+      if (JSON.stringify(current[tabId]?.pendingApproval) === JSON.stringify(approval)) return current;
+      return {
+        ...current,
+        [tabId]: {
+          ...current[tabId],
+          pendingApproval: approval
+        }
+      };
+    });
+  }, []);
 
-  const handleTerminalBlockMetaChange = (
+  const handleTerminalBlockMetaChange = useCallback((
     tabId: string,
     terminalBlockMetaById: Record<string, TerminalBlockSharedMeta>
   ) => {
-    setTerminalSessions((current) => ({
-      ...current,
-      [tabId]: {
-        ...current[tabId],
-        terminalBlockMetaById
-      }
-    }));
-  };
+    setTerminalSessions((current) => {
+      if (JSON.stringify(current[tabId]?.terminalBlockMetaById) === JSON.stringify(terminalBlockMetaById)) return current;
+      return {
+        ...current,
+        [tabId]: {
+          ...current[tabId],
+          terminalBlockMetaById
+        }
+      };
+    });
+  }, []);
 
-  const handleAgentTerminalBlockMetaChange = (
+  const handleAgentTerminalBlockMetaChange = useCallback((
     tabId: string,
     terminalBlockMetaById: Record<string, TerminalBlockSharedMeta>
   ) => {
-    setTerminalSessions((current) => ({
-      ...current,
-      [tabId]: {
-        ...current[tabId],
-        agentTerminalBlockMetaById: terminalBlockMetaById
-      }
-    }));
-  };
+    setTerminalSessions((current) => {
+      if (JSON.stringify(current[tabId]?.agentTerminalBlockMetaById) === JSON.stringify(terminalBlockMetaById)) return current;
+      return {
+        ...current,
+        [tabId]: {
+          ...current[tabId],
+          agentTerminalBlockMetaById: terminalBlockMetaById
+        }
+      };
+    });
+  }, []);
 
-  const handleSyntheticBlocksChange = (
+  const handleSyntheticBlocksChange = useCallback((
     tabId: string,
     syntheticBlocks: TerminalCommandBlock[]
   ) => {
-    setTerminalSessions((current) => ({
-      ...current,
-      [tabId]: {
-        ...current[tabId],
-        syntheticBlocks
-      }
-    }));
-  };
+    setTerminalSessions((current) => {
+      if (current[tabId]?.syntheticBlocks.length === syntheticBlocks.length && JSON.stringify(current[tabId]?.syntheticBlocks) === JSON.stringify(syntheticBlocks)) return current;
+      return {
+        ...current,
+        [tabId]: {
+          ...current[tabId],
+          syntheticBlocks
+        }
+      };
+    });
+  }, []);
 
-  const handleTerminalConversationChange = (tabId: string, conversationId: string | null) => {
-    setTerminalSessions((current) => ({
-      ...current,
-      [tabId]: {
-        ...current[tabId],
-        activeConversationId: conversationId,
-        composerSurface: conversationId ? 'agent' : 'terminal'
-      }
-    }));
-  };
+  const handleTerminalConversationChange = useCallback((tabId: string, conversationId: string | null) => {
+    setTerminalSessions((current) => {
+      if (current[tabId]?.activeConversationId === conversationId) return current;
+      return {
+        ...current,
+        [tabId]: {
+          ...current[tabId],
+          activeConversationId: conversationId,
+          composerSurface: conversationId ? 'agent' : 'terminal'
+        }
+      };
+    });
+  }, []);
 
-  const handleTerminalComposerSurfaceChange = (tabId: string, composerSurface: 'agent' | 'terminal') => {
-    setTerminalSessions((current) => ({
-      ...current,
-      [tabId]: {
-        ...current[tabId],
-        composerSurface
-      }
-    }));
-  };
+  const handleTerminalComposerSurfaceChange = useCallback((tabId: string, composerSurface: 'agent' | 'terminal') => {
+    setTerminalSessions((current) => {
+      if (current[tabId]?.composerSurface === composerSurface) return current;
+      return {
+        ...current,
+        [tabId]: {
+          ...current[tabId],
+          composerSurface
+        }
+      };
+    });
+  }, []);
 
-  const handleDeleteConversation = async (conversationId: string) => {
+  const handleDeleteConversation = useCallback(async (conversationId: string) => {
     await deleteConversation(conversationId);
-    setTerminalSessions((current) => Object.fromEntries(
-      Object.entries(current).map(([tabId, session]) => [
-        tabId,
-        {
-          ...session,
-          activeConversationId: session.activeConversationId === conversationId ? null : session.activeConversationId,
-          composerSurface: session.activeConversationId === conversationId ? 'terminal' : session.composerSurface
-        } satisfies TerminalSessionState
-      ])
-    ));
-  };
+    setOpenPastConversationBaselineById((current) => {
+      if (!(conversationId in current)) {
+        return current;
+      }
 
-  const handleForkConversationInNewTab = (conversationId: string) => {
+      const next = { ...current };
+      delete next[conversationId];
+      return next;
+    });
+    setTerminalSessions((current) => {
+      const next = Object.fromEntries(
+        Object.entries(current).map(([tabId, session]) => [
+          tabId,
+          {
+            ...session,
+            activeConversationId: session.activeConversationId === conversationId ? null : session.activeConversationId,
+            composerSurface: session.activeConversationId === conversationId ? 'terminal' : session.composerSurface
+          } satisfies TerminalSessionState
+        ])
+      );
+      if (JSON.stringify(current) === JSON.stringify(next)) return current;
+      return next;
+    });
+  }, [deleteConversation]);
+
+  const handleForkConversationInNewTab = useCallback((conversationId: string) => {
     const nextTab = createTerminalTab();
     setTerminalSessions((current) => ({
       ...current,
@@ -545,9 +686,9 @@ export function useAppWindow() {
       }
     }));
     setSelectedTabId(nextTab.id);
-  };
+  }, [createTerminalTab]);
 
-  const handleRenameTab = (tabId: string) => {
+  const handleRenameTab = useCallback((tabId: string) => {
     const tab = tabs.find((candidate) => candidate.id === tabId);
     if (!tab) {
       return;
@@ -564,9 +705,9 @@ export function useAppWindow() {
         ? { ...candidate, customLabel: normalized.length > 0 ? normalized : null }
         : candidate
     )));
-  };
+  }, [displayTabs, tabs]);
 
-  const handleMoveTab = (tabId: string, direction: 'left' | 'right') => {
+  const handleMoveTab = useCallback((tabId: string, direction: 'left' | 'right') => {
     setTabs((current) => {
       const index = current.findIndex((tab) => tab.id === tabId);
       if (index < 0) {
@@ -583,9 +724,9 @@ export function useAppWindow() {
       nextTabs.splice(targetIndex, 0, tab);
       return nextTabs;
     });
-  };
+  }, []);
 
-  const handleCloseOtherTabs = (tabId: string) => {
+  const handleCloseOtherTabs = useCallback((tabId: string) => {
     setTabs((current) => current.filter((tab) => tab.id === tabId));
     setSelectedTabId(tabId);
     setTerminalSessions((current) => (
@@ -594,9 +735,9 @@ export function useAppWindow() {
         : {}
     ));
     setLauncherTabId((current) => current === tabId ? current : null);
-  };
+  }, []);
 
-  const handleCloseTabsToRight = (tabId: string) => {
+  const handleCloseTabsToRight = useCallback((tabId: string) => {
     setTabs((current) => {
       const index = current.findIndex((tab) => tab.id === tabId);
       if (index < 0) {
@@ -621,9 +762,9 @@ export function useAppWindow() {
       const keptTabIds = new Set(tabs.slice(0, tabIndex + 1).map((tab) => tab.id));
       return keptTabIds.has(current) ? current : null;
     });
-  };
+  }, [tabs]);
 
-  const handleSaveTabAsConfig = (tabId: string) => {
+  const handleSaveTabAsConfig = useCallback((tabId: string) => {
     const tab = tabs.find((candidate) => candidate.id === tabId);
     if (!tab) {
       return;
@@ -649,15 +790,27 @@ export function useAppWindow() {
     void saveSettings({
       savedWorkspaceTabConfigs: [nextConfig, ...savedConfigs].slice(0, 24)
     }, true);
-  };
+  }, [displayTabs, saveSettings, tabs, terminalSessions]);
 
-  const handleSetTabTint = (tabId: string, tintColor: string | null) => {
+  const handleSetTabTint = useCallback((tabId: string, tintColor: string | null) => {
     setTabs((current) => current.map((tab) => (
       tab.id === tabId ? { ...tab, tintColor } : tab
     )));
-  };
+  }, []);
 
-  const getLauncherProps = (tab: WorkspaceChromeTab) => ({
+  const handleRemoveTabFromLauncher = useCallback((tabId: string) => {
+    setLauncherTabId((current) => current === tabId ? null : current);
+  }, []);
+
+  const onToggleSidebar = useCallback(() => {
+    setIsSidebarOpen((current) => !current);
+  }, []);
+
+  const onToggleAgents = useCallback(() => {
+    setIsAgentsActive((current) => !current);
+  }, []);
+
+  const getLauncherProps = useCallback((tab: WorkspaceChromeTab) => ({
     active: tab.id === selectedTab.id,
     chatMode: 'always-open' as const,
     conversationId: terminalSessions[tab.id]?.activeConversationId ?? null,
@@ -681,11 +834,27 @@ export function useAppWindow() {
     persistTerminalSession: true,
     resetOnMount: true,
     sharedTerminalBlockMetaById: terminalSessions[tab.id]?.terminalBlockMetaById ?? Utils.EMPTY_META,
-    sharedSyntheticBlocks: terminalSessions[tab.id]?.syntheticBlocks ?? [],
+    sharedSyntheticBlocks: terminalSessions[tab.id]?.syntheticBlocks ?? Utils.EMPTY_SYNTHETIC_BLOCKS,
     sharedAgentTerminalBlockMetaById: terminalSessions[tab.id]?.agentTerminalBlockMetaById ?? Utils.EMPTY_META,
     title: displayTabs.find((t) => t.id === tab.id)?.label,
     variant: 'workspace' as const
-  });
+  }), [
+    displayTabs,
+    handleAgentTerminalBlockMetaChange,
+    handleAgentTerminalSessionChange,
+    handleSyntheticBlocksChange,
+    handleTerminalBlockMetaChange,
+    handleTerminalComposerSurfaceChange,
+    handleTerminalConversationChange,
+    handleTerminalPendingApprovalChange,
+    handleTerminalSessionChange,
+    handleTerminalWorkingDirectoryChange,
+    onNewConversation,
+    onSelectConversation,
+    pathContext?.homeDir,
+    selectedTab.id,
+    terminalSessions
+  ]);
 
   return {
     chrome: {
@@ -731,8 +900,9 @@ export function useAppWindow() {
       onSelectSection,
       onSelectTab,
       onToggleGroup,
-      setIsAgentsActive,
-      setIsSidebarOpen,
+      onRemoveTabFromLauncher: handleRemoveTabFromLauncher,
+      onToggleAgents,
+      onToggleSidebar,
       setLauncherTabId
     }
   };

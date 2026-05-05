@@ -188,10 +188,12 @@ impl Conversation {
     }
 
     pub fn initial_query(&self) -> Option<&str> {
-        self.exchanges.first().and_then(|exchange| match &exchange.input {
-            ExchangeInput::UserQuery { query } => Some(query.as_str()),
-            _ => None,
-        })
+        self.exchanges
+            .first()
+            .and_then(|exchange| match &exchange.input {
+                ExchangeInput::UserQuery { query } => Some(query.as_str()),
+                _ => None,
+            })
     }
 
     pub fn latest_exchange(&self) -> Option<&Exchange> {

@@ -35,9 +35,7 @@ pub fn is_transient_http_status(status: reqwest::StatusCode) -> bool {
 }
 
 pub fn is_transient_reqwest_error(error: &reqwest::Error) -> bool {
-    error.is_timeout()
-        || error.is_connect()
-        || error.status().is_some_and(is_transient_http_status)
+    error.is_timeout() || error.is_connect() || error.status().is_some_and(is_transient_http_status)
 }
 
 pub async fn with_bounded_retry<T, E, F, Fut, P>(
@@ -58,9 +56,7 @@ where
             Ok(value) => return Ok(value),
             Err(error) if attempt >= MAX_ATTEMPTS || !should_retry(&error) => return Err(error),
             Err(error) => {
-                println!(
-                    "[AI] {operation}: attempt {attempt}/{MAX_ATTEMPTS} failed: {error}"
-                );
+                println!("[AI] {operation}: attempt {attempt}/{MAX_ATTEMPTS} failed: {error}");
                 tokio::time::sleep(duration_with_jitter(delay, BACKOFF_JITTER)).await;
                 delay = delay.mul_f32(BACKOFF_FACTOR);
             }
@@ -84,7 +80,9 @@ mod tests {
 
     #[test]
     fn identifies_retryable_status_codes() {
-        assert!(is_transient_http_status(reqwest::StatusCode::TOO_MANY_REQUESTS));
+        assert!(is_transient_http_status(
+            reqwest::StatusCode::TOO_MANY_REQUESTS
+        ));
         assert!(is_transient_http_status(reqwest::StatusCode::BAD_GATEWAY));
         assert!(!is_transient_http_status(reqwest::StatusCode::BAD_REQUEST));
     }

@@ -10,6 +10,7 @@ type ComposerIntelligenceOptions = {
   contextKey: string;
   query: string;
   cwd: string | null;
+  gitBranch?: string | null;
   availableCommands: string[];
   historyEntries: ShellHistoryEntry[];
   terminalBlocks: TerminalCommandBlock[];
@@ -55,6 +56,7 @@ export function useComposerIntelligence(options: ComposerIntelligenceOptions) {
     contextKey,
     query,
     cwd,
+    gitBranch = null,
     availableCommands,
     historyEntries,
     terminalBlocks,
@@ -111,6 +113,7 @@ export function useComposerIntelligence(options: ComposerIntelligenceOptions) {
           contextKey,
           query,
           cwd,
+          gitBranch,
           availableCommands,
           historyEntries,
           terminalBlocks: terminalBlocks.map((block) => ({
@@ -161,6 +164,7 @@ export function useComposerIntelligence(options: ComposerIntelligenceOptions) {
     availableCommands,
     contextKey,
     cwd,
+    gitBranch,
     enableZeroStatePrediction,
     forceShellMode,
     historyEntries,

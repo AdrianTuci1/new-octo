@@ -146,8 +146,8 @@ fn show_settings_window<R: Runtime>(app: &AppHandle<R>) {
         return;
     };
 
-    if let Ok(window) = WebviewWindowBuilder::from_config(app, &settings_config)
-        .and_then(|builder| builder.build())
+    if let Ok(window) =
+        WebviewWindowBuilder::from_config(app, &settings_config).and_then(|builder| builder.build())
     {
         let _ = window.unminimize();
         let _ = window.show();
@@ -188,15 +188,23 @@ fn show_placeholder_session<R: Runtime>(app: &AppHandle<R>) {
 }
 
 fn build_tray_menu<R: Runtime, M: Manager<R>>(app: &M) -> tauri::Result<Menu<R>> {
-    let recent_session_1 = MenuItem::with_id(app, RECENT_SESSION_1_ID, "Session 01", true, None::<&str>)?;
-    let recent_session_2 = MenuItem::with_id(app, RECENT_SESSION_2_ID, "Session 02", true, None::<&str>)?;
-    let recent_session_3 = MenuItem::with_id(app, RECENT_SESSION_3_ID, "Session 03", true, None::<&str>)?;
+    let recent_session_1 =
+        MenuItem::with_id(app, RECENT_SESSION_1_ID, "Session 01", true, None::<&str>)?;
+    let recent_session_2 =
+        MenuItem::with_id(app, RECENT_SESSION_2_ID, "Session 02", true, None::<&str>)?;
+    let recent_session_3 =
+        MenuItem::with_id(app, RECENT_SESSION_3_ID, "Session 03", true, None::<&str>)?;
 
-    let all_session_1 = MenuItem::with_id(app, MORE_SESSION_1_ID, "Session 04", true, None::<&str>)?;
-    let all_session_2 = MenuItem::with_id(app, MORE_SESSION_2_ID, "Session 05", true, None::<&str>)?;
-    let all_session_3 = MenuItem::with_id(app, MORE_SESSION_3_ID, "Session 06", true, None::<&str>)?;
-    let all_session_4 = MenuItem::with_id(app, MORE_SESSION_4_ID, "Session 07", true, None::<&str>)?;
-    let all_session_5 = MenuItem::with_id(app, MORE_SESSION_5_ID, "Session 08", true, None::<&str>)?;
+    let all_session_1 =
+        MenuItem::with_id(app, MORE_SESSION_1_ID, "Session 04", true, None::<&str>)?;
+    let all_session_2 =
+        MenuItem::with_id(app, MORE_SESSION_2_ID, "Session 05", true, None::<&str>)?;
+    let all_session_3 =
+        MenuItem::with_id(app, MORE_SESSION_3_ID, "Session 06", true, None::<&str>)?;
+    let all_session_4 =
+        MenuItem::with_id(app, MORE_SESSION_4_ID, "Session 07", true, None::<&str>)?;
+    let all_session_5 =
+        MenuItem::with_id(app, MORE_SESSION_5_ID, "Session 08", true, None::<&str>)?;
 
     let recent_sessions = Submenu::with_items(
         app,
@@ -317,14 +325,9 @@ fn main() {
                         NEW_CHAT_MENU_ID => show_placeholder_session(app),
                         SETTINGS_MENU_ID => show_settings_window(app),
                         CLOSE_MENU_ID => app.exit(0),
-                        RECENT_SESSION_1_ID
-                        | RECENT_SESSION_2_ID
-                        | RECENT_SESSION_3_ID
-                        | MORE_SESSION_1_ID
-                        | MORE_SESSION_2_ID
-                        | MORE_SESSION_3_ID
-                        | MORE_SESSION_4_ID
-                        | MORE_SESSION_5_ID => show_placeholder_session(app),
+                        RECENT_SESSION_1_ID | RECENT_SESSION_2_ID | RECENT_SESSION_3_ID
+                        | MORE_SESSION_1_ID | MORE_SESSION_2_ID | MORE_SESSION_3_ID
+                        | MORE_SESSION_4_ID | MORE_SESSION_5_ID => show_placeholder_session(app),
                         _ => {}
                     });
 
@@ -386,7 +389,10 @@ fn load_env_file() {
                 println!("[ENV] Setting {} from file", key);
                 std::env::set_var(key, value);
             } else {
-                println!("[ENV] {} is already set to a non-empty value, skipping", key);
+                println!(
+                    "[ENV] {} is already set to a non-empty value, skipping",
+                    key
+                );
             }
         }
     }
