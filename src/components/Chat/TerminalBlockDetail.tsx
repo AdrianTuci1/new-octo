@@ -31,6 +31,18 @@ export function TerminalBlockDetail({
   onClose,
   onSelect
 }: TerminalBlockDetailProps) {
+  if (block.source === 'user') {
+    return (
+      <article className={`terminal-inline-command ${failed ? 'failed' : ''}`} onClick={onSelect}>
+        <pre className="terminal-inline-command-output">
+          <strong>{block.command}</strong>
+          {'\n'}
+          {outputFor(block)}
+        </pre>
+      </article>
+    );
+  }
+
   const className = [
     'terminal-block-detail',
     failed ? 'failed' : '',
@@ -46,7 +58,9 @@ export function TerminalBlockDetail({
           }}>
             <span className="terminal-detail-top-title">
               {isSelected ? <Check size={17} /> : <Terminal size={15} />}
-              {isSelected ? 'Viewing command detail' : block.command}
+              <span className="terminal-detail-top-title-text">
+                {isSelected ? 'Viewing command detail' : block.command}
+              </span>
             </span>
             <ChevronDown size={20} />
           </button>

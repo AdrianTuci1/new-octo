@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { useMemoryStore } from '../stores/memoryStore';
 import type { AgentProviderStatus } from '../types/chat';
 import type { ModelSpec } from '../types/model';
 
@@ -19,6 +20,8 @@ export const MODEL_CATALOG: ModelSpec[] = [
 
 export function useModelSelection() {
   const [selectedModelId, setSelectedModelId] = useState<string>('gpt-5.3-codex-medium');
+  const memorySettings = useMemoryStore((state) => state.settings);
+  const saveSettings = useMemoryStore((state) => state.saveSettings);
 
   useEffect(() => {
     const stored = window.localStorage.getItem(STORAGE_KEY);
@@ -38,6 +41,13 @@ export function useModelSelection() {
       });
   }, []);
 
+  useEffect(() => {
+    const memoryModelId = memorySettings?.values.selectedModelId;
+    if (typeof memoryModelId === 'string' && memoryModelId.trim().length > 0) {
+      setSelectedModelId(memoryModelId);
+    }
+  }, [memorySettings?.values.selectedModelId]);
+
   const selectedModel = useMemo(
     () => MODEL_CATALOG.find((model) => model.id === selectedModelId)
       ?? MODEL_CATALOG.find((model) => model.label === selectedModelId)
@@ -49,6 +59,7 @@ export function useModelSelection() {
     setSelectedModelId(modelId);
     if (persist) {
       window.localStorage.setItem(STORAGE_KEY, modelId);
+      void saveSettings({ selectedModelId: modelId }, true);
     }
   };
 

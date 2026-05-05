@@ -19,11 +19,15 @@ export type TerminalExitEvent = {
 export type TerminalBlock = {
   id: string;
   command: string;
+  output?: string;
   startedAt: string;
   finishedAt?: string | null;
   exitCode?: number | null;
   durationMs?: number | null;
 };
+
+export type TerminalCommandPresentation = 'command' | 'conversation-link';
+export type TerminalCommandSource = 'user' | 'assistant';
 
 export type TerminalBlockEvent = {
   sessionId: string;
@@ -42,9 +46,24 @@ export type TerminalRunCommandResponse = {
   output: string;
 };
 
+export type TerminalRuntimeContext = {
+  nodeVersion?: string | null;
+};
+
+export type TerminalBlockSharedMeta = {
+  presentation?: TerminalCommandPresentation;
+  source?: TerminalCommandSource;
+  conversationId?: string;
+  conversationTitle?: string;
+};
+
 export type TerminalCommandBlock = TerminalBlock & {
   output: string;
   status: 'running' | 'finished';
+  presentation?: TerminalCommandPresentation;
+  source?: TerminalCommandSource;
+  conversationId?: string;
+  conversationTitle?: string;
 };
 
 export type CommandApproval = {

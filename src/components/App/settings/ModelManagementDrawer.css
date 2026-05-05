@@ -1,0 +1,144 @@
+.model-mgmt-drawer {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--settings-bg-content);
+  color: var(--text-main);
+  font-family: var(--font-ui);
+}
+
+.model-mgmt-header {
+  height: 56px;
+  min-height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  background: rgba(255, 255, 255, 0.01);
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.header-icon {
+  color: #00A3FF;
+}
+
+.header-title {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0;
+  letter-spacing: -0.01em;
+}
+
+.close-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.close-btn:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-main);
+}
+
+.model-mgmt-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.form-group label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-dim);
+  margin-left: 2px;
+}
+
+.form-group input, 
+.form-group select {
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  padding: 10px 12px;
+  color: #fff;
+  font-size: 13px;
+  outline: none;
+  transition: all 0.2s;
+}
+
+.form-group input:focus, 
+.form-group select:focus {
+  border-color: rgba(0, 163, 255, 0.5);
+  background: rgba(0, 0, 0, 0.3);
+  box-shadow: 0 0 0 2px rgba(0, 163, 255, 0.1);
+}
+
+.select-wrapper {
+  position: relative;
+}
+
+.input-with-icon {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.input-icon {
+  position: absolute;
+  left: 12px;
+  color: rgba(255, 255, 255, 0.3);
+}
+
+.input-with-icon input {
+  padding-left: 36px;
+  width: 100%;
+}
+
+.model-mgmt-danger-zone {
+  margin-top: 12px;
+  padding-top: 24px;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.btn-delete {
+  background: transparent;
+  border: 1px solid rgba(255, 68, 68, 0.2);
+  color: #ff4444;
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.2s;
+  width: 100%;
+  justify-content: center;
+}
+
+.btn-delete:hover {
+  background: rgba(255, 68, 68, 0.05);
+  border-color: rgba(255, 68, 68, 0.4);
+}

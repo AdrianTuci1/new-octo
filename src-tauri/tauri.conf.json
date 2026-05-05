@@ -23,6 +23,46 @@
         "transparent": true,
         "shadow": false,
         "alwaysOnTop": true
+      },
+      {
+        "label": "settings",
+        "create": false,
+        "title": "Settings",
+        "url": "index.html?panel=settings",
+        "width": 1120,
+        "height": 820,
+        "minWidth": 920,
+        "minHeight": 680,
+        "center": true,
+        "resizable": true,
+        "visible": false,
+        "decorations": true,
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true,
+        "trafficLightPosition": {
+          "x": 14,
+          "y": 22
+        },
+        "transparent": false,
+        "shadow": true
+      },
+      {
+        "label": "onboarding",
+        "create": false,
+        "title": "Onboarding",
+        "url": "index.html?panel=onboarding",
+        "width": 1120,
+        "height": 820,
+        "minWidth": 920,
+        "minHeight": 680,
+        "center": true,
+        "resizable": true,
+        "visible": false,
+        "decorations": true,
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true,
+        "transparent": false,
+        "shadow": true
       }
     ]
   }

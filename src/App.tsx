@@ -1,30 +1,21 @@
 import './App.css';
 import { Launcher } from './components/Layout/Launcher';
-import { PanelPlaceholder } from './components/Layout/PanelPlaceholder';
-import { getPanelMode } from './lib/utils';
+import { AppWindow } from './components/App';
+import { Onboarding } from './components/Onboarding/Onboarding';
+import { useLauncherAppState } from './hooks/useLauncherAppState';
 
 export function App() {
-  const panelMode = getPanelMode();
+  const app = useLauncherAppState();
 
-  if (panelMode === 'settings') {
-    return (
-      <PanelPlaceholder
-        title="Settings Tray Placeholder"
-        subtitle="This stays outside the launcher shell. The real settings flow can be built later as a separate panel."
-      />
-    );
+  if (!app.isOnboardingCompleted) {
+    return <Onboarding onComplete={app.handleOnboardingComplete} />;
   }
 
-  if (panelMode === 'onboarding') {
-    return (
-      <PanelPlaceholder
-        title="Onboarding Tray Placeholder"
-        subtitle="This is intentionally separate from chat, tray, and input so the launcher core remains simple."
-      />
-    );
+  if (app.panelMode === 'settings') {
+    return <AppWindow />;
   }
 
-  return <Launcher />;
+  return <Launcher {...app.launcherProps} />;
 }
 
 export default App;

@@ -1,0 +1,188 @@
+.app-window {
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--settings-bg-content);
+  color: var(--text-main);
+}
+
+.app-window-container {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+  position: relative;
+  overflow: hidden;
+  background: var(--settings-bg-content);
+}
+
+.sidebar-wrapper {
+  position: relative;
+  display: flex;
+  height: 100%;
+  overflow: visible;
+}
+
+.sidebar-clip-container {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  display: flex;
+}
+
+.resize-handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  cursor: col-resize;
+  z-index: 20;
+  transition: background-color 0.2s;
+}
+
+.resize-handle:hover,
+.resize-handle:active {
+  background-color: rgba(167, 139, 250, 0.4);
+}
+
+.sidebar-handle {
+  right: -2px;
+}
+
+.editor-handle {
+  left: -2px;
+}
+
+.app-window-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--bg-primary);
+  position: relative;
+}
+
+.app-window-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 25;
+  background: rgba(3, 5, 7, 0.82);
+  backdrop-filter: blur(10px);
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+}
+
+.app-window-overlay-panel {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  overflow: hidden;
+}
+
+.app-window-content-wrapper {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+}
+
+.app-window-workspace-container {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-width: 300px;
+}
+
+.app-window-editor-drawer-wrapper {
+  position: relative;
+  height: 100%;
+  display: flex;
+  background-color: #050505;
+  border-left: 1px solid rgba(255, 255, 255, 0.05);
+  z-index: 15;
+}
+
+.app-window-editor-drawer {
+  flex: 1;
+  height: 100%;
+  overflow: hidden;
+}
+
+@keyframes slideInRight {
+  from {
+    transform: translateX(100%);
+  }
+
+  to {
+    transform: translateX(0);
+  }
+}
+
+.app-window-settings-body {
+  min-height: 0;
+  flex: 1;
+  display: grid;
+  grid-template-columns: var(--settings-sidebar-width) minmax(0, 1fr);
+  background: var(--settings-bg-content);
+}
+
+.app-window-workspace,
+.app-window-panel {
+  min-height: 0;
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+
+.app-window-launcher-slot {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.app-window-spotlight-overlay {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--settings-bg-content);
+}
+
+.app-window-spotlight-overlay-title {
+  color: rgba(244, 247, 246, 0.72);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.app-window-header {
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--settings-bg-content);
+  border-bottom: none;
+}
+
+.app-window-header-title {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-dim);
+  opacity: 0.8;
+}
+
+.app-window-settings-body>*,
+.app-window-workspace>*,
+.app-window-panel>* {
+  min-width: 0;
+}
+
+.app-window-editor-drawer-wrapper.model-drawer-wrapper {
+  box-shadow: -10px 0 30px rgba(0, 0, 0, 0.5);
+  border-left: 1px solid rgba(255, 255, 255, 0.1);
+}

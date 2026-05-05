@@ -39,8 +39,10 @@
   font-size: 13px;
   font-weight: 500;
   white-space: nowrap;
-  width: 140px; /* Coloană fixă pentru comandă */
-  flex-shrink: 0;
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 0 0 auto;
 }
 
 .command-detail {
@@ -59,8 +61,5 @@
   min-width: 20px;
   height: 20px;
   padding: 0 5px;
-  border-radius: 6px;
-  border: 1px solid var(--border);
-  background: rgba(255, 255, 255, 0.04);
   color: var(--text-main);
 }

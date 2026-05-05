@@ -4,6 +4,8 @@ import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { Copy, Play, Save, Check } from 'lucide-react';
 import { useState } from 'react';
+import { CodeDiffView } from './CodeDiffView';
+import { visibleChatMessageBody } from '../../hooks/useChat';
 import type { ChatMessage } from '../../types/chat';
 import type { CommandApproval } from '../../types/terminal';
 
@@ -15,7 +17,10 @@ type MessageBubbleProps = {
 export function MessageBubble({ message, onRequestCommandApproval }: MessageBubbleProps) {
   const isUser = message.role === 'user';
   const initials = "AT"; // Placeholder for user initials
-  const showStreamingHint = message.role === 'assistant' && message.isStreaming && !message.body.trim();
+  const visibleBody = message.role === 'assistant'
+    ? visibleChatMessageBody(message.body)
+    : message.body;
+  const showStreamingHint = message.role === 'assistant' && message.isStreaming && !visibleBody.trim();
 
   return (
     <div className={`message-bubble ${message.role}`}>
@@ -63,8 +68,16 @@ export function MessageBubble({ message, onRequestCommandApproval }: MessageBubb
               }
             }}
           >
-            {message.body}
+            {visibleBody}
           </ReactMarkdown>
+        )}
+
+        {message.fileDiffs && message.fileDiffs.length > 0 && (
+          <div className="message-diffs">
+            {message.fileDiffs.map((diff, index) => (
+              <CodeDiffView key={index} diff={diff} />
+            ))}
+          </div>
         )}
       </div>
     </div>

@@ -5,32 +5,164 @@ import type {
   TerminalBlock,
   TerminalBlockEvent,
   TerminalBlockOutputEvent,
+  TerminalBlockSharedMeta,
   TerminalCommandBlock,
+  TerminalCommandSource,
   TerminalExitEvent,
   TerminalRunCommandResponse,
   TerminalSessionInfo
 } from '../types/terminal';
 
-function mergeBlock(block: TerminalBlock, output = ''): TerminalCommandBlock {
+type RunCommandOptions = {
+  source?: TerminalCommandSource;
+};
+
+type UseTerminalCommandBlocksOptions = {
+  cwd?: string | null;
+  initialSessionId?: string | null;
+  sharedBlockMetaById?: Record<string, TerminalBlockSharedMeta>;
+  sharedSyntheticBlocks?: TerminalCommandBlock[];
+  persistSession?: boolean;
+  onBlockMetaChange?: (metaById: Record<string, TerminalBlockSharedMeta>) => void;
+  onSyntheticBlocksChange?: (blocks: TerminalCommandBlock[]) => void;
+  onSessionChange?: (sessionId: string | null) => void;
+};
+
+function mergeBlock(
+  block: TerminalBlock,
+  output = '',
+  meta?: TerminalBlockSharedMeta
+): TerminalCommandBlock {
   return {
     ...block,
-    output,
-    status: block.finishedAt ? 'finished' : 'running'
+    output: output || block.output || '',
+    status: block.finishedAt ? 'finished' : 'running',
+    presentation: meta?.presentation ?? 'command',
+    source: meta?.source,
+    conversationId: meta?.conversationId,
+    conversationTitle: meta?.conversationTitle
   };
 }
 
-export function useTerminalCommandBlocks(cwd?: string | null) {
+const EMPTY_META: Record<string, TerminalBlockSharedMeta> = {};
+const EMPTY_SYNTHETIC_BLOCKS: TerminalCommandBlock[] = [];
+
+function sortTimelineBlocks(blocks: TerminalCommandBlock[]) {
+  return [...blocks].sort((left, right) => {
+    const leftTime = Date.parse(left.startedAt || '') || 0;
+    const rightTime = Date.parse(right.startedAt || '') || 0;
+    if (leftTime !== rightTime) {
+      return leftTime - rightTime;
+    }
+
+    return left.id.localeCompare(right.id);
+  });
+}
+
+export function useTerminalCommandBlocks(options: UseTerminalCommandBlocksOptions = {}) {
+  const cwd = options.cwd ?? null;
+  const initialSessionId = options.initialSessionId ?? null;
+  const sharedBlockMetaById = options.sharedBlockMetaById ?? EMPTY_META;
+  const sharedSyntheticBlocks = options.sharedSyntheticBlocks ?? EMPTY_SYNTHETIC_BLOCKS;
+  const persistSession = options.persistSession ?? false;
+  const onBlockMetaChange = options.onBlockMetaChange;
+  const onSyntheticBlocksChange = options.onSyntheticBlocksChange;
+  const onSessionChange = options.onSessionChange;
   const sessionRef = useRef<TerminalSessionInfo | null>(null);
   const sessionPromiseRef = useRef<Promise<TerminalSessionInfo> | null>(null);
+  const persistedSessionIdRef = useRef<string | null>(initialSessionId);
+  const sharedBlockMetaRef = useRef<Record<string, TerminalBlockSharedMeta>>(sharedBlockMetaById);
+  const syntheticBlocksRef = useRef<TerminalCommandBlock[]>(sharedSyntheticBlocks);
   const activeBlockIdRef = useRef<string | null>(null);
   const blocksRef = useRef<TerminalCommandBlock[]>([]);
+  const commandBlocksRef = useRef<TerminalCommandBlock[]>([]);
   const commandInFlightRef = useRef(false);
   const pendingCommandOutputRef = useRef('');
   const pendingOutputRef = useRef<Record<string, string>>({});
+  const blockOptionsRef = useRef<Record<string, RunCommandOptions>>({});
   const [blocks, setBlocks] = useState<TerminalCommandBlock[]>([]);
   const [expandedBlockIds, setExpandedBlockIds] = useState<string[]>([]);
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    sharedBlockMetaRef.current = sharedBlockMetaById;
+  }, [sharedBlockMetaById]);
+
+  const publishBlockMeta = useCallback((metaById: Record<string, TerminalBlockSharedMeta>) => {
+    onBlockMetaChange?.(metaById);
+  }, [onBlockMetaChange]);
+
+  const publishSyntheticBlocks = useCallback((nextBlocks: TerminalCommandBlock[]) => {
+    onSyntheticBlocksChange?.(sortTimelineBlocks(nextBlocks));
+  }, [onSyntheticBlocksChange]);
+
+  const applySharedMeta = useCallback((block: TerminalCommandBlock) => ({
+    ...block,
+    ...sharedBlockMetaRef.current[block.id],
+    presentation: sharedBlockMetaRef.current[block.id]?.presentation ?? block.presentation ?? 'command'
+  }), []);
+
+  const commitTimeline = useCallback((nextCommandBlocks: TerminalCommandBlock[], nextSyntheticBlocks = syntheticBlocksRef.current) => {
+    commandBlocksRef.current = nextCommandBlocks;
+    syntheticBlocksRef.current = sortTimelineBlocks(nextSyntheticBlocks.map((block) => applySharedMeta(block)));
+    const nextBlocks = sortTimelineBlocks([
+      ...commandBlocksRef.current,
+      ...syntheticBlocksRef.current
+    ]);
+    blocksRef.current = nextBlocks;
+    setBlocks(nextBlocks);
+  }, [applySharedMeta]);
+
+  const lastSharedSyntheticBlocksRef = useRef<TerminalCommandBlock[]>(sharedSyntheticBlocks);
+
+  useEffect(() => {
+    if (lastSharedSyntheticBlocksRef.current === sharedSyntheticBlocks && syntheticBlocksRef.current.length === sharedSyntheticBlocks.length) {
+      return;
+    }
+    lastSharedSyntheticBlocksRef.current = sharedSyntheticBlocks;
+
+    const normalizedSyntheticBlocks = sharedSyntheticBlocks.map((block) => applySharedMeta({
+      ...block,
+      presentation: block.presentation ?? 'conversation-link'
+    }));
+    commitTimeline(commandBlocksRef.current, normalizedSyntheticBlocks);
+  }, [applySharedMeta, commitTimeline, sharedSyntheticBlocks]);
+
+  const replaceBlocks = useCallback((nextBlocks: TerminalCommandBlock[]) => {
+    const normalizedBlocks = nextBlocks.map((block) => applySharedMeta({
+      ...block,
+      presentation: block.presentation ?? 'command'
+    }));
+    const runningBlocks = normalizedBlocks.filter((block) => block.status === 'running');
+    activeBlockIdRef.current = runningBlocks[runningBlocks.length - 1]?.id ?? null;
+    blocksRef.current = normalizedBlocks;
+    pendingCommandOutputRef.current = '';
+    pendingOutputRef.current = {};
+    blockOptionsRef.current = Object.fromEntries(
+      normalizedBlocks.map((block) => [block.id, { source: block.source }])
+    );
+    commitTimeline(normalizedBlocks);
+    setExpandedBlockIds([]);
+    setSelectedBlockId(null);
+    setError(null);
+  }, [applySharedMeta, commitTimeline]);
+
+  const upsertBlockMeta = useCallback((blockId: string, meta: TerminalBlockSharedMeta) => {
+    const nextMetaById = {
+      ...sharedBlockMetaRef.current,
+      [blockId]: {
+        ...(sharedBlockMetaRef.current[blockId] ?? {}),
+        ...meta
+      }
+    };
+
+    // Keep metadata available locally immediately so a session re-sync cannot
+    // temporarily rebuild the block as an assistant command before parent state catches up.
+    sharedBlockMetaRef.current = nextMetaById;
+    publishBlockMeta(nextMetaById);
+    commitTimeline(commandBlocksRef.current, syntheticBlocksRef.current);
+  }, [commitTimeline, publishBlockMeta]);
 
   const ensureSession = useCallback(async () => {
     if (sessionRef.current) return sessionRef.current;
@@ -38,6 +170,7 @@ export function useTerminalCommandBlocks(cwd?: string | null) {
 
     sessionPromiseRef.current = invoke<TerminalSessionInfo>('terminal_create_session', {
       request: {
+        sessionId: persistedSessionIdRef.current,
         rows: 24,
         cols: 120,
         cwd: cwd ?? null
@@ -45,6 +178,10 @@ export function useTerminalCommandBlocks(cwd?: string | null) {
     })
       .then((session) => {
         sessionRef.current = session;
+        if (persistedSessionIdRef.current !== session.id) {
+          persistedSessionIdRef.current = session.id;
+          onSessionChange?.(session.id);
+        }
         return session;
       })
       .finally(() => {
@@ -52,15 +189,22 @@ export function useTerminalCommandBlocks(cwd?: string | null) {
       });
 
     return sessionPromiseRef.current;
-  }, [cwd]);
+  }, [cwd, onSessionChange]);
 
   const upsertBlock = useCallback((block: TerminalBlock) => {
     setBlocks((currentBlocks) => {
-      const existing = currentBlocks.find((currentBlock) => currentBlock.id === block.id);
+      const currentCommandBlocks = currentBlocks.filter((currentBlock) => currentBlock.presentation !== 'conversation-link');
+      const existing = currentCommandBlocks.find((currentBlock) => currentBlock.id === block.id);
       const pendingCommandOutput = commandInFlightRef.current ? pendingCommandOutputRef.current : '';
       const pendingOutput = `${pendingOutputRef.current[block.id] ?? ''}${pendingCommandOutput}`;
       const canonicalBlock = existing?.finishedAt && !block.finishedAt ? existing : block;
-      const nextBlock = mergeBlock(canonicalBlock, `${existing?.output ?? ''}${pendingOutput}`);
+      const sharedMeta = sharedBlockMetaRef.current[block.id];
+      const source = existing?.source ?? sharedMeta?.source ?? blockOptionsRef.current[block.id]?.source ?? (commandInFlightRef.current && pendingCommandOutputRef.current === '' ? blockOptionsRef.current['PENDING']?.source : undefined);
+      
+      const nextBlock = applySharedMeta({
+        ...mergeBlock(canonicalBlock, `${existing?.output ?? ''}${pendingOutput}`, sharedMeta),
+        source
+      });
 
       if (pendingOutput) {
         delete pendingOutputRef.current[block.id];
@@ -74,26 +218,30 @@ export function useTerminalCommandBlocks(cwd?: string | null) {
         activeBlockIdRef.current = null;
       }
 
-      const nextBlocks = existing
-        ? currentBlocks.map((currentBlock) => (
+      const nextCommandBlocks = existing
+        ? currentCommandBlocks.map((currentBlock) => (
             currentBlock.id === nextBlock.id ? nextBlock : currentBlock
           ))
-        : [...currentBlocks, nextBlock].slice(-80);
-      blocksRef.current = nextBlocks;
-      return nextBlocks;
+        : [...currentCommandBlocks, nextBlock].slice(-80);
+      commitTimeline(nextCommandBlocks);
+      return sortTimelineBlocks([
+        ...nextCommandBlocks,
+        ...syntheticBlocksRef.current
+      ]);
     });
-  }, []);
+  }, [applySharedMeta, commitTimeline]);
 
   const appendOutput = useCallback((blockId: string, data: string) => {
     if (!data) return;
 
     setBlocks((currentBlocks) => {
-      if (!currentBlocks.some((block) => block.id === blockId)) {
+      const currentCommandBlocks = currentBlocks.filter((block) => block.presentation !== 'conversation-link');
+      if (!currentCommandBlocks.some((block) => block.id === blockId)) {
         pendingOutputRef.current[blockId] = `${pendingOutputRef.current[blockId] ?? ''}${data}`;
         return currentBlocks;
       }
 
-      const nextBlocks = currentBlocks.map((block) =>
+      const nextCommandBlocks = currentCommandBlocks.map((block) =>
         block.id === blockId
           ? {
               ...block,
@@ -101,14 +249,75 @@ export function useTerminalCommandBlocks(cwd?: string | null) {
             }
           : block
       );
-      blocksRef.current = nextBlocks;
-      return nextBlocks;
+      commitTimeline(nextCommandBlocks);
+      return sortTimelineBlocks([
+        ...nextCommandBlocks,
+        ...syntheticBlocksRef.current
+      ]);
     });
-  }, []);
+  }, [commitTimeline]);
 
   useEffect(() => {
-    let disposed = false;
+    persistedSessionIdRef.current = initialSessionId;
+  }, [initialSessionId]);
 
+  useEffect(() => {
+    const requestedSessionId = initialSessionId?.trim() || null;
+    if (!requestedSessionId) {
+      return;
+    }
+
+    let cancelled = false;
+    sessionRef.current = {
+      id: requestedSessionId,
+      shell: sessionRef.current?.shell ?? '',
+      cwd: sessionRef.current?.cwd ?? cwd
+    };
+
+    void Promise.all([
+      invoke<TerminalSessionInfo>('terminal_create_session', {
+        request: {
+          sessionId: requestedSessionId,
+          rows: 24,
+          cols: 120,
+          cwd: cwd ?? null
+        }
+      }),
+      invoke<TerminalBlock[]>('terminal_get_blocks', {
+        request: {
+          sessionId: requestedSessionId
+        }
+      }).catch(() => [])
+    ]).then(([sessionInfo, nextBlocks]) => {
+      if (cancelled) {
+        return;
+      }
+
+      sessionRef.current = sessionInfo;
+      persistedSessionIdRef.current = sessionInfo.id;
+      onSessionChange?.(sessionInfo.id);
+      replaceBlocks(nextBlocks.map((block) => mergeBlock(block, '', sharedBlockMetaRef.current[block.id])));
+    }).catch(() => {
+      if (cancelled) {
+        return;
+      }
+
+      sessionRef.current = null;
+      persistedSessionIdRef.current = null;
+      onSessionChange?.(null);
+      replaceBlocks([]);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [cwd, initialSessionId, onSessionChange, replaceBlocks]);
+
+  useEffect(() => {
+    commitTimeline(commandBlocksRef.current, syntheticBlocksRef.current);
+  }, [applySharedMeta, commitTimeline]);
+
+  useEffect(() => {
     const blockSubscription = listen<TerminalBlockEvent>('terminal:block', (event) => {
       const activeSession = sessionRef.current;
       if (!activeSession || event.payload.sessionId !== activeSession.id) return;
@@ -142,25 +351,32 @@ export function useTerminalCommandBlocks(cwd?: string | null) {
     ]);
 
     return () => {
-      disposed = true;
+      let hasUnlistened = false;
       void subscriptions.then((unlisteners) => {
-        unlisteners.forEach((unlisten) => unlisten());
+        if (hasUnlistened) return;
+        hasUnlistened = true;
+        unlisteners.forEach((unlisten) => {
+          try {
+            unlisten();
+          } catch (e) {
+            console.warn('[terminal-blocks] failed to unlisten safely', e);
+          }
+        });
       });
+      hasUnlistened = true;
 
       const activeSession = sessionRef.current;
       if (activeSession) {
-        void invoke('terminal_kill_session', {
+        void invoke(persistSession ? 'terminal_release_session' : 'terminal_kill_session', {
           request: {
             sessionId: activeSession.id
           }
         });
       }
 
-      if (disposed) {
-        sessionRef.current = null;
-      }
+      sessionRef.current = null;
     };
-  }, [appendOutput, upsertBlock]);
+  }, [appendOutput, persistSession, upsertBlock]);
 
   useEffect(() => {
     const activeSession = sessionRef.current;
@@ -172,7 +388,12 @@ export function useTerminalCommandBlocks(cwd?: string | null) {
       request: {
         sessionId: activeSession.id
       }
-    });
+    }).catch(() => {});
+
+    if (persistSession) {
+      onSessionChange?.(null);
+      persistedSessionIdRef.current = null;
+    }
 
     sessionRef.current = null;
     sessionPromiseRef.current = null;
@@ -180,11 +401,13 @@ export function useTerminalCommandBlocks(cwd?: string | null) {
     activeBlockIdRef.current = null;
     pendingCommandOutputRef.current = '';
     pendingOutputRef.current = {};
+    blockOptionsRef.current = {};
     setError(null);
-  }, [cwd]);
+    setBlocks([]);
+  }, [cwd, onSessionChange, persistSession]);
 
   const runCommand = useCallback(
-    async (command: string): Promise<TerminalRunCommandResponse | null> => {
+    async (command: string, options: RunCommandOptions = {}): Promise<TerminalRunCommandResponse | null> => {
       const normalized = command.trim();
       if (!normalized) return null;
 
@@ -192,6 +415,7 @@ export function useTerminalCommandBlocks(cwd?: string | null) {
         setError(null);
         commandInFlightRef.current = true;
         pendingCommandOutputRef.current = '';
+        blockOptionsRef.current['PENDING'] = options;
         const session = await ensureSession();
         const response = await invoke<TerminalRunCommandResponse>('terminal_run_command', {
           request: {
@@ -199,44 +423,69 @@ export function useTerminalCommandBlocks(cwd?: string | null) {
             command: normalized
           }
         });
+        blockOptionsRef.current[response.block.id] = options;
+        delete blockOptionsRef.current['PENDING'];
+        if (options.source) {
+          upsertBlockMeta(response.block.id, {
+            presentation: 'command',
+            source: options.source
+          });
+        }
         activeBlockIdRef.current = response.block.finishedAt ? null : response.block.id;
         commandInFlightRef.current = false;
-        if (response.output) {
-          appendOutput(response.block.id, response.output);
-        }
         upsertBlock(response.block);
         return response;
       } catch (reason) {
         commandInFlightRef.current = false;
+        delete blockOptionsRef.current['PENDING'];
         setError(String(reason));
         return null;
       }
     },
-    [ensureSession, upsertBlock]
+    [appendOutput, ensureSession, upsertBlock, upsertBlockMeta]
   );
 
   const clearBlocks = useCallback(() => {
-    const activeSession = sessionRef.current;
-    if (activeSession) {
-      void invoke('terminal_kill_session', {
-        request: {
-          sessionId: activeSession.id
-        }
-      });
-    }
-
     activeBlockIdRef.current = null;
     blocksRef.current = [];
+    commandBlocksRef.current = [];
+    syntheticBlocksRef.current = [];
     commandInFlightRef.current = false;
     pendingCommandOutputRef.current = '';
     pendingOutputRef.current = {};
+    blockOptionsRef.current = {};
     sessionRef.current = null;
     sessionPromiseRef.current = null;
+    persistedSessionIdRef.current = null;
+    publishBlockMeta({});
+    publishSyntheticBlocks([]);
+    onSessionChange?.(null);
     setBlocks([]);
     setExpandedBlockIds([]);
     setError(null);
     setSelectedBlockId(null);
-  }, []);
+  }, [onSessionChange, publishBlockMeta, publishSyntheticBlocks]);
+
+  const upsertSyntheticBlock = useCallback((block: TerminalCommandBlock) => {
+    const syntheticBlock: TerminalCommandBlock = applySharedMeta({
+      ...block,
+      presentation: block.presentation ?? 'conversation-link'
+    });
+    upsertBlockMeta(syntheticBlock.id, {
+      presentation: syntheticBlock.presentation,
+      source: syntheticBlock.source,
+      conversationId: syntheticBlock.conversationId,
+      conversationTitle: syntheticBlock.conversationTitle
+    });
+
+    const currentSyntheticBlocks = syntheticBlocksRef.current;
+    const existingIndex = currentSyntheticBlocks.findIndex((currentBlock) => currentBlock.id === syntheticBlock.id);
+    const nextSyntheticBlocks = existingIndex >= 0
+      ? currentSyntheticBlocks.map((currentBlock) => (currentBlock.id === syntheticBlock.id ? syntheticBlock : currentBlock))
+      : [...currentSyntheticBlocks, syntheticBlock].slice(-80);
+    publishSyntheticBlocks(nextSyntheticBlocks);
+    commitTimeline(commandBlocksRef.current, nextSyntheticBlocks);
+  }, [applySharedMeta, commitTimeline, publishSyntheticBlocks, upsertBlockMeta]);
 
   const expandBlock = useCallback((blockId: string) => {
     setExpandedBlockIds((currentIds) => (
@@ -256,8 +505,11 @@ export function useTerminalCommandBlocks(cwd?: string | null) {
     error,
     expandedBlockIds,
     expandBlock,
+    replaceBlocks,
     runCommand,
+    sessionId: persistedSessionIdRef.current,
     selectedBlockId,
-    setSelectedBlockId
+    setSelectedBlockId,
+    upsertSyntheticBlock
   };
 }

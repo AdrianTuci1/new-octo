@@ -1,20 +1,26 @@
 import { type KeyboardEvent } from 'react';
-import { useChat } from './useChat';
-import { useTray } from './useTray';
 import type { CommandApproval } from '../types/terminal';
 
 type KeyboardShortcutOptions = {
+  query: string;
+  setQuery: (query: string) => void;
+  submitQuery: () => void | Promise<void>;
   onCommandApproval?: (approval: CommandApproval) => void;
   onNewChat?: () => void;
   onTerminalCommand?: (command: string) => void;
+  disableTrayShortcuts?: boolean;
   cwd?: string | null;
   modelId?: string | null;
   isShellMode?: boolean;
   isManualShellMode?: boolean;
   hasPrediction?: boolean;
   onAcceptPrediction?: () => void;
+  onCyclePrediction?: () => void;
   onExitShellMode?: () => void;
   onToggleShellMode?: () => void;
+  onCloseTray?: () => void;
+  onToggleHelpTray?: () => void;
+  onToggleConversationsTray?: () => void;
 };
 
 function parseTerminalCommand(query: string, isShellMode?: boolean) {
@@ -25,25 +31,29 @@ function parseTerminalCommand(query: string, isShellMode?: boolean) {
   return trimmed.slice(1).trim();
 }
 
-export function useKeyboardShortcuts(options: KeyboardShortcutOptions = {}) {
-  const { query, setQuery, submitQuery } = useChat({
-    cwd: options.cwd,
-    modelId: options.modelId,
-    onCommandApproval: options.onCommandApproval,
-    onNewChat: options.onNewChat
-  });
-  const { toggleTray, closeTray } = useTray();
+export function useKeyboardShortcuts(options: KeyboardShortcutOptions) {
+  const { query, setQuery, submitQuery } = options;
 
   const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    const selectionStart = event.currentTarget.selectionStart ?? query.length;
+    const selectionEnd = event.currentTarget.selectionEnd ?? query.length;
+    const isCaretAtEnd = selectionStart === selectionEnd && selectionEnd === query.length;
+
     if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'i') {
       event.preventDefault();
       options.onToggleShellMode?.();
       return;
     }
 
-    if (event.key === 'ArrowRight' && options.isShellMode && options.hasPrediction) {
+    if ((event.key === 'ArrowRight' || event.key === 'Tab') && options.isShellMode && options.hasPrediction && isCaretAtEnd) {
       event.preventDefault();
       options.onAcceptPrediction?.();
+      return;
+    }
+
+    if (event.key === 'ArrowDown' && options.isShellMode && options.hasPrediction && isCaretAtEnd) {
+      event.preventDefault();
+      options.onCyclePrediction?.();
       return;
     }
 
@@ -60,7 +70,7 @@ export function useKeyboardShortcuts(options: KeyboardShortcutOptions = {}) {
       if (terminalCommand) {
         options.onTerminalCommand?.(terminalCommand);
         setQuery('');
-        closeTray();
+        options.onCloseTray?.();
         return;
       }
 
@@ -69,22 +79,24 @@ export function useKeyboardShortcuts(options: KeyboardShortcutOptions = {}) {
     }
 
     if (event.key === 'Escape') {
+      event.preventDefault();
+      event.stopPropagation();
       if (options.isManualShellMode && query.length === 0) {
         options.onExitShellMode?.();
       }
-      closeTray();
+      options.onCloseTray?.();
       return;
     }
 
-    if (event.key === '?' && query.length === 0) {
+    if (!options.disableTrayShortcuts && event.key === '?' && query.length === 0) {
       event.preventDefault();
-      toggleTray('help');
+      options.onToggleHelpTray?.();
       return;
     }
 
-    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'y') {
+    if (!options.disableTrayShortcuts && (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'y') {
       event.preventDefault();
-      toggleTray('conversations');
+      options.onToggleConversationsTray?.();
     }
   };
 

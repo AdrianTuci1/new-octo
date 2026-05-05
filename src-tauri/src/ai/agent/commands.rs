@@ -58,9 +58,11 @@ pub async fn agent_start(
         .unwrap_or_else(|| DEFAULT_MODEL_ID.to_string());
 
     let cwd = request.cwd.or_else(|| {
-        std::env::var("HOME")
-            .ok()
-            .or_else(|| std::env::current_dir().ok().map(|p| p.to_string_lossy().to_string()))
+        std::env::var("HOME").ok().or_else(|| {
+            std::env::current_dir()
+                .ok()
+                .map(|p| p.to_string_lossy().to_string())
+        })
     });
 
     let context = AgentHarnessContext {

@@ -4,9 +4,7 @@ use super::actions::AgentAction;
 
 #[derive(Debug, Clone)]
 pub enum AgentDecision {
-    Continue {
-        pending_actions: Vec<AgentAction>,
-    },
+    Continue { pending_actions: Vec<AgentAction> },
     Stop,
 }
 

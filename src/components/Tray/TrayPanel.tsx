@@ -1,6 +1,7 @@
-import { MessagesSquare } from 'lucide-react';
 import './TrayPanel.css';
+import { Command } from 'lucide-react';
 import { TrayCommands } from './TrayCommands';
+import { TrayConversations, type TrayConversationEntry } from './TrayConversations';
 import { TrayFooter } from './TrayFooter';
 import { TrayHelp } from './TrayHelp';
 import { TrayHistory } from './TrayHistory';
@@ -11,10 +12,15 @@ import type { CommandItem, ComposerMode, HelpItem, ShellModeSource, TrayContentM
 
 type TrayPanelProps = {
   isOpen: boolean;
+  showFooter?: boolean;
+  showOpenInApp?: boolean;
   activeMode: TrayContentMode;
   helpItems: HelpItem[];
   commandItems: CommandItem[];
   historyEntries: HistoryEntry[];
+  conversations: TrayConversationEntry[];
+  activeConversationId: string | null;
+  conversationSearchQuery: string;
   historyTab: HistoryTab;
   modelTab: 'all' | 'saved';
   modelEntries: ModelSpec[];
@@ -27,20 +33,29 @@ type TrayPanelProps = {
   onExitShellMode: () => void;
   onHistoryTabChange: (tab: HistoryTab) => void;
   onSelectHistoryEntry: (entry: HistoryEntry) => void;
+  onSelectConversation: (conversationId: string) => void;
+  onConversationSearchChange: (value: string) => void;
+  onNewConversation: () => void;
   onSelectModel: (modelId: string) => void;
   onModelTabChange: (tab: 'all' | 'saved') => void;
   onToggleHelp: () => void;
   onToggleCommands: () => void;
   onToggleConversations: () => void;
   onInsertCommand: (command: string) => void;
+  onOpenApp?: () => void;
 };
 
 export function TrayPanel({
   isOpen,
+  showFooter = true,
+  showOpenInApp = false,
   activeMode,
   helpItems,
   commandItems,
   historyEntries,
+  conversations,
+  activeConversationId,
+  conversationSearchQuery,
   historyTab,
   modelTab,
   modelEntries,
@@ -53,12 +68,16 @@ export function TrayPanel({
   onExitShellMode,
   onHistoryTabChange,
   onSelectHistoryEntry,
+  onSelectConversation,
+  onConversationSearchChange,
+  onNewConversation,
   onSelectModel,
   onModelTabChange,
   onToggleHelp,
   onToggleCommands,
   onToggleConversations,
-  onInsertCommand
+  onInsertCommand,
+  onOpenApp
 }: TrayPanelProps) {
   return (
     <div className={`tray-region ${isOpen ? 'open' : 'closed'}`}>
@@ -85,45 +104,63 @@ export function TrayPanel({
           />
         )}
         {activeMode === 'conversations' && (
-          <div className="tray-pane-placeholder">
-            <MessagesSquare size={32} strokeWidth={1.5} className="tray-header-icon" />
-            <p>Conversation history will appear here.</p>
-          </div>
-        )}
-      </div>
-
-      <div className={`tray-footer ${isOpen ? 'expanded' : 'collapsed'}`}>
-        {!isOpen && (
-          <TrayFooter
-            activeMode={activeMode}
-            inputMode={inputMode}
-            isOpen={false}
-            onExitShellMode={onExitShellMode}
-            onToggleCommands={onToggleCommands}
-            onToggleConversations={onToggleConversations}
-            onToggleHelp={onToggleHelp}
-            shellShortcutTokens={shellShortcutTokens}
-            shellSource={shellSource}
+          <TrayConversations
+            activeConversationId={activeConversationId}
+            conversations={conversations}
+            searchQuery={conversationSearchQuery}
+            onNewConversation={onNewConversation}
+            onSearchQueryChange={onConversationSearchChange}
+            onSelectConversation={onSelectConversation}
           />
         )}
-
-        {isOpen && (
-          <>
-            <div className="tray-footer-divider" aria-hidden="true" />
-            <TrayFooter
-              activeMode={activeMode}
-              inputMode={inputMode}
-              isOpen={true}
-              onExitShellMode={onExitShellMode}
-              onToggleCommands={onToggleCommands}
-              onToggleConversations={onToggleConversations}
-              onToggleHelp={onToggleHelp}
-              shellShortcutTokens={shellShortcutTokens}
-              shellSource={shellSource}
-            />
-          </>
-        )}
       </div>
+
+      {showFooter && (
+        <div className={`tray-footer ${isOpen ? 'expanded' : 'collapsed'}`}>
+          {!isOpen && (
+            <div className="tray-footer-compact-row">
+              <TrayFooter
+                activeMode={activeMode}
+                inputMode={inputMode}
+                isOpen={false}
+                onExitShellMode={onExitShellMode}
+                onToggleCommands={onToggleCommands}
+                onToggleConversations={onToggleConversations}
+                onToggleHelp={onToggleHelp}
+                shellShortcutTokens={shellShortcutTokens}
+                shellSource={shellSource}
+              />
+
+              {showOpenInApp && onOpenApp && (
+                <button className="tray-open-app-button" type="button" onClick={onOpenApp}>
+                  <span className="mode-button tray-open-app-shortcut" aria-hidden="true">
+                    <Command size={10} />
+                  </span>
+                  <span className="mode-button tray-open-app-shortcut" aria-hidden="true">X</span>
+                  <span>open in app</span>
+                </button>
+              )}
+            </div>
+          )}
+
+          {isOpen && (
+            <>
+              <TrayFooter
+                activeMode={activeMode}
+                inputMode={inputMode}
+                isOpen={true}
+                onExitShellMode={onExitShellMode}
+                onToggleCommands={onToggleCommands}
+                onToggleConversations={onToggleConversations}
+                onToggleHelp={onToggleHelp}
+                shellShortcutTokens={shellShortcutTokens}
+                shellSource={shellSource}
+              />
+              <div className="tray-footer-divider" aria-hidden="true" />
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }

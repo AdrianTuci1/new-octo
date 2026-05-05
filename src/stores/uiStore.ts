@@ -5,21 +5,30 @@ interface UIState {
   trayMode: TrayMode;
   lastTrayMode: TrayContentMode;
   isExpanded: boolean;
+  isModelDrawerOpen: boolean;
   
   // Actions
   setTrayMode: (mode: TrayMode) => void;
   toggleTray: (mode: TrayContentMode) => void;
   setExpanded: (expanded: boolean) => void;
+  setIsModelDrawerOpen: (open: boolean) => void;
 }
 
 export const useUIStore = create<UIState>((set) => ({
   trayMode: 'closed',
   lastTrayMode: 'help',
   isExpanded: false,
+  isModelDrawerOpen: false,
 
-  setTrayMode: (mode) => set({ 
-    trayMode: mode,
-    isExpanded: mode !== 'closed'
+  setTrayMode: (mode) => set((state) => {
+    if (state.trayMode === mode) {
+      return state;
+    }
+
+    return {
+      trayMode: mode,
+      isExpanded: mode !== 'closed'
+    };
   }),
 
   toggleTray: (mode) => set((state) => {
@@ -31,5 +40,6 @@ export const useUIStore = create<UIState>((set) => ({
     };
   }),
 
-  setExpanded: (expanded) => set({ isExpanded: expanded })
+  setExpanded: (expanded) => set({ isExpanded: expanded }),
+  setIsModelDrawerOpen: (open) => set({ isModelDrawerOpen: open })
 }));

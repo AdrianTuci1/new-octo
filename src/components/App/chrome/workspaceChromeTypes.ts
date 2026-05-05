@@ -1,0 +1,17 @@
+export type WorkspaceChromeTabKind = 'tools' | 'agents' | 'terminal' | 'conversation' | 'settings';
+
+export type WorkspaceChromeTab = {
+  id: string;
+  label: string;
+  kind: WorkspaceChromeTabKind;
+  subtitle?: string;
+  customLabel?: string | null;
+  tintColor?: string | null;
+};
+
+export type WorkspaceConversation = {
+  id: string;
+  title: string;
+  timeLabel: string;
+  branchLabel?: string;
+};

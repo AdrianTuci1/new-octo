@@ -31,7 +31,7 @@
 
 .tray-history-row {
   display: grid;
-  grid-template-columns: 34px minmax(0, 210px) minmax(0, 1fr);
+  grid-template-columns: 34px minmax(0, 1fr) auto;
   align-items: center;
   gap: 10px;
   min-height: 30px;

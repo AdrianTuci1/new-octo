@@ -196,7 +196,6 @@ impl AgentEventSink {
             },
         );
     }
-
 }
 
 pub fn sleep_or_cancel(cancellation: &AgentCancellation, duration: Duration) -> bool {

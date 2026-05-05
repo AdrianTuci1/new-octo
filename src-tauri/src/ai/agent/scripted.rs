@@ -33,7 +33,8 @@ impl AgentHarness for ScriptedHarness {
         context: AgentHarnessContext,
         sink: AgentEventSink,
         cancellation: AgentCancellation,
-    ) -> impl std::future::Future<Output = Result<AgentHarnessOutcome, AgentHarnessError>> + Send {
+    ) -> impl std::future::Future<Output = Result<AgentHarnessOutcome, AgentHarnessError>> + Send
+    {
         async move {
             sink.status(
                 AgentRunStatus::Preparing,
@@ -45,7 +46,11 @@ impl AgentHarness for ScriptedHarness {
 
             sink.status(
                 AgentRunStatus::Running,
-                Some(format!("Running {} with {}.", self.kind(), context.model_id)),
+                Some(format!(
+                    "Running {} with {}.",
+                    self.kind(),
+                    context.model_id
+                )),
             );
             if sleep_or_cancel(&cancellation, Duration::from_millis(120)) {
                 return Ok(cancelled_outcome(&context.prompt, ""));

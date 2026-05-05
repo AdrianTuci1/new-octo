@@ -6,8 +6,7 @@ mod session;
 use std::{
     collections::BTreeSet,
     collections::HashMap,
-    env,
-    fs,
+    env, fs,
     io::Read,
     path::{Path, PathBuf},
     process::Command,
@@ -30,14 +29,21 @@ const EVENT_BLOCK: &str = "terminal:block";
 const EVENT_BLOCK_OUTPUT: &str = "terminal:block-output";
 const EVENT_EXIT: &str = "terminal:exit";
 
+#[derive(Clone)]
+struct ManagedTerminalSession {
+    session: SharedTerminalSession,
+    attachment_count: usize,
+}
+
 #[derive(Clone, Default)]
 pub struct TerminalManager {
-    sessions: Arc<Mutex<HashMap<String, SharedTerminalSession>>>,
+    sessions: Arc<Mutex<HashMap<String, ManagedTerminalSession>>>,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateTerminalSessionRequest {
+    pub session_id: Option<String>,
     pub rows: Option<u16>,
     pub cols: Option<u16>,
     pub cwd: Option<String>,
@@ -133,10 +139,17 @@ pub struct GitRepoContext {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct TerminalRuntimeContext {
+    pub node_version: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ShellHistoryEntry {
     pub value: String,
     pub executed_at: String,
     pub source: String,
+    pub pwd: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -165,7 +178,13 @@ impl TerminalManager {
         self.sessions
             .lock()
             .map_err(|_| "terminal session map lock is poisoned".to_string())?
-            .insert(session.id.clone(), session);
+            .insert(
+                session.id.clone(),
+                ManagedTerminalSession {
+                    session,
+                    attachment_count: 1,
+                },
+            );
         Ok(())
     }
 
@@ -174,12 +193,46 @@ impl TerminalManager {
             .lock()
             .map_err(|_| "terminal session map lock is poisoned".to_string())?
             .get(session_id)
-            .cloned()
+            .map(|managed| managed.session.clone())
             .ok_or_else(|| format!("terminal session '{session_id}' was not found"))
     }
 
+    fn attach(&self, session_id: &str) -> Result<Option<SharedTerminalSession>, String> {
+        let mut sessions = self
+            .sessions
+            .lock()
+            .map_err(|_| "terminal session map lock is poisoned".to_string())?;
+        let Some(managed) = sessions.get_mut(session_id) else {
+            return Ok(None);
+        };
+
+        managed.attachment_count += 1;
+        Ok(Some(managed.session.clone()))
+    }
+
+    fn release(&self, session_id: &str) -> Result<Option<SharedTerminalSession>, String> {
+        let mut sessions = self
+            .sessions
+            .lock()
+            .map_err(|_| "terminal session map lock is poisoned".to_string())?;
+        let Some(managed) = sessions.get_mut(session_id) else {
+            return Ok(None);
+        };
+
+        if managed.attachment_count > 1 {
+            managed.attachment_count -= 1;
+            return Ok(None);
+        }
+
+        Ok(sessions.remove(session_id).map(|managed| managed.session))
+    }
+
     fn remove(&self, session_id: &str) -> Option<SharedTerminalSession> {
-        self.sessions.lock().ok()?.remove(session_id)
+        self.sessions
+            .lock()
+            .ok()?
+            .remove(session_id)
+            .map(|managed| managed.session)
     }
 }
 
@@ -189,6 +242,16 @@ pub fn terminal_create_session(
     manager: State<'_, TerminalManager>,
     request: CreateTerminalSessionRequest,
 ) -> Result<TerminalSessionInfo, String> {
+    if let Some(existing_session_id) = request
+        .session_id
+        .as_deref()
+        .filter(|value| !value.trim().is_empty())
+    {
+        if let Some(session) = manager.attach(existing_session_id)? {
+            return Ok(session.info());
+        }
+    }
+
     let rows = request.rows.unwrap_or(24).max(2);
     let cols = request.cols.unwrap_or(80).max(2);
     let spawned = spawn_terminal(rows, cols, request.cwd)?;
@@ -197,9 +260,23 @@ pub fn terminal_create_session(
     let manager_handle = manager.inner().clone();
 
     manager.insert(session.clone())?;
-    spawn_reader_thread(app, manager_handle, session, spawned.reader);
+    if let Some(reader) = spawned.reader {
+        spawn_reader_thread(app, manager_handle, session, reader);
+    }
 
     Ok(info)
+}
+
+#[tauri::command]
+pub fn terminal_release_session(
+    manager: State<'_, TerminalManager>,
+    request: TerminalSessionRequest,
+) -> Result<(), String> {
+    let Some(session) = manager.release(&request.session_id)? else {
+        return Ok(());
+    };
+
+    session.kill()
 }
 
 #[tauri::command]
@@ -240,6 +317,18 @@ pub fn terminal_run_command(
         Ok((exit_code, output_text)) => (Some(exit_code), output_text),
         Err(error) => (Some(1), format!("{error}\n")),
     };
+
+    if !output_text.is_empty() {
+        let _ = session.with_blocks(|blocks| blocks.append_output(&block.id, &output_text));
+        let _ = app.emit(
+            EVENT_BLOCK_OUTPUT,
+            TerminalBlockOutputEvent {
+                session_id: session.id.clone(),
+                block_id: block.id.clone(),
+                data: output_text.clone(),
+            },
+        );
+    }
 
     let finished_events = session
         .with_blocks(|blocks| blocks.finish_command(&session.id, &block.id, exit_code))
@@ -335,6 +424,17 @@ pub fn terminal_get_path_context() -> Result<FilesystemPathContext, String> {
 }
 
 #[tauri::command]
+pub fn terminal_get_runtime_context(
+    request: PathRequest,
+) -> Result<TerminalRuntimeContext, String> {
+    let cwd = resolve_request_path(request.path)?;
+
+    Ok(TerminalRuntimeContext {
+        node_version: read_command_version("node", &cwd),
+    })
+}
+
+#[tauri::command]
 pub fn terminal_list_directory_entries(
     request: ListDirectoryEntriesRequest,
 ) -> Result<FilesystemDirectoryListing, String> {
@@ -342,7 +442,10 @@ pub fn terminal_list_directory_entries(
         .path
         .filter(|value| !value.trim().is_empty())
         .map(PathBuf::from)
-        .unwrap_or(env::current_dir().map_err(|error| format!("failed to read current directory: {error}"))?);
+        .unwrap_or(
+            env::current_dir()
+                .map_err(|error| format!("failed to read current directory: {error}"))?,
+        );
     let normalized_path = target_path
         .canonicalize()
         .map_err(|error| format!("failed to open '{}': {error}", target_path.display()))?;
@@ -384,14 +487,17 @@ pub fn terminal_list_directory_entries(
     }
 
     entries.sort_by(|left, right| {
-        right.is_directory
+        right
+            .is_directory
             .cmp(&left.is_directory)
             .then_with(|| left.name.to_lowercase().cmp(&right.name.to_lowercase()))
     });
 
     Ok(FilesystemDirectoryListing {
         current_path: normalized_path.to_string_lossy().to_string(),
-        parent_path: normalized_path.parent().map(|path| path.to_string_lossy().to_string()),
+        parent_path: normalized_path
+            .parent()
+            .map(|path| path.to_string_lossy().to_string()),
         entries,
     })
 }
@@ -432,18 +538,163 @@ pub fn terminal_switch_git_branch(
 }
 
 #[tauri::command]
+pub async fn terminal_get_prediction(
+    _ai_manager: State<'_, crate::ai::AgentHarnessManager>,
+    input: String,
+    cwd: Option<String>,
+    last_command: Option<String>,
+    available_commands: Vec<String>,
+    context_messages: Vec<crate::ai::predict::model::ContextMessageInput>,
+) -> Result<Option<crate::ai::predict::CommandPrediction>, String> {
+    let trimmed = input.trim();
+    if trimmed.is_empty() {
+        // 0. Try sequence-based prediction (What usually follows last_command?)
+        let cutoff = Utc::now() - Duration::days(180);
+        let mut history = Vec::new();
+        history.extend(read_zsh_history(cutoff));
+        history.extend(read_bash_history(cutoff));
+        history.extend(read_fish_history(cutoff));
+
+        if let Some(prediction) =
+            crate::ai::predict::model::predict_from_sequences(last_command.as_deref(), &history)
+        {
+            return Ok(Some(prediction));
+        }
+
+        // Fallback to folder-based zero state
+        let zero_state =
+            crate::ai::predict::model::get_zero_state_suggestions(cwd.as_deref().unwrap_or("."));
+        if let Some(first) = zero_state.first() {
+            return Ok(Some(crate::ai::predict::CommandPrediction {
+                input: "".to_string(),
+                suggestion: first.clone(),
+                confidence: 0.5,
+                kind: crate::ai::predict::model::PredictionKind::Heuristic,
+            }));
+        }
+        return Ok(None);
+    }
+    // 1. Combine session history with system history
+    let cutoff = Utc::now() - Duration::days(180);
+    let mut history = Vec::new();
+
+    // Add commands from the current session first (highest priority)
+    for msg in &context_messages {
+        if !msg.input.is_empty() {
+            history.push(crate::terminal::ShellHistoryEntry {
+                value: msg.input.clone(),
+                executed_at: Utc::now().to_rfc3339(), // Assume recent
+                source: "session".to_string(),
+                pwd: msg.context.pwd.clone(),
+            });
+        }
+    }
+
+    history.extend(read_zsh_history(cutoff));
+    history.extend(read_bash_history(cutoff));
+    history.extend(read_fish_history(cutoff));
+
+    let mut best_prediction: Option<crate::ai::predict::CommandPrediction> = None;
+
+    // 2. Try local history (immediate) - with PWD prioritization
+    if let Some(prediction) =
+        crate::ai::predict::model::predict_from_history(trimmed, cwd.as_deref(), &history)
+    {
+        println!(
+            "[Predict] History match: '{}' (conf: {:.2})",
+            prediction.suggestion, prediction.confidence
+        );
+        if prediction.suggestion.contains(' ') {
+            return Ok(Some(prediction));
+        }
+        best_prediction = Some(prediction);
+    }
+
+    // 3. Try Heuristics
+    if let Some(prediction) =
+        crate::ai::predict::model::predict_next_command(trimmed, last_command.as_deref())
+    {
+        println!("[Predict] Heuristic match: '{}'", prediction.suggestion);
+        if prediction.suggestion.contains(' ') {
+            return Ok(Some(prediction));
+        }
+        if best_prediction.is_none() {
+            best_prediction = Some(prediction);
+        }
+    }
+
+    // 4. Try available commands (system executables)
+    if let Some(prediction) =
+        crate::ai::predict::model::predict_from_executables(trimmed, &available_commands)
+    {
+        // Only take executable if it's longer than input and we have nothing better
+        if prediction.suggestion.len() > trimmed.len() {
+            println!("[Predict] Executable match: '{}'", prediction.suggestion);
+            if best_prediction.is_none() {
+                best_prediction = Some(prediction);
+            }
+        }
+    }
+
+    // Filter out suggestions that don't add anything to the input
+    if let Some(ref pred) = best_prediction {
+        if pred.suggestion.trim() == trimmed {
+            return Ok(None);
+        }
+    }
+
+    // 5. AI Fallback is disabled as per user request to focus on local history discovery
+    Ok(best_prediction)
+}
+
+#[tauri::command]
+pub async fn terminal_get_composer_intelligence(
+    ai_manager: State<'_, crate::ai::AgentHarnessManager>,
+    composer_manager: State<'_, crate::ai::predict::composer::ComposerIntelligenceManager>,
+    request: crate::ai::predict::composer::ComposerIntelligenceRequest,
+) -> Result<crate::ai::predict::composer::ComposerIntelligenceResponse, String> {
+    Ok(crate::ai::predict::composer::get_composer_intelligence(
+        composer_manager.inner(),
+        ai_manager.inner(),
+        request,
+    )
+    .await)
+}
+
+#[tauri::command]
 pub fn terminal_get_recent_history() -> Result<Vec<ShellHistoryEntry>, String> {
-    let cutoff = Utc::now() - Duration::hours(24);
-    let mut entries = Vec::new();
+    let cutoff = Utc::now() - Duration::days(180);
+    let mut raw_entries = Vec::new();
 
-    entries.extend(read_zsh_history(cutoff));
-    entries.extend(read_bash_history(cutoff));
-    entries.extend(read_fish_history(cutoff));
+    raw_entries.extend(read_zsh_history(cutoff));
+    raw_entries.extend(read_bash_history(cutoff));
+    raw_entries.extend(read_fish_history(cutoff));
 
-    entries.sort_by(|left, right| right.executed_at.cmp(&left.executed_at));
-    entries.dedup_by(|left, right| {
-        left.value == right.value && left.executed_at == right.executed_at
-    });
+    let mut entries = raw_entries
+        .into_iter()
+        .filter_map(|entry| {
+            let normalized_value = entry.value.trim().to_string();
+            if normalized_value.is_empty() {
+                return None;
+            }
+
+            Some(ShellHistoryEntry {
+                value: normalized_value,
+                executed_at: entry.executed_at,
+                source: entry.source,
+                pwd: entry.pwd,
+            })
+        })
+        .collect::<Vec<_>>();
+
+    // Sort by most recent
+    entries.sort_by(|a, b| b.executed_at.cmp(&a.executed_at));
+
+    // Keep enough ordered history to preserve command sequences for prediction
+    // while still bounding the payload size sent to the frontend.
+    if entries.len() > 400 {
+        entries.truncate(400);
+    }
 
     Ok(entries)
 }
@@ -482,6 +733,9 @@ fn spawn_reader_thread(
                                 };
                                 let data = clean_terminal_text(&bytes);
                                 if !data.is_empty() {
+                                    let _ = session.with_blocks(|blocks| {
+                                        blocks.append_output(&block_id, &data)
+                                    });
                                     let _ = app.emit(
                                         EVENT_BLOCK_OUTPUT,
                                         TerminalBlockOutputEvent {
@@ -549,14 +803,17 @@ fn run_shell_command(
     Ok((output.status.code().unwrap_or(1), output_text))
 }
 
-fn home_dir() -> Option<std::path::PathBuf> {
+pub(crate) fn home_dir() -> Option<std::path::PathBuf> {
     env::var_os("HOME").map(std::path::PathBuf::from)
 }
 
 fn resolve_request_path(path: Option<String>) -> Result<PathBuf, String> {
     path.filter(|value| !value.trim().is_empty())
         .map(PathBuf::from)
-        .unwrap_or(env::current_dir().map_err(|error| format!("failed to read current directory: {error}"))?)
+        .unwrap_or(
+            env::current_dir()
+                .map_err(|error| format!("failed to read current directory: {error}"))?,
+        )
         .canonicalize()
         .map_err(|error| format!("failed to resolve path: {error}"))
 }
@@ -572,7 +829,9 @@ fn git_repo_context(cwd: &Path) -> Result<Option<GitRepoContext>, String> {
         return Ok(None);
     };
 
-    if !inside_repo.status.success() || String::from_utf8_lossy(&inside_repo.stdout).trim() != "true" {
+    if !inside_repo.status.success()
+        || String::from_utf8_lossy(&inside_repo.stdout).trim() != "true"
+    {
         return Ok(None);
     }
 
@@ -611,28 +870,82 @@ fn run_git_capture(cwd: &Path, args: &[&str]) -> Result<String, String> {
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
 }
 
+fn read_command_version(command: &str, cwd: &Path) -> Option<String> {
+    let output = Command::new(command)
+        .arg("--version")
+        .current_dir(cwd)
+        .output()
+        .ok()?;
+
+    if !output.status.success() {
+        return None;
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if !stdout.is_empty() {
+        return Some(stdout);
+    }
+
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    if stderr.is_empty() {
+        None
+    } else {
+        Some(stderr)
+    }
+}
+
 fn read_zsh_history(cutoff: DateTime<Utc>) -> Vec<ShellHistoryEntry> {
     let Some(home) = home_dir() else {
         return Vec::new();
     };
     let path = home.join(".zsh_history");
-    let Ok(contents) = fs::read_to_string(path) else {
+    let Ok(contents) = fs::read_to_string(&path) else {
         return Vec::new();
     };
+
+    let count = contents.lines().count();
+    println!(
+        "[History] Reading Zsh history: {} lines from {:?}",
+        count, path
+    );
 
     contents
         .lines()
         .filter_map(|line| {
-            let rest = line.strip_prefix(": ")?;
-            let (timestamp, command_part) = rest.split_once(':')?;
-            let (_, command) = command_part.split_once(';')?;
-            let timestamp = timestamp.parse::<i64>().ok()?;
-            let executed_at = Utc.timestamp_opt(timestamp, 0).single()?;
+            let trimmed_line = line.trim();
+            if trimmed_line.is_empty() {
+                return None;
+            }
+
+            let (executed_at, value) = if trimmed_line.starts_with(": ") {
+                // Extended format: : 1234567890:0;command
+                if let Some(rest) = trimmed_line.strip_prefix(": ") {
+                    if let Some((timestamp, command_part)) = rest.split_once(':') {
+                        if let Some((_, command)) = command_part.split_once(';') {
+                            let timestamp = timestamp.parse::<i64>().ok().unwrap_or(0);
+                            let time = Utc
+                                .timestamp_opt(timestamp, 0)
+                                .single()
+                                .unwrap_or_else(Utc::now);
+                            (time, command.trim())
+                        } else {
+                            (Utc::now(), command_part.trim())
+                        }
+                    } else {
+                        (Utc::now(), rest.trim())
+                    }
+                } else {
+                    (Utc::now(), trimmed_line)
+                }
+            } else {
+                // Simple format: command
+                (Utc::now(), trimmed_line)
+            };
+
             if executed_at < cutoff {
                 return None;
             }
 
-            let value = command.trim();
             if value.is_empty() {
                 return None;
             }
@@ -641,6 +954,7 @@ fn read_zsh_history(cutoff: DateTime<Utc>) -> Vec<ShellHistoryEntry> {
                 value: value.to_string(),
                 executed_at: executed_at.to_rfc3339(),
                 source: "zsh".to_string(),
+                pwd: None,
             })
         })
         .collect()
@@ -659,7 +973,10 @@ fn read_bash_history(cutoff: DateTime<Utc>) -> Vec<ShellHistoryEntry> {
     let mut entries = Vec::new();
 
     for line in contents.lines() {
-        if let Some(timestamp) = line.strip_prefix('#').and_then(|value| value.parse::<i64>().ok()) {
+        if let Some(timestamp) = line
+            .strip_prefix('#')
+            .and_then(|value| value.parse::<i64>().ok())
+        {
             current_timestamp = Some(timestamp);
             continue;
         }
@@ -683,6 +1000,7 @@ fn read_bash_history(cutoff: DateTime<Utc>) -> Vec<ShellHistoryEntry> {
             value: value.to_string(),
             executed_at: executed_at.to_rfc3339(),
             source: "bash".to_string(),
+            pwd: None,
         });
     }
 
@@ -708,7 +1026,10 @@ fn read_fish_history(cutoff: DateTime<Utc>) -> Vec<ShellHistoryEntry> {
             continue;
         }
 
-        let Some(timestamp) = trimmed.strip_prefix("when: ").and_then(|value| value.parse::<i64>().ok()) else {
+        let Some(timestamp) = trimmed
+            .strip_prefix("when: ")
+            .and_then(|value| value.parse::<i64>().ok())
+        else {
             continue;
         };
         let Some(command) = current_command.take() else {
@@ -730,6 +1051,7 @@ fn read_fish_history(cutoff: DateTime<Utc>) -> Vec<ShellHistoryEntry> {
             value: value.to_string(),
             executed_at: executed_at.to_rfc3339(),
             source: "fish".to_string(),
+            pwd: None,
         });
     }
 
@@ -752,4 +1074,28 @@ fn is_executable_command(path: &std::path::Path) -> bool {
     fs::metadata(path)
         .map(|metadata| metadata.is_file())
         .unwrap_or(false)
+}
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WriteFileRequest {
+    pub path: String,
+    pub content: String,
+}
+
+#[tauri::command]
+pub fn terminal_read_file(request: PathRequest) -> Result<String, String> {
+    let path = resolve_request_path(request.path)?;
+    if !path.is_file() {
+        return Err(format!("'{}' is not a file", path.display()));
+    }
+
+    fs::read_to_string(&path)
+        .map_err(|error| format!("failed to read '{}': {error}", path.display()))
+}
+
+#[tauri::command]
+pub fn terminal_write_file(request: WriteFileRequest) -> Result<(), String> {
+    let path = PathBuf::from(&request.path);
+    fs::write(&path, &request.content)
+        .map_err(|error| format!("failed to write to '{}': {error}", path.display()))
 }

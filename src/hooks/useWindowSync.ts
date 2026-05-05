@@ -2,10 +2,11 @@ import { useLayoutEffect, useRef } from 'react';
 import { LogicalSize } from '@tauri-apps/api/dpi';
 import { PhysicalPosition, currentMonitor, getCurrentWindow, primaryMonitor } from '@tauri-apps/api/window';
 
-export function useWindowSync(elementRef: React.RefObject<HTMLElement>) {
+export function useWindowSync(elementRef: React.RefObject<HTMLElement>, enabled = true) {
   const lastWindowSizeRef = useRef<{ width: number; height: number }>({ width: 0, height: 0 });
 
   useLayoutEffect(() => {
+    if (!enabled) return;
     const element = elementRef.current;
     if (!element) return;
 
@@ -57,5 +58,5 @@ export function useWindowSync(elementRef: React.RefObject<HTMLElement>) {
       cancelAnimationFrame(rafId);
       observer.disconnect();
     };
-  }, [elementRef]);
+  }, [elementRef, enabled]);
 }

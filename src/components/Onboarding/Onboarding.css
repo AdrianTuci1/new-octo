@@ -1,0 +1,132 @@
+.onboarding-main {
+  flex: 1;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #000000;
+  color: #ffffff;
+  font-family: var(--font-ui);
+}
+
+.onboarding-card {
+  width: 440px;
+  background: #0b0b0b;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 48px 40px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  box-shadow: 0 30px 60px rgba(0, 0, 0, 0.6);
+}
+
+.onboarding-logo-container {
+  width: 64px;
+  height: 64px;
+  background: #1a1a1a;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 32px;
+}
+
+.onboarding-logo {
+  width: 32px;
+  height: 32px;
+  position: relative;
+}
+
+.logo-card {
+  position: absolute;
+  background: #ffffff;
+  width: 16px;
+  height: 20px;
+  border-radius: 3px;
+}
+
+.logo-card-1 {
+  top: 4px;
+  left: 4px;
+  opacity: 0.6;
+}
+
+.logo-card-2 {
+  bottom: 4px;
+  right: 4px;
+  z-index: 2;
+}
+
+.onboarding-title {
+  font-size: 26px;
+  font-weight: 600;
+  margin: 0 0 32px 0;
+  letter-spacing: -0.01em;
+}
+
+.onboarding-btn-primary {
+  width: 100%;
+  height: 44px;
+  background: #0070ad;
+  color: #ffffff;
+  border-radius: 6px;
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 24px;
+  border: none;
+}
+
+.onboarding-btn-primary:hover {
+  background: #0081c7;
+  transform: translateY(-1px);
+}
+
+.onboarding-btn-primary:active {
+  transform: translateY(0);
+}
+
+.onboarding-links {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 40px;
+  width: 100%;
+}
+
+.onboarding-link-text {
+  font-size: 13px;
+  color: var(--text-soft);
+}
+
+.onboarding-link {
+  color: var(--accent-blue);
+  text-decoration: none;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.onboarding-link:hover {
+  text-decoration: underline;
+}
+
+.onboarding-footer {
+  font-size: 12px;
+  color: var(--text-dim);
+  line-height: 1.6;
+}
+
+.onboarding-footer span {
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.onboarding-footer span:hover {
+  color: var(--text-soft);
+}
