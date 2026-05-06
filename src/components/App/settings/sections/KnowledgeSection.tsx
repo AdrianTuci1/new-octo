@@ -1,13 +1,15 @@
-import React, { type ReactNode } from 'react';
+import React, { type ReactNode, useState } from 'react';
 import { ChevronRight } from 'lucide-react';
+import { useUIStore } from '../../../../stores';
 
-function SettingsToggle({ checked = false }: { checked?: boolean }) {
+function SettingsToggle({ checked = false, onChange }: { checked?: boolean; onChange?: () => void }) {
   return (
     <button
       className={`settings-toggle ${checked ? 'active' : ''}`}
       type="button"
       role="switch"
       aria-checked={checked}
+      onClick={onChange}
     >
       <span />
     </button>
@@ -36,9 +38,9 @@ function SettingsRow({
   );
 }
 
-function ActionCard({ label }: { label: string }) {
+function ActionCard({ label, onClick }: { label: string; onClick?: () => void }) {
   return (
-    <button className="settings-action-card" type="button">
+    <button className="settings-action-card" type="button" onClick={onClick}>
       <span>{label}</span>
       <ChevronRight size={16} />
     </button>
@@ -46,6 +48,12 @@ function ActionCard({ label }: { label: string }) {
 }
 
 export function KnowledgeSection() {
+  const setIsRulesDrawerOpen = useUIStore((state) => state.setIsRulesDrawerOpen);
+
+  const [rulesEnabled, setRulesEnabled] = useState(true);
+  const [suggestedRulesEnabled, setSuggestedRulesEnabled] = useState(true);
+  const [contextEnabled, setContextEnabled] = useState(true);
+
   return (
     <section className="settings-panel">
       <div className="settings-panel-header">
@@ -60,22 +68,22 @@ export function KnowledgeSection() {
               Rules help the Octo Agent follow your conventions, whether for codebases or specific workflows. <button className="settings-link-inline">Learn more</button>
             </span>
           }
-          action={<SettingsToggle checked={true} />}
+          action={<SettingsToggle checked={rulesEnabled} onChange={() => setRulesEnabled(!rulesEnabled)} />}
         />
         <SettingsRow 
           title="Suggested Rules" 
           description="Let AI suggest rules to save based on your interactions."
-          action={<SettingsToggle checked={true} />}
+          action={<SettingsToggle checked={suggestedRulesEnabled} onChange={() => setSuggestedRulesEnabled(!suggestedRulesEnabled)} />}
         />
 
         <div style={{ marginTop: '12px', marginBottom: '24px' }}>
-          <ActionCard label="Manage rules" />
+          <ActionCard label="Manage rules" onClick={() => setIsRulesDrawerOpen(true)} />
         </div>
 
         <SettingsRow 
           title="Octo Drive as agent context" 
           description="The Octo Agent can leverage your Octo Drive Contents to tailor responses to your personal and team developer workflows and environments. This includes any Workflows, Notebooks, and Environment Variables."
-          action={<SettingsToggle checked={true} />}
+          action={<SettingsToggle checked={contextEnabled} onChange={() => setContextEnabled(!contextEnabled)} />}
         />
       </div>
     </section>

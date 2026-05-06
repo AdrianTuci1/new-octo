@@ -35,6 +35,8 @@ function buildEmptyWorkspaceSnapshot(options: {
   };
 }
 
+const SETTINGS_TAB_ID = 'settings';
+
 export function useAppWindow() {
   const [tabs, setTabs] = useState<WorkspaceChromeTab[]>(initialWorkspaceChromeTabs);
   const [selectedTabId, setSelectedTabId] = useState(defaultWorkspaceChromeTabId);
@@ -875,6 +877,32 @@ export function useAppWindow() {
     setIsAgentsActive((current) => !current);
   }, []);
 
+  const onOpenSettingsSection = useCallback((sectionId?: string) => {
+    setTabs((current) => {
+      const hasSettingsTab = current.some((tab) => tab.id === SETTINGS_TAB_ID);
+      if (hasSettingsTab) {
+        return current;
+      }
+
+      const settingsTab = initialWorkspaceChromeTabs.find((tab) => tab.id === SETTINGS_TAB_ID) ?? {
+        id: SETTINGS_TAB_ID,
+        label: 'Settings',
+        kind: 'settings' as const
+      };
+
+      const nextTabs = [...current];
+      const insertAt = Math.min(1, nextTabs.length);
+      nextTabs.splice(insertAt, 0, settingsTab);
+      return nextTabs;
+    });
+
+    if (sectionId) {
+      setActiveSectionId(sectionId);
+    }
+
+    setSelectedTabId(SETTINGS_TAB_ID);
+  }, []);
+
   const getLauncherProps = useCallback((tab: WorkspaceChromeTab) => ({
     active: tab.id === selectedTab.id,
     chatMode: 'always-open' as const,
@@ -968,7 +996,8 @@ export function useAppWindow() {
       onRemoveTabFromLauncher: handleRemoveTabFromLauncher,
       onToggleAgents,
       onToggleSidebar,
-      setLauncherTabId
+      setLauncherTabId,
+      onOpenSettingsSection
     }
   };
 }

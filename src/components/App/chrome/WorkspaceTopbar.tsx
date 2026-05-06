@@ -25,6 +25,8 @@ type WorkspaceTopbarProps = {
   isSidebarOpen: boolean;
   isAgentsActive: boolean;
   onToggleAgents: () => void;
+  onOpenSettingsSection: (sectionId?: string) => void;
+  onOpenKeyboardShortcutsDrawer: () => void;
 };
 
 export function WorkspaceTopbar({
@@ -45,7 +47,9 @@ export function WorkspaceTopbar({
   onToggleSidebar,
   isSidebarOpen,
   isAgentsActive,
-  onToggleAgents
+  onToggleAgents,
+  onOpenSettingsSection,
+  onOpenKeyboardShortcutsDrawer
 }: WorkspaceTopbarProps) {
   const headerRef = useRef<HTMLElement | null>(null);
   const dragSpacerRef = useRef<HTMLDivElement | null>(null);
@@ -418,10 +422,22 @@ export function WorkspaceTopbar({
           <button type="button" onClick={() => { setAccountMenuState(null); console.log("What's New clicked"); }}>
             What's New
           </button>
-          <button type="button" onClick={() => { setAccountMenuState(null); console.log("Settings clicked"); }}>
+          <button
+            type="button"
+            onClick={() => {
+              setAccountMenuState(null);
+              onOpenSettingsSection();
+            }}
+          >
             Settings
           </button>
-          <button type="button" onClick={() => { setAccountMenuState(null); console.log("Keyboard Shortcuts clicked"); }}>
+          <button
+            type="button"
+            onClick={() => {
+              setAccountMenuState(null);
+              onOpenKeyboardShortcutsDrawer();
+            }}
+          >
             Keyboard Shortcuts
           </button>
           <button type="button" onClick={() => { setAccountMenuState(null); console.log("View Logs clicked"); }}>

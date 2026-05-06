@@ -49,10 +49,6 @@
   right: -2px;
 }
 
-.editor-handle {
-  left: -2px;
-}
-
 .app-window-main {
   flex: 1;
   display: flex;
@@ -60,6 +56,20 @@
   overflow: hidden;
   background: var(--bg-primary);
   position: relative;
+}
+
+.app-window-drawers-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  align-items: stretch;
+  justify-content: flex-end;
+  pointer-events: none;
+}
+
+.app-window-drawers-layer > * {
+  pointer-events: auto;
 }
 
 .app-window-overlay {
@@ -86,6 +96,7 @@
   flex: 1;
   overflow: hidden;
   position: relative;
+  z-index: 1;
 }
 
 .app-window-workspace-container {
@@ -94,21 +105,6 @@
   flex-direction: column;
   overflow: hidden;
   min-width: 300px;
-}
-
-.app-window-editor-drawer-wrapper {
-  position: relative;
-  height: 100%;
-  display: flex;
-  background-color: #050505;
-  border-left: 1px solid rgba(255, 255, 255, 0.05);
-  z-index: 15;
-}
-
-.app-window-editor-drawer {
-  flex: 1;
-  height: 100%;
-  overflow: hidden;
 }
 
 @keyframes slideInRight {
@@ -167,6 +163,8 @@
   justify-content: center;
   background: var(--settings-bg-content);
   border-bottom: none;
+  position: relative;
+  z-index: 2;
 }
 
 .app-window-header-title {
@@ -180,9 +178,4 @@
 .app-window-workspace>*,
 .app-window-panel>* {
   min-width: 0;
-}
-
-.app-window-editor-drawer-wrapper.model-drawer-wrapper {
-  box-shadow: -10px 0 30px rgba(0, 0, 0, 0.5);
-  border-left: 1px solid rgba(255, 255, 255, 0.1);
 }

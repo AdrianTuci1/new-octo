@@ -14,6 +14,7 @@ import {
   Plus, 
   Terminal 
 } from 'lucide-react';
+import { useUIStore } from '../../../../stores';
 
 function ProfileItem({ 
   icon: Icon, 
@@ -38,11 +39,28 @@ function ProfileItem({
 }
 
 export function ProfilesSection() {
+  const setIsProfileDrawerOpen = useUIStore((state) => state.setIsProfileDrawerOpen);
+  const setActiveProfileName = useUIStore((state) => state.setActiveProfileName);
+
+  const handleAddProfile = () => {
+    setActiveProfileName('New Profile');
+    setIsProfileDrawerOpen(true);
+  };
+
+  const handleEditProfile = (name: string) => {
+    setActiveProfileName(name);
+    setIsProfileDrawerOpen(true);
+  };
+
   return (
     <section className="settings-panel">
       <div className="settings-panel-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <h1>Profiles</h1>
-        <button className="settings-primary-button" type="button">
+        <button 
+          className="settings-primary-button" 
+          type="button"
+          onClick={handleAddProfile}
+        >
           <Plus size={14} style={{ marginRight: '6px' }} />
           Add Profile
         </button>
@@ -57,7 +75,11 @@ export function ProfilesSection() {
       <div className="profile-card">
         <div className="profile-card-header">
           <h2 className="profile-card-title">Default</h2>
-          <button className="profile-card-edit" type="button">
+          <button 
+            className="profile-card-edit" 
+            type="button"
+            onClick={() => handleEditProfile('Default')}
+          >
             <Pencil size={14} />
             Edit
           </button>

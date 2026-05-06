@@ -45,7 +45,7 @@ export const agentsSectionMeta: Record<
   'agents/third-party-cli-agents': {
     title: 'Third party CLI agents',
     description: 'Wire external CLI-based agents into the workspace.',
-    contentKind: 'placeholder'
+    contentKind: 'third-party-cli-agents'
   }
 };
 

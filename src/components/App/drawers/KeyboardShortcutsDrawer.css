@@ -1,0 +1,105 @@
+.keyboard-shortcuts-drawer-eyebrow {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.keyboard-shortcuts-drawer-description {
+  margin: 6px 0 0;
+  color: var(--text-dim);
+  font-size: 12px;
+  line-height: 1.45;
+  max-width: 380px;
+}
+
+.keyboard-shortcuts-drawer-intro {
+  padding: 12px 18px 0;
+}
+
+.keyboard-shortcuts-drawer-toolbar {
+  margin: 14px 18px 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.keyboard-shortcuts-drawer-column-label {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text-main);
+}
+
+.keyboard-shortcuts-drawer-search {
+  max-width: 280px;
+  height: 30px;
+  padding: 0 10px;
+}
+
+.keyboard-shortcuts-drawer-search input {
+  font-size: 12px;
+}
+
+.keyboard-shortcuts-drawer-scroll-shell {
+  flex: 1;
+  min-height: 0;
+  margin: 14px 18px 18px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.02);
+  overflow: hidden;
+}
+
+.keyboard-shortcuts-drawer-list {
+  height: 100%;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+}
+
+.keyboard-shortcuts-drawer .settings-shortcut-row {
+  min-height: 38px;
+  padding: 5px 12px;
+  gap: 12px;
+}
+
+.keyboard-shortcuts-drawer .settings-shortcut-command {
+  font-size: 12px;
+}
+
+.keyboard-shortcuts-drawer .settings-shortcut-bindings {
+  gap: 4px;
+}
+
+.keyboard-shortcuts-drawer .settings-shortcut-key {
+  min-width: 22px;
+  height: 22px;
+  padding: 0 5px;
+  font-size: 11px;
+}
+
+.keyboard-shortcuts-drawer .settings-shortcut-empty,
+.keyboard-shortcuts-drawer .settings-shortcuts-empty-state {
+  font-size: 12px;
+}
+
+@media (max-width: 768px) {
+  .keyboard-shortcuts-drawer-intro,
+  .keyboard-shortcuts-drawer-toolbar,
+  .keyboard-shortcuts-drawer-scroll-shell {
+    margin-left: 16px;
+    margin-right: 16px;
+  }
+
+  .keyboard-shortcuts-drawer-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .keyboard-shortcuts-drawer-search {
+    max-width: none;
+  }
+}

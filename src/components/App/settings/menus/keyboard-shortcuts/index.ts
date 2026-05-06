@@ -10,7 +10,6 @@ export const keyboardShortcutsSectionMeta: Record<'keyboard-shortcuts', Settings
   'keyboard-shortcuts': {
     title: 'Keyboard shortcuts',
     description: 'Customize launcher and workspace shortcuts.',
-    contentKind: 'placeholder'
+    contentKind: 'keyboard-shortcuts'
   }
 };
-

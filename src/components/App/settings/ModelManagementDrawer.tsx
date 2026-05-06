@@ -3,6 +3,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { Key, Trash2, X } from 'lucide-react';
 import { useMemoryStore, useUIStore } from '../../../stores';
 import type { AgentProviderStatus } from '../../../types/chat';
+import { DrawerHeader } from '../drawers/DrawerHeader';
 import './ModelManagementDrawer.css';
 
 const DEFAULT_PROVIDER_LABEL = 'OpenAI';
@@ -135,14 +136,19 @@ export function ModelManagementDrawer() {
 
   return (
     <div className="model-mgmt-drawer">
-      <header className="model-mgmt-header">
-        <div className="header-left">
-          <h2 className="header-title">Add new model</h2>
-        </div>
-        <button className="close-btn" onClick={() => setIsModelDrawerOpen(false)} type="button">
-          <X size={18} />
-        </button>
-      </header>
+      <DrawerHeader
+        title="Add new model"
+        action={(
+          <button
+            className="drawer-header-action-button"
+            onClick={() => setIsModelDrawerOpen(false)}
+            type="button"
+            aria-label="Close model drawer"
+          >
+            <X size={18} />
+          </button>
+        )}
+      />
 
       <div className="model-mgmt-content">
         <div className="model-mgmt-status-row">

@@ -6,16 +6,16 @@ import { SettingsContent } from './settings/SettingsContent';
 import { SettingsSidebar } from './settings/SettingsSidebar';
 import { WorkspaceSidebar } from './chrome/WorkspaceSidebar';
 import { useAppWindow } from './hooks/useAppWindow';
-import { EditorWorkspace } from '../Editor/EditorWorkspace';
 import { AgentsView } from './agents/AgentsView';
 import { useEditorStore } from '../../stores/editorStore';
-import { useUIStore } from '../../stores';
-import { ModelManagementDrawer } from './settings/ModelManagementDrawer';
+import { useState } from 'react';
+import { AppWindowDrawers } from './drawers/AppWindowDrawers';
 
 export function AppWindow() {
   const app = useAppWindow();
   const { tabs } = useEditorStore();
   const isEditorOpen = tabs.length > 0;
+  const [isKeyboardShortcutsDrawerOpen, setIsKeyboardShortcutsDrawerOpen] = useState(false);
   const selectedLauncherTab = app.workspace.tabs.find(
     (tab) => tab.kind === 'terminal' && tab.id === app.chrome.selectedTab.id
   );
@@ -29,22 +29,6 @@ export function AppWindow() {
     maxWidth: 500,
     direction: 'left'
   });
-
-  const { width: editorWidth, isResizing: isResizingEditorState, startResizing: startResizingEditor } = useAppResize({
-    initialWidth: 600,
-    minWidth: 300,
-    maxWidth: window.innerWidth * 0.8,
-    direction: 'right'
-  });
-
-  const { width: modelDrawerWidth, isResizing: isResizingModelDrawerState, startResizing: startResizingModelDrawer } = useAppResize({
-    initialWidth: 450,
-    minWidth: 300,
-    maxWidth: 800,
-    direction: 'right'
-  });
-
-  const isModelDrawerOpen = useUIStore((state) => state.isModelDrawerOpen);
 
   return (
     <div className={`app-window ${isEditorOpen ? 'with-editor' : ''}`}>
@@ -67,6 +51,8 @@ export function AppWindow() {
         isSidebarOpen={app.chrome.isSidebarOpen}
         isAgentsActive={app.chrome.isAgentsActive}
         onToggleAgents={app.actions.onToggleAgents}
+        onOpenSettingsSection={app.actions.onOpenSettingsSection}
+        onOpenKeyboardShortcutsDrawer={() => setIsKeyboardShortcutsDrawerOpen(true)}
       />
 
       <div className="app-window-container">
@@ -152,38 +138,13 @@ export function AppWindow() {
                 </div>
               )}
             </div>
-
-            {isEditorOpen && (
-              <div
-                className="app-window-editor-drawer-wrapper"
-                style={{
-                  width: editorWidth,
-                  transition: isResizingEditorState ? 'none' : 'width 0.2s cubic-bezier(0.4, 0, 0.2, 1)'
-                }}
-              >
-                <div className="resize-handle editor-handle" onMouseDown={startResizingEditor} />
-                <div className="app-window-editor-drawer">
-                  <EditorWorkspace />
-                </div>
-              </div>
-            )}
-
-            {isModelDrawerOpen && (
-              <div
-                className="app-window-editor-drawer-wrapper model-drawer-wrapper"
-                style={{
-                  width: modelDrawerWidth,
-                  transition: isResizingModelDrawerState ? 'none' : 'width 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
-                  zIndex: 20
-                }}
-              >
-                <div className="resize-handle editor-handle" onMouseDown={startResizingModelDrawer} />
-                <div className="app-window-editor-drawer">
-                  <ModelManagementDrawer />
-                </div>
-              </div>
-            )}
           </div>
+
+          <AppWindowDrawers
+            isEditorOpen={isEditorOpen}
+            isKeyboardShortcutsDrawerOpen={isKeyboardShortcutsDrawerOpen}
+            onCloseKeyboardShortcutsDrawer={() => setIsKeyboardShortcutsDrawerOpen(false)}
+          />
 
           {app.chrome.isAgentsActive && (
             <div className="app-window-overlay" role="presentation">
