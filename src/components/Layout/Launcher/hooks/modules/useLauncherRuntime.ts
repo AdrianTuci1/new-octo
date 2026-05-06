@@ -1,6 +1,6 @@
 import { useCallback, useMemo } from 'react';
 import * as Hooks from '../../../../../hooks';
-import { useMemoryStore, useLauncherStore } from '../../../../../stores';
+import { useMemoryStore, useLauncherStore, useUIStore } from '../../../../../stores';
 import * as Utils from '../../utils';
 import { consumeShellModeActivator } from '../../../../../lib';
 import type { LauncherProps } from '../types';
@@ -25,6 +25,7 @@ export function useLauncherRuntime(props: LauncherProps, store: any, tray: any) 
   const localPendingApproval = useLauncherStore(state => state.localPendingApproval);
   const setComposerSurface = useLauncherStore(state => state.setComposerSurface);
   const setModeLock = useLauncherStore(state => state.setModeLock);
+  const openModelDrawer = useUIStore((state) => state.openModelDrawer);
 
   const workingDirectoryRaw = Hooks.useWorkingDirectory({
     initialPath: initialWorkingDirectory,
@@ -56,7 +57,10 @@ export function useLauncherRuntime(props: LauncherProps, store: any, tray: any) 
   const modelSelectionRaw = Hooks.useModelSelection();
   const modelSelection = useMemo(() => modelSelectionRaw, [
     modelSelectionRaw.selectedModelId,
-    modelSelectionRaw.models
+    modelSelectionRaw.models,
+    modelSelectionRaw.selectedModelLabel,
+    modelSelectionRaw.isConfigured,
+    modelSelectionRaw.requiresModelSetup
   ]);
 
   const availableShellCommands = Hooks.useShellCommandIndex();
@@ -152,6 +156,11 @@ export function useLauncherRuntime(props: LauncherProps, store: any, tray: any) 
     conversationId: resolvedConversationId,
     cwd: workingDirectory.currentPath,
     modelId: modelSelection.selectedModelId,
+    requiresModelSetup: modelSelection.requiresModelSetup,
+    onRequireModelSetup: () => {
+      tray.closeTray();
+      openModelDrawer();
+    },
     onCloseTray: tray.closeTray,
     terminalBlocks: agentTerminal.blocks,
     onCommandApproval: requestCommandApproval,

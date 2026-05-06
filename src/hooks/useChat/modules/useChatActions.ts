@@ -47,6 +47,11 @@ export function useChatActions({ options, state, onCommandApprovalRef, onFileCha
     const trimmed = prompt.trim();
     if (!trimmed) return;
 
+    if (options.requiresModelSetup) {
+      options.onRequireModelSetup?.();
+      return;
+    }
+
     if (trimmed === '/new') {
       await saveCurrentConversation();
       state.clearMessages();

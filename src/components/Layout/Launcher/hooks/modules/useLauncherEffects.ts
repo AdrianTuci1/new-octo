@@ -14,6 +14,7 @@ export type LauncherEffectsParams = {
   ui: any;
   tray: any;
   refs: any;
+  actions: any;
   clearTerminalSurface: () => void;
 };
 
@@ -26,6 +27,7 @@ export function useLauncherEffects(params: LauncherEffectsParams) {
     ui,
     tray,
     refs,
+    actions,
     clearTerminalSurface,
   } = params;
 
@@ -53,6 +55,7 @@ export function useLauncherEffects(params: LauncherEffectsParams) {
   const terminalAutoDetectSetting = memoryStore.settings?.values.terminalAutoDetectEnabled;
 
   const didResetOnMountRef = useRef(false);
+  const didPromptModelSetupRef = useRef(false);
   const suppressComposerSurfaceReportRef = useRef(false);
   const lastReportedComposerSurfaceRef = useRef<'agent' | 'terminal' | null>(null);
   const lastReportedWorkingDirectoryRef = useRef<string | null>(null);
@@ -143,7 +146,18 @@ export function useLauncherEffects(params: LauncherEffectsParams) {
     store.setSelectedModelIndex(0);
   }, [resetOnMount]);
 
-  // 9. Anchor Sync
+  // 9. Model Setup Onboarding
+  useEffect(() => {
+    if (store.composerSurface !== 'agent' || !runtime.modelSelection.requiresModelSetup || didPromptModelSetupRef.current) {
+      return;
+    }
+
+    didPromptModelSetupRef.current = true;
+    tray.closeTray();
+    actions.openModelDrawer();
+  }, [actions, runtime.modelSelection.requiresModelSetup, tray]);
+
+  // 10. Anchor Sync
   useEffect(() => {
     const anchor = refs.pendingConversationAnchorRef.current;
     if (!anchor || resolvedConversationId !== anchor.conversationId || chat.messages.length === 0) return;

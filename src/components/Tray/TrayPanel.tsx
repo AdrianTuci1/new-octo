@@ -25,7 +25,7 @@ type TrayPanelProps = {
   modelTab: 'all' | 'saved';
   modelEntries: ModelSpec[];
   selectedHistoryIndex: number;
-  selectedModelId: string;
+  selectedModelId: string | null;
   selectedModelIndex: number;
   inputMode: ComposerMode;
   shellSource: ShellModeSource | null;
@@ -43,6 +43,7 @@ type TrayPanelProps = {
   onToggleConversations: () => void;
   onInsertCommand: (command: string) => void;
   onOpenApp?: () => void;
+  onOpenModelSettings?: () => void;
 };
 
 export function TrayPanel({
@@ -77,7 +78,8 @@ export function TrayPanel({
   onToggleCommands,
   onToggleConversations,
   onInsertCommand,
-  onOpenApp
+  onOpenApp,
+  onOpenModelSettings
 }: TrayPanelProps) {
   return (
     <div className={`tray-region ${isOpen ? 'open' : 'closed'}`}>
@@ -97,6 +99,7 @@ export function TrayPanel({
           <TrayModels
             activeTab={modelTab}
             models={modelEntries}
+            onOpenModelSettings={onOpenModelSettings}
             onSelectModel={onSelectModel}
             onTabChange={onModelTabChange}
             selectedIndex={selectedModelIndex}

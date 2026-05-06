@@ -1,5 +1,6 @@
 import { useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { useUIStore } from '../../../../../stores';
 import * as Utils from '../../utils';
 import type { LauncherProps } from '../types';
 
@@ -20,6 +21,8 @@ export function useLauncherActions({
   runtime: any;
   refs: any;
 }) {
+  const setIsModelDrawerOpen = useUIStore((state) => state.setIsModelDrawerOpen);
+
   const clearTerminalSurface = useCallback(() => {
     refs.pendingConversationAnchorRef.current = null;
     refs.seededConversationAnchorTimesRef.current = {};
@@ -51,10 +54,19 @@ export function useLauncherActions({
     void invoke('show_app_window').catch(e => console.warn('[Launcher] fail', e));
   }, []);
 
+  const openModelDrawer = useCallback(() => {
+    setIsModelDrawerOpen(true);
+  }, [setIsModelDrawerOpen]);
+
+  const closeModelDrawer = useCallback(() => {
+    setIsModelDrawerOpen(false);
+  }, [setIsModelDrawerOpen]);
+
   return {
     clearTerminalSurface,
     launchAgentComposer,
-    openAppWindow
+    openAppWindow,
+    openModelDrawer,
+    closeModelDrawer
   };
 }
-

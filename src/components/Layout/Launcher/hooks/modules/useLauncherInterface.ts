@@ -26,8 +26,10 @@ export function useLauncherInterface(params: {
   clearTerminalSurface: any;
   launchAgentComposer: any;
   openAppWindow: any;
+  openModelDrawer: any;
+  closeModelDrawer: any;
 }) {
-  const { props, store, runtime, tray, composer, ui, history, handlers, shortcuts, shellRef, dockRef, clearTerminalSurface, launchAgentComposer, openAppWindow } = params;
+  const { props, store, runtime, tray, composer, ui, history, handlers, shortcuts, shellRef, dockRef, clearTerminalSurface, launchAgentComposer, openAppWindow, openModelDrawer, closeModelDrawer } = params;
 
   return {
     store,
@@ -71,6 +73,8 @@ export function useLauncherInterface(params: {
       setResolvedPendingApproval: runtime.setResolvedPendingApproval,
       saveSettings: runtime.memoryStore.saveSettings,
       launchAgentComposer,
+      openModelDrawer,
+      closeModelDrawer,
     },
   };
 }

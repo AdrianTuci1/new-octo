@@ -11,10 +11,11 @@ const DEFAULT_BASE_URL = 'https://api.openai.com/v1';
 
 export function ModelManagementDrawer() {
   const setIsModelDrawerOpen = useUIStore((state) => state.setIsModelDrawerOpen);
+  const memorySelectedModelId = useMemoryStore((state) => state.settings?.values.selectedModelId ?? null);
   const saveSettings = useMemoryStore((state) => state.saveSettings);
 
   const [providerLabel, setProviderLabel] = useState(DEFAULT_PROVIDER_LABEL);
-  const [modelId, setModelId] = useState(DEFAULT_MODEL_ID);
+  const [modelId, setModelId] = useState(memorySelectedModelId ?? DEFAULT_MODEL_ID);
   const [baseUrl, setBaseUrl] = useState(DEFAULT_BASE_URL);
   const [apiKey, setApiKey] = useState('');
   const [friendlyName, setFriendlyName] = useState('');
@@ -27,24 +28,26 @@ export function ModelManagementDrawer() {
   useEffect(() => {
     void invoke<AgentProviderStatus>('agent_provider_status')
       .then((status) => {
-        if (status.provider === 'openai-compatible') {
+        if (status.source !== 'environment' && status.provider === 'openai-compatible') {
           setProviderLabel(DEFAULT_PROVIDER_LABEL);
         }
 
-        if (status.modelId) {
+        if (status.hasApiKey && status.source !== 'environment' && status.modelId) {
           setModelId(status.modelId);
+        } else if (memorySelectedModelId) {
+          setModelId(memorySelectedModelId);
         }
 
-        if (status.baseUrl && status.baseUrl !== 'local') {
+        if (status.source !== 'environment' && status.baseUrl && status.baseUrl !== 'local') {
           setBaseUrl(status.baseUrl);
         }
 
-        setHasApiKey(status.hasApiKey);
+        setHasApiKey(status.hasApiKey && status.source !== 'environment');
       })
       .catch((error) => {
         console.warn('[model-management] failed to load provider status', error);
       });
-  }, []);
+  }, [memorySelectedModelId]);
 
   const handleSave = async () => {
     const trimmedModelId = modelId.trim();

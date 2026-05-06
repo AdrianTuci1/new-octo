@@ -1,6 +1,6 @@
 import React, { type ReactNode } from 'react';
 import { ChevronDown, Plus } from 'lucide-react';
-import { useUIStore } from '../../../../stores';
+import { useMemoryStore, useUIStore } from '../../../../stores';
 
 function SettingsToggle({ checked = false }: { checked?: boolean }) {
   return (
@@ -47,6 +47,14 @@ function SettingsRow({
 
 export function AgentSection() {
   const setIsModelDrawerOpen = useUIStore((state) => state.setIsModelDrawerOpen);
+  const settings = useMemoryStore((state) => state.settings);
+  const modelId = settings?.values.selectedModelId ?? null;
+  const providerLabel = typeof settings?.values.aiProviderLabel === 'string' && settings.values.aiProviderLabel.trim().length > 0
+    ? settings.values.aiProviderLabel
+    : 'Configured provider';
+  const friendlyName = typeof settings?.values.aiModelFriendlyName === 'string' && settings.values.aiModelFriendlyName.trim().length > 0
+    ? settings.values.aiModelFriendlyName
+    : null;
 
   return (
     <section className="settings-panel">
@@ -126,22 +134,23 @@ export function AgentSection() {
         </div>
 
         <div className="settings-models-list">
-          {/* Mock models for now */}
-          <div className="settings-model-card" onClick={() => setIsModelDrawerOpen(true)}>
-            <div className="settings-model-card-info">
-              <div className="settings-model-card-name">GPT-4o Mini</div>
-              <div className="settings-model-card-provider">OpenAI</div>
+          {modelId ? (
+            <div className="settings-model-card" onClick={() => setIsModelDrawerOpen(true)}>
+              <div className="settings-model-card-info">
+                <div className="settings-model-card-name">{friendlyName ?? modelId}</div>
+                <div className="settings-model-card-provider">{providerLabel}</div>
+              </div>
+              <div className="settings-model-card-status">Configured</div>
             </div>
-            <div className="settings-model-card-status">Active</div>
-          </div>
-
-          <div className="settings-model-card" onClick={() => setIsModelDrawerOpen(true)}>
-            <div className="settings-model-card-info">
-              <div className="settings-model-card-name">Claude 3.5 Sonnet</div>
-              <div className="settings-model-card-provider">Anthropic</div>
+          ) : (
+            <div className="settings-model-card">
+              <div className="settings-model-card-info">
+                <div className="settings-model-card-name">No models configured yet</div>
+                <div className="settings-model-card-provider">Open the drawer to connect one locally.</div>
+              </div>
+              <div className="settings-model-card-status">Setup</div>
             </div>
-            <div className="settings-model-card-status">Configured</div>
-          </div>
+          )}
 
           <button 
             className="settings-add-model-btn" 

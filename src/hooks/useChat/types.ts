@@ -6,8 +6,10 @@ export type UseChatOptions = {
   onFileChangeApproval?: (approval: FileChangeApproval) => void;
   onNewChat?: () => void;
   onConversationCreated?: (conversationId: string) => void;
+  onRequireModelSetup?: () => void;
   cwd?: string | null;
   modelId?: string | null;
+  requiresModelSetup?: boolean;
   conversationId?: string | null;
   terminalBlocks?: TerminalCommandBlock[];
   onCloseTray?: () => void;

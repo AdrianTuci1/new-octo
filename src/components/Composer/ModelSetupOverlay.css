@@ -1,0 +1,97 @@
+.composer-setup-overlay {
+  position: relative;
+  width: 100%;
+  min-height: 124px;
+  margin: 0;
+  box-sizing: border-box;
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px 20px;
+  background: rgba(255, 255, 255, 0.01);
+  border: 1px solid rgba(255, 74, 74, 0.25);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(8px);
+}
+
+.composer-setup-overlay-content {
+  position: relative;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  text-align: center;
+}
+
+.composer-setup-overlay-title {
+  width: 100%;
+  margin: 0 0 4px;
+  color: var(--text-main);
+  font-size: 13px;
+  font-weight: 550;
+  line-height: 1.4;
+  letter-spacing: -0.01em;
+}
+
+.composer-setup-overlay-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  background-color: transparent;
+  color: var(--text-main);
+  font-size: 11px;
+  line-height: 1.2;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.composer-setup-overlay-hint:hover {
+  border-radius: 6px;
+  color: var(--text-main);
+}
+
+
+.composer-setup-overlay-hint svg {
+  flex: 0 0 auto;
+  color: var(--text-dim);
+  transition: color 120ms ease;
+}
+
+.composer-setup-overlay-hint:hover svg {
+  color: var(--text-soft);
+}
+
+.composer-setup-overlay-hint-text {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.keycap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  min-width: 20px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-main);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 500;
+  text-transform: lowercase;
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.2);
+}
+
+.keycap svg {
+  color: var(--text-soft) !important;
+}

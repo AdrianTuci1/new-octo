@@ -6,40 +6,70 @@ import type { ModelSpec } from '../types/model';
 
 const STORAGE_KEY = 'octomus.selectedModelId';
 
-export const MODEL_CATALOG: ModelSpec[] = [
-  { id: 'gpt-5.3-codex-medium', label: 'gpt-5.3 codex (medium reasoning)', provider: 'OpenAI', intelligence: 78, speed: 62, cost: 44, note: 'Balanced coding model for daily work.' },
-  { id: 'gpt-5.3-codex-high', label: 'gpt-5.3 codex (high)', provider: 'OpenAI', intelligence: 87, speed: 48, cost: 58, note: 'Higher reasoning for more complex implementation work.' },
-  { id: 'gpt-5.3-codex-xhigh', label: 'gpt-5.3 codex (xhigh)', provider: 'OpenAI', intelligence: 92, speed: 36, cost: 74, note: 'Best suited for hard debugging and architectural tasks.' },
-  { id: 'kimi-k2.5', label: 'kimi k2.5', provider: 'Moonshot', intelligence: 66, speed: 73, cost: 35, note: 'Fast general-purpose model with good long-context behavior.' },
-  { id: 'kimi-k2.6', label: 'kimi k2.6', provider: 'Moonshot', intelligence: 70, speed: 70, cost: 38, note: 'Updated Kimi variant with stronger coding consistency.' },
-  { id: 'minimax-2.7', label: 'minimax 2.7', provider: 'MiniMax', intelligence: 61, speed: 84, cost: 18, note: 'Responsive low-cost option for lightweight tasks.' },
-  { id: 'qwen-3.6-plus', label: 'qwen 3.6 plus', provider: 'Qwen', intelligence: 74, speed: 64, cost: 28, note: 'Solid multimodal-capable model with good throughput.' },
-  { id: 'auto-responsive', label: 'auto (responsive)', provider: 'Octomus', intelligence: 60, speed: 90, cost: 22, note: 'Biases toward speed and lower latency.', },
-  { id: 'auto-genius', label: 'auto (genius)', provider: 'Octomus', intelligence: 88, speed: 40, cost: 66, note: 'Biases toward depth and model quality.' }
-];
+function readString(value: unknown) {
+  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
+}
+
+function buildModelFromSettings(
+  selectedModelId: string | null,
+  memorySettings: ReturnType<typeof useMemoryStore.getState>['settings'],
+  providerStatus: AgentProviderStatus | null,
+  isConfigured: boolean
+): ModelSpec | null {
+  if (!isConfigured || !selectedModelId) {
+    return null;
+  }
+
+  const providerLabel = readString(memorySettings?.values.aiProviderLabel)
+    ?? (providerStatus?.provider === 'openai-compatible' ? 'OpenAI' : readString(providerStatus?.provider))
+    ?? 'Connected provider';
+  const friendlyName = readString(memorySettings?.values.aiModelFriendlyName);
+  const baseUrl = readString(memorySettings?.values.aiModelBaseUrl)
+    ?? (providerStatus?.baseUrl && providerStatus.baseUrl !== 'local' ? providerStatus.baseUrl : null);
+
+  return {
+    id: selectedModelId,
+    label: friendlyName ?? selectedModelId,
+    provider: providerLabel,
+    baseUrl,
+    note: baseUrl ? `Base URL: ${baseUrl}` : 'Stored securely on this device.'
+  };
+}
 
 export function useModelSelection() {
-  const [selectedModelId, setSelectedModelId] = useState<string>('gpt-5.3-codex-medium');
+  const [selectedModelId, setSelectedModelId] = useState<string | null>(() => {
+    if (typeof window === 'undefined') {
+      return null;
+    }
+
+    return window.localStorage.getItem(STORAGE_KEY);
+  });
+  const [providerStatus, setProviderStatus] = useState<AgentProviderStatus | null>(null);
+  const [isProviderStatusLoaded, setIsProviderStatusLoaded] = useState(false);
   const memorySettings = useMemoryStore((state) => state.settings);
   const saveSettings = useMemoryStore((state) => state.saveSettings);
 
   useEffect(() => {
-    const stored = window.localStorage.getItem(STORAGE_KEY);
-    if (stored) {
-      setSelectedModelId(stored);
-      return;
-    }
-
     void invoke<AgentProviderStatus>('agent_provider_status')
       .then((status) => {
-        if (status.modelId) {
-          setSelectedModelId(status.modelId);
+        setProviderStatus(status);
+        setIsProviderStatusLoaded(true);
+
+        if (
+          status.hasApiKey
+          && status.source !== 'environment'
+          && typeof window !== 'undefined'
+          && !window.localStorage.getItem(STORAGE_KEY)
+          && !memorySettings?.values.selectedModelId
+        ) {
+          setSelectedModelId(status.modelId ?? null);
         }
       })
       .catch((error) => {
         console.warn('[model-selection] failed to load provider status', error);
+        setIsProviderStatusLoaded(true);
       });
-  }, []);
+  }, [memorySettings?.values.selectedModelId]);
 
   useEffect(() => {
     const memoryModelId = memorySettings?.values.selectedModelId;
@@ -48,25 +78,38 @@ export function useModelSelection() {
     }
   }, [memorySettings?.values.selectedModelId]);
 
+  const isConfigured = isProviderStatusLoaded
+    && Boolean(providerStatus?.hasApiKey)
+    && providerStatus?.source !== 'environment';
+  const resolvedSelectedModelId = isConfigured
+    ? (selectedModelId ?? providerStatus?.modelId ?? null)
+    : null;
+
   const selectedModel = useMemo(
-    () => MODEL_CATALOG.find((model) => model.id === selectedModelId)
-      ?? MODEL_CATALOG.find((model) => model.label === selectedModelId)
-      ?? MODEL_CATALOG[0],
-    [selectedModelId]
+    () => buildModelFromSettings(resolvedSelectedModelId, memorySettings, providerStatus, isConfigured),
+    [isConfigured, memorySettings, providerStatus, resolvedSelectedModelId]
   );
+
+  const models = useMemo(() => (selectedModel ? [selectedModel] : []), [selectedModel]);
+  const requiresModelSetup = isProviderStatusLoaded && !isConfigured;
+  const selectedModelLabel = selectedModel?.label ?? "You don't have any model";
 
   const selectModel = (modelId: string, persist = false) => {
     setSelectedModelId(modelId);
-    if (persist) {
+    void saveSettings({ selectedModelId: modelId }, true);
+    if (persist && typeof window !== 'undefined') {
       window.localStorage.setItem(STORAGE_KEY, modelId);
-      void saveSettings({ selectedModelId: modelId }, true);
     }
   };
 
   return {
-    models: MODEL_CATALOG,
+    models,
     selectedModel,
-    selectedModelId,
+    selectedModelId: resolvedSelectedModelId,
+    selectedModelLabel,
+    isConfigured,
+    isProviderStatusLoaded,
+    requiresModelSetup,
     selectModel
   };
 }

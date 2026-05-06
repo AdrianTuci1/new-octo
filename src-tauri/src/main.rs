@@ -133,7 +133,10 @@ fn show_settings_window<R: Runtime>(app: &AppHandle<R>) {
     hide_onboarding(app);
 
     if let Some(window) = app.get_webview_window(SETTINGS_WINDOW_LABEL) {
-        let _ = window.destroy();
+        let _ = window.unminimize();
+        let _ = window.show();
+        let _ = window.set_focus();
+        return;
     }
 
     let Some(settings_config) = app
