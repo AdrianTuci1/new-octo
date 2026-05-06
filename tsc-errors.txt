@@ -1,0 +1,8 @@
+src/components/Chat/MessageBubble.tsx(8,10): error TS2305: Module '"../../hooks/useChat"' has no exported member 'visibleChatMessageBody'.
+src/components/Chat/utils/timeline.ts(3,10): error TS2305: Module '"../../../hooks/useChat"' has no exported member 'visibleChatMessageBody'.
+src/components/Layout/Launcher/hooks/modules/useLauncherComposer.ts(87,61): error TS2339: Property 'followUpSuggestionFromMessageBody' does not exist on type 'typeof import("/Users/adriantucicovenco/Proiecte/launcher-rs-react/src/hooks/index")'.
+src/components/Layout/Launcher/hooks/modules/useLauncherComposer.ts(89,72): error TS2339: Property 'followUpSuggestionFromMessageBody' does not exist on type 'typeof import("/Users/adriantucicovenco/Proiecte/launcher-rs-react/src/hooks/index")'.
+src/hooks/useChat/helpers.ts(3,10): error TS2305: Module '"./index"' has no exported member 'visibleChatMessageBody'.
+src/hooks/useChat/modules/useChatEffects.ts(5,32): error TS2307: Cannot find module '../../stores/memoryStore' or its corresponding type declarations.
+src/hooks/useChat/modules/useChatEffects.ts(16,46): error TS7006: Parameter 's' implicitly has an 'any' type.
+src/hooks/useChat/modules/useChatEffects.ts(79,75): error TS7006: Parameter 'conversation' implicitly has an 'any' type.

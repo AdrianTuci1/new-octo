@@ -1,5 +1,5 @@
 import { Check, ChevronDown, Download, Filter, MoreVertical, Paperclip, Terminal } from 'lucide-react';
-import type { TerminalCommandBlock } from '../../types/terminal';
+import type { TerminalCommandBlock } from '../../../types/terminal';
 
 type TerminalBlockDetailProps = {
   block: TerminalCommandBlock;

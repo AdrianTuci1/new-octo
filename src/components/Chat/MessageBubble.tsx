@@ -116,7 +116,7 @@ function CodeBlock({
             <button
               className="code-action-btn run"
               title="Run in terminal"
-              onClick={() => onRequestCommandApproval?.({ command: code })}
+              onClick={() => onRequestCommandApproval?.({ kind: 'command', command: code })}
             >
               <Play size={10} />
               Run

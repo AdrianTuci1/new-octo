@@ -3,6 +3,7 @@ use std::time::Duration;
 use futures_util::StreamExt;
 use reqwest::header::{HeaderMap, HeaderValue, CONTENT_TYPE};
 use serde_json::{json, Value};
+use uuid::Uuid;
 
 use super::{
     harness::{
@@ -22,6 +23,7 @@ pub struct OpenAiCompatibleConfig {
     pub base_url: String,
     pub model_id: String,
     pub source: String,
+    pub secret_id: String,
 }
 
 impl OpenAiCompatibleConfig {
@@ -57,7 +59,16 @@ impl OpenAiCompatibleConfig {
                 .filter(|model| !model.trim().is_empty())
                 .unwrap_or_else(|| DEFAULT_MODEL_ID.to_string()),
             source,
+            secret_id: format!("provider-{}", Uuid::new_v4()),
         }
+    }
+
+    pub fn with_secret_id(mut self, secret_id: Option<String>) -> Self {
+        if let Some(secret_id) = secret_id.filter(|value| !value.trim().is_empty()) {
+            self.secret_id = secret_id;
+        }
+
+        self
     }
 
     pub fn redacted_status(&self) -> (String, String, String, bool, String) {
@@ -72,15 +83,19 @@ impl OpenAiCompatibleConfig {
 
     pub fn to_persisted_value(&self) -> Value {
         json!({
-            "api_key": self.api_key,
             "base_url": self.base_url,
             "model_id": self.model_id,
             "source": self.source,
+            "secret_id": self.secret_id,
         })
     }
 
     pub fn from_persisted_value(value: &Value) -> Option<Self> {
-        let api_key = value.get("api_key")?.as_str()?.to_string();
+        let api_key = value
+            .get("api_key")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string();
         let base_url = value
             .get("base_url")
             .and_then(Value::as_str)
@@ -94,8 +109,13 @@ impl OpenAiCompatibleConfig {
             .and_then(Value::as_str)
             .unwrap_or("persisted")
             .to_string();
+        let secret_id = value
+            .get("secret_id")
+            .and_then(Value::as_str)
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| format!("provider-{}", Uuid::new_v4()));
 
-        Some(Self::new(api_key, base_url, model_id, source))
+        Some(Self::new(api_key, base_url, model_id, source).with_secret_id(Some(secret_id)))
     }
 }
 

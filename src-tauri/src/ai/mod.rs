@@ -32,6 +32,13 @@ pub fn agent_configure_openai_compatible(
 }
 
 #[tauri::command]
+pub fn agent_clear_openai_compatible(
+    manager: State<'_, AgentHarnessManager>,
+) -> Result<(), String> {
+    agent::agent_clear_openai_compatible(manager)
+}
+
+#[tauri::command]
 pub fn agent_provider_status(
     manager: State<'_, AgentHarnessManager>,
 ) -> Result<AgentProviderStatus, String> {
@@ -69,7 +76,14 @@ pub async fn ai_predict_command_smart(
 ) -> Result<Option<predict::CommandPrediction>, String> {
     let provider_config = manager
         .load_provider_config_from_disk()?
-        .or_else(|| manager.provider_config().ok().flatten())
+        .filter(|config| !config.api_key.trim().is_empty())
+        .or_else(|| {
+            manager
+                .provider_config()
+                .ok()
+                .flatten()
+                .filter(|config| !config.api_key.trim().is_empty())
+        })
         .or_else(agent::openai::OpenAiCompatibleConfig::from_env)
         .ok_or_else(|| {
             "No AI provider configured. Please configure OpenAI/OpenRouter in settings.".to_string()

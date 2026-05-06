@@ -62,6 +62,28 @@
   gap: 20px;
 }
 
+.model-mgmt-status-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px 16px;
+  border: 1px solid rgba(0, 163, 255, 0.18);
+  border-radius: 8px;
+  background: rgba(0, 163, 255, 0.06);
+}
+
+.model-mgmt-status-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+.model-mgmt-status-copy {
+  font-size: 12px;
+  color: var(--text-dim);
+  line-height: 1.45;
+}
+
 .form-group {
   display: flex;
   flex-direction: column;
@@ -121,6 +143,37 @@
   border-top: 1px solid rgba(255, 255, 255, 0.05);
 }
 
+.model-mgmt-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.btn-save {
+  background: #00a3ff;
+  border: 1px solid rgba(0, 163, 255, 0.35);
+  color: #04111a;
+  padding: 10px 16px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  width: 100%;
+}
+
+.btn-save:hover:not(:disabled) {
+  background: #25b1ff;
+}
+
+.btn-save:disabled,
+.btn-delete:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
 .btn-delete {
   background: transparent;
   border: 1px solid rgba(255, 68, 68, 0.2);
@@ -141,4 +194,23 @@
 .btn-delete:hover {
   background: rgba(255, 68, 68, 0.05);
   border-color: rgba(255, 68, 68, 0.4);
+}
+
+.model-mgmt-feedback {
+  font-size: 12px;
+  line-height: 1.4;
+  padding: 10px 12px;
+  border-radius: 6px;
+}
+
+.model-mgmt-feedback.error {
+  background: rgba(255, 68, 68, 0.08);
+  border: 1px solid rgba(255, 68, 68, 0.18);
+  color: #ff9d9d;
+}
+
+.model-mgmt-feedback.success {
+  background: rgba(0, 163, 255, 0.08);
+  border: 1px solid rgba(0, 163, 255, 0.18);
+  color: #8dd7ff;
 }

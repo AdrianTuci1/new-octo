@@ -650,6 +650,12 @@ export function useAppWindow() {
 
   const handleDeleteConversation = useCallback(async (conversationId: string) => {
     await deleteConversation(conversationId);
+
+    const tabsToClose = tabs
+      .filter((tab) => tab.kind === 'terminal' && terminalSessions[tab.id]?.activeConversationId === conversationId)
+      .map((tab) => tab.id);
+    const tabIdsToClose = new Set(tabsToClose);
+
     setOpenPastConversationBaselineById((current) => {
       if (!(conversationId in current)) {
         return current;
@@ -659,21 +665,80 @@ export function useAppWindow() {
       delete next[conversationId];
       return next;
     });
+    if (tabsToClose.length === 0) {
+      return;
+    }
+
+    const closingSessionIds = tabsToClose
+      .flatMap((tabId) => [
+        terminalSessions[tabId]?.terminalSessionId ?? null,
+        terminalSessions[tabId]?.agentTerminalSessionId ?? null
+      ])
+      .filter((sessionId): sessionId is string => Boolean(sessionId));
+
+    closingSessionIds.forEach((sessionId) => {
+      void invoke('terminal_kill_session', {
+        request: { sessionId }
+      }).catch(() => {});
+    });
+
+    const remainingTabs = tabs.filter((tab) => !tabIdsToClose.has(tab.id));
+    const fallbackTab = remainingTabs.length === 0
+      ? Utils.buildTerminalTab(nextTerminalIndex, '~')
+      : null;
+
+    if (fallbackTab) {
+      setNextTerminalIndex((value) => value + 1);
+    }
+
+    setTabs((current) => {
+      const next = current.filter((tab) => !tabIdsToClose.has(tab.id));
+      if (next.length > 0) {
+        return next;
+      }
+
+      return fallbackTab ? [fallbackTab] : current;
+    });
+
+    setSelectedTabId((current) => {
+      if (!tabIdsToClose.has(current)) {
+        return current;
+      }
+
+      return remainingTabs[0]?.id ?? fallbackTab?.id ?? defaultWorkspaceChromeTabId;
+    });
+
+    setLauncherTabId((current) => {
+      if (!current || !tabIdsToClose.has(current)) {
+        return current;
+      }
+
+      const fallbackTerminal = remainingTabs.find((tab) => tab.kind === 'terminal');
+      return fallbackTerminal?.id ?? fallbackTab?.id ?? null;
+    });
+
     setTerminalSessions((current) => {
       const next = Object.fromEntries(
-        Object.entries(current).map(([tabId, session]) => [
-          tabId,
-          {
-            ...session,
-            activeConversationId: session.activeConversationId === conversationId ? null : session.activeConversationId,
-            composerSurface: session.activeConversationId === conversationId ? 'terminal' : session.composerSurface
-          } satisfies TerminalSessionState
-        ])
-      );
-      if (JSON.stringify(current) === JSON.stringify(next)) return current;
+        Object.entries(current).filter(([tabId]) => !tabIdsToClose.has(tabId))
+      ) as Record<string, TerminalSessionState>;
+
+      if (fallbackTab) {
+        next[fallbackTab.id] = {
+          activeConversationId: null,
+          composerSurface: 'terminal',
+          workingDirectory: pathContext?.homeDir ?? null,
+          terminalSessionId: null,
+          agentTerminalSessionId: null,
+          pendingApproval: null,
+          terminalBlockMetaById: {},
+          agentTerminalBlockMetaById: {},
+          syntheticBlocks: []
+        };
+      }
+
       return next;
     });
-  }, [deleteConversation]);
+  }, [deleteConversation, nextTerminalIndex, pathContext?.homeDir, tabs, terminalSessions]);
 
   const handleForkConversationInNewTab = useCallback((conversationId: string) => {
     const nextTab = createTerminalTab();

@@ -613,3 +613,221 @@
     font-size: 12px;
   }
 }
+
+.file-change-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background: #171a1d;
+  border: 1px solid rgba(64, 198, 255, 0.8);
+  border-radius: 18px;
+  box-shadow:
+    0 0 0 1px rgba(64, 198, 255, 0.12),
+    0 14px 34px rgba(0, 0, 0, 0.22);
+  overflow: hidden;
+}
+
+.file-change-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 56px;
+  padding: 10px 14px 10px 16px;
+  background: #232526;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.035);
+}
+
+.file-change-summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 11px;
+  min-width: 0;
+  color: rgba(244, 247, 246, 0.94);
+  font-size: 14px;
+  font-weight: 550;
+  letter-spacing: -0.01em;
+}
+
+.file-change-summary-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-change-marker {
+  width: 11px;
+  height: 11px;
+  flex: 0 0 auto;
+  background: #f0e68c;
+  box-shadow: 0 0 0 1px rgba(240, 230, 140, 0.18);
+}
+
+.file-change-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.file-change-text-btn,
+.file-change-accept {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 0 12px;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.file-change-text-btn {
+  background: transparent;
+  color: rgba(244, 247, 246, 0.9);
+}
+
+.file-change-text-btn:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.file-change-accept {
+  background: #29a6d8;
+  color: #08131a;
+}
+
+.file-change-accept:hover {
+  background: #3bb3e0;
+}
+
+.file-change-count {
+  align-self: flex-start;
+  margin: 0 16px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  background: rgba(255, 255, 255, 0.03);
+  color: #a8f08c;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.file-change-diffs {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 0 14px 14px;
+}
+
+.command-approval-file-shell {
+  padding-bottom: 14px;
+}
+
+.command-approval-file-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 16px;
+}
+
+.command-approval-file-count {
+  color: rgba(244, 247, 246, 0.72);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.command-approval-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.command-approval-diffs {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 0 14px 14px;
+}
+
+.command-approval-accept-group {
+  position: relative;
+  display: inline-flex;
+  align-items: stretch;
+  overflow: visible;
+}
+
+.command-approval-accept {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 0 12px 0 13px;
+  background: #29a6d8;
+  color: #08131a;
+  border-radius: 10px 0 0 10px;
+  font-size: 12px;
+  font-weight: 780;
+  cursor: pointer;
+}
+
+.command-approval-accept:hover {
+  background: #3bb3e0;
+}
+
+.command-approval-accept-count {
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: rgba(8, 19, 26, 0.16);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.command-approval-accept-chevron {
+  width: 34px;
+  min-height: 34px;
+  border-left: 1px solid rgba(8, 19, 26, 0.16);
+  border-radius: 0 10px 10px 0;
+  background: #29a6d8;
+  color: #08131a;
+  cursor: pointer;
+}
+
+.command-approval-accept-chevron:hover {
+  background: #3bb3e0;
+}
+
+.command-approval-accept-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  min-width: 220px;
+  padding: 6px;
+  border-radius: 12px;
+  background: #2a2c2d;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.35);
+  z-index: 20;
+}
+
+.command-approval-accept-menu-item {
+  display: flex;
+  width: 100%;
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: transparent;
+  color: rgba(244, 247, 246, 0.9);
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.command-approval-accept-menu-item:hover,
+.command-approval-accept-menu-item.primary {
+  background: rgba(64, 198, 255, 0.18);
+  color: #fff;
+}

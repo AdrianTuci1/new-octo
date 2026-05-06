@@ -1,9 +1,48 @@
 
 import { useCallback } from 'react';
+import { useEditorStore } from '../../../../../stores/editorStore';
 import { createConversationId } from '../../utils';
 import { runCommandInSurface } from '../../utils/terminal';
 import { consumeShellModeActivator } from '../../../../../lib';
 import type { LauncherProps } from '../types';
+import type { CommandApproval, FileChangeApproval } from '../../../../../types';
+import type { FileDiff } from '../../../../../types/diff';
+
+function getFileContentForDiff(diff: FileDiff) {
+  if (diff.diffType.kind === 'create') {
+    return diff.diffType.delta.insertion;
+  }
+
+  if (diff.diffType.kind === 'update') {
+    return diff.originalContent ?? diff.diffType.deltas.map((delta) => delta.insertion).join('\n');
+  }
+
+  return diff.originalContent ?? '';
+}
+
+function openFileDiffsInEditor(diffs: FileDiff[]) {
+  const { openFile } = useEditorStore.getState();
+  diffs.forEach((diff) => {
+    const fileName = diff.filePath.split('/').pop() || diff.filePath;
+    openFile(diff.filePath, fileName, getFileContentForDiff(diff));
+  });
+}
+
+function buildFileChangeRefinePrompt(approval: FileChangeApproval) {
+  const fileList = approval.fileDiffs.map((diff) => `- ${diff.filePath}`).join('\n');
+  return [
+    approval.summary?.trim() || 'Refine the proposed file changes.',
+    fileList ? `Affected files:\n${fileList}` : '',
+    'Please revise the proposal and keep the same intent while improving the implementation.'
+  ].filter(Boolean).join('\n\n');
+}
+
+function buildCommandRefinePrompt(command: string) {
+  return [
+    'Refine the following terminal command so it is safer, clearer, and still solves the same task:',
+    command.trim()
+  ].filter(Boolean).join('\n\n');
+}
 
 export function useLauncherHandlers({
   store, tray, props, runtime, 
@@ -158,6 +197,7 @@ export function useLauncherHandlers({
   const handleNewConversation = useCallback(() => {
     void chat.saveCurrentConversation?.();
     tray.closeTray();
+    setResolvedPendingApproval(null);
     store.setConversationSearchQuery('');
     if (props.onNewConversation) {
       const nextConversationId = props.onNewConversation() ?? createConversationId();
@@ -188,6 +228,7 @@ export function useLauncherHandlers({
     chat.saveCurrentConversation,
     chat.setQuery,
     props.onNewConversation,
+    setResolvedPendingApproval,
     store.setComposerSurface,
     store.setConversationSearchQuery,
     store.setLocalConversationId,
@@ -195,37 +236,74 @@ export function useLauncherHandlers({
     tray.closeTray
   ]);
 
-  const handleCommandApprovalReject = useCallback(() => {
-    setResolvedPendingApproval(null);
-  }, [setResolvedPendingApproval]);
+  const handlePendingTopicChangeStartNewConversation = useCallback(() => {
+    handleNewConversation();
+  }, [handleNewConversation]);
 
-  const handleCommandApprovalEdit = useCallback((command: string) => {
+  const handlePendingTopicChangeContinueConversation = useCallback(() => {
     setResolvedPendingApproval(null);
     store.setComposerSurface('agent');
-    store.setModeLock('shell');
-    chat.setQuery(command);
+    store.setModeLock(null);
+  }, [setResolvedPendingApproval, store.setComposerSurface, store.setModeLock]);
+
+  const handlePendingApprovalRefine = useCallback((approval: CommandApproval) => {
+    setResolvedPendingApproval(null);
+    store.setComposerSurface('agent');
+    store.setModeLock(null);
+
+    if (approval.kind === 'file-change') {
+      void chat.submitQuery(buildFileChangeRefinePrompt(approval));
+      return;
+    }
+
+    if ('command' in approval) {
+      void chat.submitQuery(buildCommandRefinePrompt(approval.command));
+    }
+  }, [chat, setResolvedPendingApproval, store.setComposerSurface, store.setModeLock]);
+
+  const handlePendingApprovalEdit = useCallback((approval: CommandApproval) => {
+    setResolvedPendingApproval(null);
+    store.setComposerSurface('agent');
+
+    if (approval.kind === 'file-change') {
+      store.setModeLock(null);
+      openFileDiffsInEditor(approval.fileDiffs);
+      return;
+    }
+
+    if ('command' in approval) {
+      store.setModeLock('shell');
+      chat.setQuery(approval.command);
+    }
   }, [chat.setQuery, setResolvedPendingApproval, store.setComposerSurface, store.setModeLock]);
 
-  const handleCommandApprovalRun = useCallback(async (command: string) => {
-    const toolCallId = resolvedPendingApproval?.toolCallId;
+  const handlePendingApprovalAccept = useCallback(async (approval: CommandApproval) => {
     setResolvedPendingApproval(null);
     store.setComposerSurface('agent');
 
-    const result = await runCommandInSurface(
-      command,
-      'agent',
-      terminal,
-      agentTerminal,
-      clearTerminalSurface,
-      'assistant'
-    );
+    if (approval.kind === 'file-change') {
+      store.setModeLock(null);
+      return;
+    }
 
-    if (toolCallId && result) {
-      void chat.submitToolResult(
-        toolCallId,
-        result.output || '(Comanda s-a executat fără output)',
-        command
+    if ('command' in approval) {
+      const toolCallId = approval.toolCallId ?? resolvedPendingApproval?.toolCallId;
+      const result = await runCommandInSurface(
+        approval.command,
+        'agent',
+        terminal,
+        agentTerminal,
+        clearTerminalSurface,
+        'assistant'
       );
+
+      if (toolCallId && result) {
+        void chat.submitToolResult(
+          toolCallId,
+          result.output || '(Comanda s-a executat fără output)',
+          approval.command
+        );
+      }
     }
   }, [
     agentTerminal,
@@ -234,8 +312,13 @@ export function useLauncherHandlers({
     resolvedPendingApproval?.toolCallId,
     setResolvedPendingApproval,
     store.setComposerSurface,
+    store.setModeLock,
     terminal
   ]);
+
+  const handlePendingApprovalAutoApprove = useCallback((approval: CommandApproval) => {
+    void handlePendingApprovalAccept(approval);
+  }, [handlePendingApprovalAccept]);
 
   const handleTerminalQueryChange = useCallback((value: string) => {
     chat.setQuery(value);
@@ -344,9 +427,12 @@ export function useLauncherHandlers({
     toggleComposerSurface,
     handleTrayConversationSelect,
     handleNewConversation,
-    handleCommandApprovalReject,
-    handleCommandApprovalEdit,
-    handleCommandApprovalRun,
+    handlePendingTopicChangeStartNewConversation,
+    handlePendingTopicChangeContinueConversation,
+    handlePendingApprovalRefine,
+    handlePendingApprovalEdit,
+    handlePendingApprovalAccept,
+    handlePendingApprovalAutoApprove,
     handleTerminalQueryChange,
     handleComposerQueryChange,
     handleTerminalRecommendationClick,

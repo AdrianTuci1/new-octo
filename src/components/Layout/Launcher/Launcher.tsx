@@ -14,7 +14,7 @@
 */
 
 import { ChatPanel } from '../../Chat';
-import { CommandApprovalComposer, ComposerBar, TerminalComposer } from '../../Composer';
+import { ComposerBar, TerminalComposer } from '../../Composer';
 import { TrayPanel } from '../../Tray';
 import { useLauncher, type LauncherProps } from './hooks';
 import { COMMAND_ITEMS, HELP_ITEMS } from '../../../lib';
@@ -35,7 +35,14 @@ export function Launcher(props: LauncherProps) {
               emptyStateVariant={launcher.ui.variant === 'workspace' ? 'workspace' : 'default'}
               isOpen={true}
               messages={launcher.ui.activeMessages}
+              pendingApproval={launcher.ui.resolvedPendingApproval}
               showEmptyTopbar={launcher.ui.variant === 'workspace' && launcher.store.composerSurface !== 'terminal' && launcher.ui.composerMode !== 'shell'}
+              onRefinePendingApproval={launcher.actions.handlePendingApprovalRefine}
+              onEditPendingApproval={launcher.actions.handlePendingApprovalEdit}
+              onAcceptPendingApproval={launcher.actions.handlePendingApprovalAccept}
+              onAutoApprovePendingApproval={launcher.actions.handlePendingApprovalAutoApprove}
+              onStartNewConversationPendingApproval={launcher.actions.handlePendingTopicChangeStartNewConversation}
+              onContinueCurrentConversationPendingApproval={launcher.actions.handlePendingTopicChangeContinueConversation}
               expandedTerminalBlockIds={launcher.store.composerSurface === 'agent' ? launcher.terminal.agentTerminal.expandedBlockIds : launcher.terminal.terminal.expandedBlockIds}
               onCollapseTerminalBlock={launcher.store.composerSurface === 'agent' ? launcher.terminal.agentTerminal.collapseBlock : launcher.terminal.terminal.collapseBlock}
               onExpandTerminalBlock={launcher.store.composerSurface === 'agent' ? launcher.terminal.agentTerminal.expandBlock : launcher.terminal.terminal.expandBlock}
@@ -51,7 +58,7 @@ export function Launcher(props: LauncherProps) {
         )}
 
         <div ref={launcher.ui.dockRef} className="dock-stack">
-          {(!launcher.ui.isTerminalSurface || launcher.ui.isTerminalCommandsTrayOpen) && (
+          {!launcher.ui.resolvedPendingApproval && (!launcher.ui.isTerminalSurface || launcher.ui.isTerminalCommandsTrayOpen) && (
             <TrayPanel
               activeConversationId={launcher.ui.resolvedConversationId}
               activeMode={launcher.tray.activeTrayMode}
@@ -88,14 +95,7 @@ export function Launcher(props: LauncherProps) {
             />
           )}
 
-          {launcher.ui.resolvedPendingApproval ? (
-            <CommandApprovalComposer
-              approval={launcher.ui.resolvedPendingApproval}
-              onEdit={launcher.actions.handleCommandApprovalEdit}
-              onReject={launcher.actions.handleCommandApprovalReject}
-              onRun={launcher.actions.handleCommandApprovalRun}
-            />
-          ) : launcher.store.composerSurface === 'terminal' ? (
+          {launcher.ui.resolvedPendingApproval ? null : launcher.store.composerSurface === 'terminal' ? (
             <TerminalComposer
               gitBranchMenuOpen={launcher.ui.gitContext.isBranchMenuOpen}
               gitContext={launcher.ui.gitContext.gitContext}

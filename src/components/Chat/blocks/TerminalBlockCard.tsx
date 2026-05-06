@@ -1,4 +1,4 @@
-import type { TerminalCommandBlock } from '../../types/terminal';
+import type { TerminalCommandBlock } from '../../../types/terminal';
 import { TerminalBlockDetail } from './TerminalBlockDetail';
 import { TerminalBlockSummary } from './TerminalBlockSummary';
 

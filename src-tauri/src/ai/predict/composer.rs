@@ -406,7 +406,9 @@ async fn build_ai_prediction(
         .load_provider_config_from_disk()
         .ok()
         .flatten()
+        .filter(|config| !config.api_key.trim().is_empty())
         .or_else(|| ai_manager.provider_config().ok().flatten())
+        .filter(|config| !config.api_key.trim().is_empty())
         .or_else(crate::ai::agent::openai::OpenAiCompatibleConfig::from_env)?;
     let history_context =
         build_history_context(last_command, history_entries, request.cwd.as_deref());
@@ -494,7 +496,9 @@ async fn build_ai_recommended_action(
         .load_provider_config_from_disk()
         .ok()
         .flatten()
+        .filter(|config| !config.api_key.trim().is_empty())
         .or_else(|| ai_manager.provider_config().ok().flatten())
+        .filter(|config| !config.api_key.trim().is_empty())
         .or_else(crate::ai::agent::openai::OpenAiCompatibleConfig::from_env)?;
 
     let client = reqwest::Client::builder()

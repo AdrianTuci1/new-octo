@@ -6,9 +6,10 @@ type CodeDiffViewProps = {
   diff: FileDiff;
   onAccept?: (diff: FileDiff) => void;
   onReject?: (diff: FileDiff) => void;
+  showActions?: boolean;
 };
 
-export function CodeDiffView({ diff, onAccept, onReject }: CodeDiffViewProps) {
+export function CodeDiffView({ diff, onAccept, onReject, showActions = true }: CodeDiffViewProps) {
   const fileName = diff.filePath.split('/').pop() || diff.filePath;
 
   return (
@@ -20,16 +21,18 @@ export function CodeDiffView({ diff, onAccept, onReject }: CodeDiffViewProps) {
           <ChevronRight size={12} style={{ opacity: 0.3 }} />
           <span style={{ opacity: 0.5, fontSize: '11px' }}>{diff.filePath}</span>
         </div>
-        <div className="code-diff-actions">
-          <button className="code-diff-btn reject" onClick={() => onReject?.(diff)}>
-            <X size={12} />
-            Reject
-          </button>
-          <button className="code-diff-btn accept" onClick={() => onAccept?.(diff)}>
-            <Check size={12} />
-            Accept
-          </button>
-        </div>
+        {showActions && (
+          <div className="code-diff-actions">
+            <button className="code-diff-btn reject" onClick={() => onReject?.(diff)}>
+              <X size={12} />
+              Reject
+            </button>
+            <button className="code-diff-btn accept" onClick={() => onAccept?.(diff)}>
+              <Check size={12} />
+              Accept
+            </button>
+          </div>
+        )}
       </div>
       <div className="code-diff-content">
         {renderDiffLines(diff)}

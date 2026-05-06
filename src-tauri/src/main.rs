@@ -23,6 +23,7 @@ use tauri::{
 mod ai;
 mod memory;
 mod terminal;
+mod secure_store;
 
 #[cfg(target_os = "macos")]
 use tauri::ActivationPolicy;
@@ -263,6 +264,7 @@ fn main() {
             ai::agent_get_run,
             ai::agent_list_runs,
             ai::agent_configure_openai_compatible,
+            ai::agent_clear_openai_compatible,
             ai::agent_provider_status,
             ai::ai_predict_command_smart,
             ai::diff::apply_file_diff,

@@ -1,3 +1,5 @@
+import type { FileDiff } from './diff';
+
 export type TerminalStatus = 'starting' | 'running' | 'exited' | 'error';
 
 export type TerminalSessionInfo = {
@@ -66,8 +68,23 @@ export type TerminalCommandBlock = TerminalBlock & {
   conversationTitle?: string;
 };
 
+export type FileChangeApproval = {
+  kind: 'file-change';
+  summary?: string;
+  fileDiffs: FileDiff[];
+  refineLabel?: string;
+  editLabel?: string;
+  acceptLabel?: string;
+};
+
 export type CommandApproval = {
+  kind?: 'command';
   command: string;
   toolCallId?: string;
   reason?: string;
-};
+} | {
+  kind: 'topic-change';
+  reason?: string;
+  startNewConversationLabel?: string;
+  continueConversationLabel?: string;
+} | FileChangeApproval;

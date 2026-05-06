@@ -1,5 +1,5 @@
 import { Check, ChevronRight, Play } from 'lucide-react';
-import type { TerminalCommandBlock } from '../../types/terminal';
+import type { TerminalCommandBlock } from '../../../types/terminal';
 
 type TerminalBlockSummaryProps = {
   block: TerminalCommandBlock;

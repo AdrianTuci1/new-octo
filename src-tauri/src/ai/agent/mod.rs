@@ -8,6 +8,6 @@ mod scripted;
 pub mod types;
 
 pub use commands::{
-    agent_cancel, agent_configure_openai_compatible, agent_get_run, agent_list_runs,
-    agent_provider_status, agent_start,
+    agent_cancel, agent_clear_openai_compatible, agent_configure_openai_compatible,
+    agent_get_run, agent_list_runs, agent_provider_status, agent_start,
 };

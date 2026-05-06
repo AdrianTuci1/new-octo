@@ -4,7 +4,7 @@ import { useMemoryStore, useLauncherStore } from '../../../../../stores';
 import * as Utils from '../../utils';
 import { consumeShellModeActivator } from '../../../../../lib';
 import type { LauncherProps } from '../types';
-import type { CommandApproval } from '../../../../../types';
+import type { CommandApproval, FileChangeApproval } from '../../../../../types';
 
 export function useLauncherRuntime(props: LauncherProps, store: any, tray: any) {
   const {
@@ -79,11 +79,11 @@ export function useLauncherRuntime(props: LauncherProps, store: any, tray: any) 
   }, [hasControlledPendingApproval, props.onPendingApprovalChange, setLocalPendingApproval]);
 
   const requestCommandApproval = useCallback((approval: CommandApproval) => {
-    setResolvedPendingApproval({
-      command: approval.command,
-      toolCallId: approval.toolCallId,
-      reason: approval.reason
-    });
+    setResolvedPendingApproval(approval);
+  }, [setResolvedPendingApproval]);
+
+  const requestFileChangeApproval = useCallback((approval: FileChangeApproval) => {
+    setResolvedPendingApproval(approval);
   }, [setResolvedPendingApproval]);
 
   const terminalRaw = Hooks.useTerminalCommandBlocks({
@@ -155,6 +155,7 @@ export function useLauncherRuntime(props: LauncherProps, store: any, tray: any) 
     onCloseTray: tray.closeTray,
     terminalBlocks: agentTerminal.blocks,
     onCommandApproval: requestCommandApproval,
+    onFileChangeApproval: requestFileChangeApproval,
     onConversationCreated,
     onNewChat,
     active
@@ -187,6 +188,7 @@ export function useLauncherRuntime(props: LauncherProps, store: any, tray: any) 
     resolvedPendingApproval,
     setResolvedPendingApproval,
     requestCommandApproval,
+    requestFileChangeApproval,
     terminal,
     agentTerminal,
     chat,
@@ -207,6 +209,7 @@ export function useLauncherRuntime(props: LauncherProps, store: any, tray: any) 
     resolvedPendingApproval,
     setResolvedPendingApproval,
     requestCommandApproval,
+    requestFileChangeApproval,
     terminal,
     agentTerminal,
     chat,

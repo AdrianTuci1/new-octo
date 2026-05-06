@@ -1,0 +1,52 @@
+.multi-step-planner-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 16px;
+  border-radius: 10px;
+  background: rgba(45, 47, 47, 0.96);
+  border: 1px solid rgba(255, 255, 255, 0.045);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.025);
+  width: 100%;
+  max-width: 850px;
+}
+
+.multi-step-planner-header {
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(244, 247, 246, 0.58);
+  margin-bottom: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.multi-step-planner-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.multi-step-planner-icon {
+  margin-top: 2px;
+}
+
+.multi-step-planner-icon.completed {
+  color: #30b86f;
+}
+
+.multi-step-planner-icon.pending {
+  color: rgba(244, 247, 246, 0.2);
+}
+
+.multi-step-planner-text {
+  font-size: 13.5px;
+}
+
+.multi-step-planner-text.completed {
+  color: rgba(244, 247, 246, 0.6);
+  text-decoration: line-through;
+}
+
+.multi-step-planner-text.pending {
+  color: rgba(244, 247, 246, 0.92);
+}
