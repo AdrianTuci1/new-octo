@@ -4,12 +4,13 @@ pub mod artifacts;
 pub mod diff;
 pub mod mcp;
 pub mod predict;
+pub mod web_search;
 
 use tauri::{AppHandle, State};
 
 use agent::types::{
-    AgentProviderConfigRequest, AgentProviderStatus, AgentRunLookupRequest, AgentRunRequest,
-    AgentRunSnapshot, AgentStartResponse,
+    AgentContinueRequest, AgentProviderConfigRequest, AgentProviderStatus, AgentRunLookupRequest,
+    AgentRunRequest, AgentRunSnapshot, AgentStartResponse,
 };
 pub use agent_management::AgentHarnessManager;
 
@@ -21,6 +22,16 @@ pub async fn agent_start(
     request: AgentRunRequest,
 ) -> Result<AgentStartResponse, String> {
     agent::agent_start(app, window, manager, request).await
+}
+
+#[tauri::command]
+pub async fn agent_continue(
+    app: AppHandle,
+    window: tauri::Window,
+    manager: State<'_, AgentHarnessManager>,
+    request: AgentContinueRequest,
+) -> Result<AgentStartResponse, String> {
+    agent::agent_continue(app, window, manager, request).await
 }
 
 #[tauri::command]
@@ -68,6 +79,14 @@ pub fn agent_list_runs(
 ) -> Result<Vec<AgentRunSnapshot>, String> {
     agent::agent_list_runs(manager)
 }
+
+#[tauri::command]
+pub async fn web_search(
+    request: web_search::WebSearchRequest,
+) -> Result<web_search::WebSearchResponse, String> {
+    web_search::web_search(request).await
+}
+
 #[tauri::command]
 pub async fn ai_predict_command_smart(
     manager: State<'_, AgentHarnessManager>,

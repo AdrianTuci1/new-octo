@@ -123,7 +123,8 @@
 .composer-shell-indicator {
   padding: 10px 0 8px 12px;
   color: #44c97f;
-  font-size: 16px;
+  font-size: 12px;
+  font-weight: 700;
   font-family: var(--font-mono);
   line-height: 1.35;
   user-select: none;
@@ -443,14 +444,13 @@
   position: absolute;
   inset: 0;
   padding: 10px 12px 8px;
-  display: flex;
-  align-items: baseline;
-  flex-wrap: wrap;
-  gap: 0;
+  display: block;
   font-family: var(--font-mono);
   font-size: 12px;
   line-height: 1.35;
   white-space: pre-wrap;
+  word-wrap: break-word;
+  word-break: break-all;
   overflow: hidden;
   pointer-events: none;
 }

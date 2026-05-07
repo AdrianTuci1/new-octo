@@ -2,32 +2,17 @@ import { useMemo, useState } from 'react';
 import { Search, X } from 'lucide-react';
 import '../settings/SettingsContent.css';
 import './KeyboardShortcutsDrawer.css';
-import { keyboardShortcutRows } from '../settings/menus/keyboard-shortcuts/shortcuts';
 import { ShortcutBinding } from '../settings/menus/keyboard-shortcuts/ShortcutPrimitives';
 import { DrawerHeader } from './DrawerHeader';
+import { useKeybindingCatalog } from '../../../hooks/useKeybindingCatalog';
 
 type KeyboardShortcutsDrawerProps = {
   onClose: () => void;
 };
 
-type KeyboardShortcutRow = typeof keyboardShortcutRows[number];
-
-function readStoredShortcuts(): KeyboardShortcutRow[] {
-  try {
-    const saved = localStorage.getItem('keyboard_shortcuts');
-    if (!saved) {
-      return keyboardShortcutRows;
-    }
-
-    return JSON.parse(saved) as KeyboardShortcutRow[];
-  } catch {
-    return keyboardShortcutRows;
-  }
-}
-
 export function KeyboardShortcutsDrawer({ onClose }: KeyboardShortcutsDrawerProps) {
   const [query, setQuery] = useState('');
-  const [shortcuts] = useState<KeyboardShortcutRow[]>(readStoredShortcuts);
+  const { rows: shortcuts, loading } = useKeybindingCatalog();
 
   const filteredRows = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
@@ -57,7 +42,7 @@ export function KeyboardShortcutsDrawer({ onClose }: KeyboardShortcutsDrawerProp
       <div className="keyboard-shortcuts-drawer-intro">
         <p className="keyboard-shortcuts-drawer-eyebrow">Quick reference</p>
         <p className="keyboard-shortcuts-drawer-description">
-          Browse the shortcuts used across the launcher and workspace. Search by command or key combo.
+          Browse the shortcuts registered in the backend shortcut catalog. Search by command or key combo.
         </p>
       </div>
 
@@ -77,7 +62,9 @@ export function KeyboardShortcutsDrawer({ onClose }: KeyboardShortcutsDrawerProp
 
       <div className="keyboard-shortcuts-drawer-scroll-shell">
         <div className="settings-shortcuts-list keyboard-shortcuts-drawer-list" role="table" aria-label="Keyboard shortcuts">
-          {filteredRows.length > 0 ? (
+          {loading && filteredRows.length === 0 ? (
+            <div className="settings-shortcuts-empty-state">Loading backend shortcuts...</div>
+          ) : filteredRows.length > 0 ? (
             filteredRows.map((row, index) => {
               const hasBindings = row.bindings.length > 0;
 

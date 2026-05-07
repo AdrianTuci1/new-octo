@@ -2,47 +2,18 @@ import { listen } from '@tauri-apps/api/event';
 import type {
   AgentDoneEvent,
   AgentErrorEvent,
+  AgentReasoningEvent,
   AgentStatusEvent,
   AgentTokenEvent,
-  AgentToolCallEvent,
-  ChatMessage
+  AgentToolCallEvent
 } from '../../types/chat';
-import type { FileChangeApproval } from '../../types/terminal';
-import { buildApprovalReason } from './helpers';
-import { normalizeToolFollowUpSuggestion } from './parsers';
+import { dispatchToolCall } from './toolCalls';
 import type { AssistantMessageRegistration } from './types';
 
 let agentBridgeReady: Promise<void> | null = null;
 export const pendingTokenText: Record<string, string> = {};
 const assistantMessageRegistry = new Map<string, Map<symbol, AssistantMessageRegistration>>();
 export const pendingFollowUpPayloads: Record<string, string> = {};
-
-function normalizeFileChangeApproval(args: any): FileChangeApproval | undefined {
-  const fileDiffs = Array.isArray(args?.fileDiffs)
-    ? args.fileDiffs
-    : Array.isArray(args?.diffs)
-      ? args.diffs
-      : [];
-
-  if (fileDiffs.length === 0) {
-    return undefined;
-  }
-
-  const summary = typeof args?.summary === 'string'
-    ? args.summary.trim()
-    : typeof args?.reason === 'string'
-      ? args.reason.trim()
-      : '';
-
-  return {
-    kind: 'file-change',
-    summary: summary || undefined,
-    fileDiffs,
-    refineLabel: typeof args?.refineLabel === 'string' ? args.refineLabel : undefined,
-    editLabel: typeof args?.editLabel === 'string' ? args.editLabel : undefined,
-    acceptLabel: typeof args?.acceptLabel === 'string' ? args.acceptLabel : undefined
-  };
-}
 
 export function assistantRegistrations(assistantMessageId: string) {
   return Array.from(assistantMessageRegistry.get(assistantMessageId)?.values() ?? []);
@@ -96,69 +67,21 @@ export function ensureAgentEventBridge(): Promise<void> {
       const registrations = assistantRegistrations(assistantMessageId);
 
       if (!toolCall || registrations.length === 0) return;
-
-      if (toolCall.name === 'suggest_follow_up') {
-        const followUpSuggestion = normalizeToolFollowUpSuggestion(toolCall.args);
-        if (!followUpSuggestion) return;
-
-        registrations.forEach((registration) => {
-          registration.update((message) => ({
-            ...message,
-            followUpSuggestion
-          }));
-        });
-        return;
-      }
-
-      registrations.forEach((registration) => {
-        registration.update((message) => ({
-          ...message,
-          toolCalls: [...(message.toolCalls || []), {
-            id: toolCall.id,
-            type: 'function',
-            function: {
-              name: toolCall.name,
-              arguments: JSON.stringify(toolCall.args)
-            }
-          }]
-        }));
+      dispatchToolCall({
+        assistantMessageId,
+        toolCall,
+        registrations
       });
+    }),
 
-      if (toolCall.name === 'propose_terminal_command') {
-        const command = toolCall.args.command;
-        const reason = buildApprovalReason(command, toolCall.args.reason);
-
-        registrations.forEach((registration) => {
-          registration.update((message) => ({
-            ...message,
-            body: message.body.trim().length > 0 ? message.body : reason
-          }));
-
-          if (command && registration.onCommandApproval) {
-            registration.onCommandApproval({
-              kind: 'command',
-              command,
-              toolCallId: toolCall.id,
-              reason
-            });
-          }
+    listen<AgentReasoningEvent>('agent:reasoning', (event) => {
+      const { assistantMessageId, text, isComplete } = event.payload;
+      assistantRegistrations(assistantMessageId).forEach((registration) => {
+        registration.upsertReasoning({
+          text,
+          isComplete
         });
-        return;
-      }
-
-      if (toolCall.name === 'propose_file_change' || toolCall.name === 'request_file_edits' || toolCall.name === 'propose_file_edits') {
-        const approval = normalizeFileChangeApproval(toolCall.args);
-        if (!approval) return;
-
-        registrations.forEach((registration) => {
-          registration.update((message) => ({
-            ...message,
-            body: message.body.trim().length > 0 ? message.body : approval.summary ?? message.body
-          }));
-
-          registration.onFileChangeApproval?.(approval);
-        });
-      }
+      });
     }),
 
     listen<AgentStatusEvent>('agent:status', (event) => {

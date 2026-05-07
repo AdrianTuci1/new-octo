@@ -10,12 +10,14 @@ export function useChat(options: UseChatOptions = {}) {
   const state = useChatState();
   const onCommandApprovalRef = useRef(options.onCommandApproval);
   const onFileChangeApprovalRef = useRef(options.onFileChangeApproval);
+  const onWebSearchRef = useRef(options.onWebSearch);
   
   const actions = useChatActions({
     options,
     state,
     onCommandApprovalRef,
-    onFileChangeApprovalRef
+    onFileChangeApprovalRef,
+    onWebSearchRef
   });
 
   useChatEffects({
@@ -23,7 +25,8 @@ export function useChat(options: UseChatOptions = {}) {
     state,
     actions,
     onCommandApprovalRef,
-    onFileChangeApprovalRef
+    onFileChangeApprovalRef,
+    onWebSearchRef
   });
 
   return useMemo(() => ({

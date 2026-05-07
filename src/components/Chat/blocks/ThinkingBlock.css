@@ -1,0 +1,66 @@
+.thinking-card {
+  width: 100%;
+  max-width: 720px;
+  border-radius: 12px;
+  border: 1px solid rgba(94, 241, 161, 0.14);
+  background: linear-gradient(180deg, rgba(16, 19, 18, 0.96), rgba(10, 12, 11, 0.98));
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.025) inset;
+  overflow: hidden;
+}
+
+.thinking-card-header {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: transparent;
+  color: rgba(244, 247, 246, 0.92);
+  cursor: pointer;
+}
+
+.thinking-card-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(94, 241, 161, 0.86);
+  flex-shrink: 0;
+}
+
+.thinking-card-title {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.thinking-card-state {
+  margin-left: auto;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(244, 247, 246, 0.48);
+}
+
+.thinking-card-chevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(244, 247, 246, 0.52);
+  transition: transform 140ms ease;
+}
+
+.thinking-card-chevron.expanded {
+  transform: rotate(180deg);
+}
+
+.thinking-card-body {
+  padding: 0 12px 12px;
+}
+
+.thinking-card-body p {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.55;
+  color: rgba(244, 247, 246, 0.74);
+  white-space: pre-wrap;
+}

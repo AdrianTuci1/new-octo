@@ -1,6 +1,12 @@
 export { WorkspacePanelPlaceholder } from './WorkspacePanelPlaceholder';
 export { WorkspaceTopbar } from './WorkspaceTopbar';
-export type { WorkspaceChromeTab, WorkspaceConversation } from './workspaceChromeTypes';
+export type {
+  WorkspaceChromeTab,
+  WorkspaceConversation,
+  WorkspacePaneDirection,
+  WorkspacePaneLayout,
+  WorkspacePaneNode
+} from './workspaceChromeTypes';
 export {
   defaultWorkspaceChromeTabId,
   initialWorkspaceChromeTabs,

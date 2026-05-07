@@ -1,5 +1,6 @@
 export * from './TerminalBlockCard';
 export * from './WebSearchBlock';
+export * from './ThinkingBlock';
 export * from './ImplementationPlanBlock';
 export * from './CodeDisplayBlock';
 export * from './MultiStepPlannerBlock';

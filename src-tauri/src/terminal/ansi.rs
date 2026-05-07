@@ -5,11 +5,23 @@ pub enum ShellHook {
     },
     PreCmd {
         status: Option<i32>,
+        cwd: Option<String>,
     },
     Finish {
         block_id: String,
         status: Option<i32>,
     },
+    CompletionsStart {
+        format: String,
+    },
+    CompletionsEnd,
+    CompletionResult {
+        completion: String,
+    },
+    CompletionUpdateDescription {
+        value: String,
+    },
+    CompletionsPrompt,
 }
 
 #[derive(Debug, Clone)]
@@ -42,7 +54,7 @@ impl HookParser {
         let mut cursor = 0;
 
         loop {
-            let Some(start) = find_bytes(&self.buffer[cursor..], b"\x1b]7777;") else {
+            let Some((start, marker_len)) = find_next_marker(&self.buffer[cursor..]) else {
                 let keep_suffix = partial_marker_suffix_len(&self.buffer[cursor..]);
                 let emit_end = self.buffer.len().saturating_sub(keep_suffix);
 
@@ -63,7 +75,7 @@ impl HookParser {
                 ));
             }
 
-            let payload_start = absolute_start + b"\x1b]7777;".len();
+            let payload_start = absolute_start + marker_len;
             let Some((terminator_start, terminator_len)) =
                 find_osc_terminator(&self.buffer[payload_start..])
             else {
@@ -85,22 +97,44 @@ impl HookParser {
 
 fn parse_payload(payload: &[u8]) -> Option<ShellHook> {
     let payload = String::from_utf8_lossy(payload);
-    let mut parts = payload.splitn(2, ';');
-    match parts.next()? {
+    let (hook, rest) = payload.split_once(';')?;
+    match hook {
         "preexec" => Some(ShellHook::PreExec {
-            command: parts.next().unwrap_or_default().to_string(),
+            command: rest.to_string(),
         }),
         "precmd" => {
+            let mut parts = rest.splitn(2, ';');
             let status = parts.next().and_then(|value| value.parse::<i32>().ok());
-            Some(ShellHook::PreCmd { status })
+            let cwd = parts
+                .next()
+                .and_then(|value| (!value.is_empty()).then(|| value.to_string()));
+            Some(ShellHook::PreCmd { status, cwd })
         }
         "finish" => {
-            let mut finish_parts = parts.next().unwrap_or_default().splitn(2, ';');
+            let mut finish_parts = rest.splitn(2, ';');
             let block_id = finish_parts.next().unwrap_or_default().to_string();
             let status = finish_parts
                 .next()
                 .and_then(|value| value.parse::<i32>().ok());
             Some(ShellHook::Finish { block_id, status })
+        }
+        "completions" => {
+            let mut completion_parts = rest.splitn(2, ';');
+            let action = completion_parts.next().unwrap_or_default();
+            let value = completion_parts.next().unwrap_or_default().to_string();
+            match action {
+                "A" => Some(ShellHook::CompletionsStart { format: value }),
+                "B" => Some(ShellHook::CompletionsEnd),
+                "C" => Some(ShellHook::CompletionResult { completion: value }),
+                action if action.starts_with("D?") => {
+                    match &action[2..] {
+                        "description" => Some(ShellHook::CompletionUpdateDescription { value }),
+                        _ => None,
+                    }
+                }
+                "P" => Some(ShellHook::CompletionsPrompt),
+                _ => None,
+            }
         }
         _ => None,
     }
@@ -110,6 +144,21 @@ fn find_bytes(haystack: &[u8], needle: &[u8]) -> Option<usize> {
     haystack
         .windows(needle.len())
         .position(|window| window == needle)
+}
+
+fn find_next_marker(bytes: &[u8]) -> Option<(usize, usize)> {
+    let classic = b"\x1b]7777;";
+    let completion = b"\x1b]9280;";
+
+    let classic_pos = find_bytes(bytes, classic).map(|start| (start, classic.len()));
+    let completion_pos = find_bytes(bytes, completion).map(|start| (start, completion.len()));
+
+    match (classic_pos, completion_pos) {
+        (Some(left), Some(right)) => Some(if left.0 <= right.0 { left } else { right }),
+        (Some(left), None) => Some(left),
+        (None, Some(right)) => Some(right),
+        (None, None) => None,
+    }
 }
 
 fn find_osc_terminator(bytes: &[u8]) -> Option<(usize, usize)> {
@@ -127,11 +176,12 @@ fn find_osc_terminator(bytes: &[u8]) -> Option<(usize, usize)> {
 }
 
 fn partial_marker_suffix_len(bytes: &[u8]) -> usize {
-    let marker = b"\x1b]7777;";
-    let max_len = marker.len().saturating_sub(1).min(bytes.len());
+    let markers = [b"\x1b]7777;".as_slice(), b"\x1b]9280;".as_slice()];
+    let max_len = markers.iter().map(|marker| marker.len()).max().unwrap_or(0);
+    let max_len = max_len.saturating_sub(1).min(bytes.len());
 
     for len in (1..=max_len).rev() {
-        if bytes.ends_with(&marker[..len]) {
+        if markers.iter().any(|marker| bytes.ends_with(&marker[..len.min(marker.len())])) {
             return len;
         }
     }
@@ -228,7 +278,28 @@ mod tests {
         let hooks = parser.push(b"127\x07");
 
         assert_eq!(hooks.len(), 1);
-        assert!(matches!(hooks[0], ShellHook::PreCmd { status: Some(127) }));
+        assert!(matches!(
+            hooks[0],
+            ShellHook::PreCmd {
+                status: Some(127),
+                cwd: None
+            }
+        ));
+    }
+
+    #[test]
+    fn parses_precmd_cwd() {
+        let mut parser = HookParser::default();
+        let hooks = parser.push(b"\x1b]7777;precmd;0;/user/projects/ml-training\x07");
+
+        assert_eq!(hooks.len(), 1);
+        assert!(matches!(
+            &hooks[0],
+            ShellHook::PreCmd {
+                status: Some(0),
+                cwd: Some(cwd)
+            } if cwd == "/user/projects/ml-training"
+        ));
     }
 
     #[test]
@@ -263,6 +334,24 @@ mod tests {
                 block_id,
                 status: Some(2)
             } if block_id == "block-1"
+        ));
+    }
+
+    #[test]
+    fn parses_completion_start_and_result_hooks() {
+        let mut parser = HookParser::default();
+        let hooks = parser.push(
+            b"\x1b]9280;completions;A;raw\x07\x1b]9280;completions;C;git status\x07",
+        );
+
+        assert_eq!(hooks.len(), 2);
+        assert!(matches!(
+            &hooks[0],
+            ShellHook::CompletionsStart { format } if format == "raw"
+        ));
+        assert!(matches!(
+            &hooks[1],
+            ShellHook::CompletionResult { completion } if completion == "git status"
         ));
     }
 }

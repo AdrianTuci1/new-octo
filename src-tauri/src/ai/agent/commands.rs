@@ -233,7 +233,7 @@ pub fn agent_list_runs(
     manager.list()
 }
 
-async fn run_harness<H: AgentHarness>(
+pub(super) async fn run_harness<H: AgentHarness>(
     harness: H,
     context: AgentHarnessContext,
     sink: AgentEventSink,

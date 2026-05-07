@@ -6,9 +6,16 @@ import type {
   TerminalBlockEvent,
   TerminalBlockOutputEvent,
   TerminalBlockSharedMeta,
+  TerminalCompletionResultEvent,
+  TerminalCompletionState,
+  TerminalCompletionUpdateEvent,
+  TerminalCompletionsFinishedEvent,
+  TerminalCompletionsPromptEvent,
+  TerminalCompletionsStartedEvent,
   TerminalCommandBlock,
   TerminalCommandSource,
   TerminalExitEvent,
+  TerminalSessionCwdEvent,
   TerminalRunCommandResponse,
   TerminalSessionInfo
 } from '../types/terminal';
@@ -71,9 +78,11 @@ export function useTerminalCommandBlocks(options: UseTerminalCommandBlocksOption
   const sessionRef = useRef<TerminalSessionInfo | null>(null);
   const sessionPromiseRef = useRef<Promise<TerminalSessionInfo> | null>(null);
   const persistedSessionIdRef = useRef<string | null>(initialSessionId);
+  const sessionOriginCwdRef = useRef<string | null>(cwd);
   const sharedBlockMetaRef = useRef<Record<string, TerminalBlockSharedMeta>>(sharedBlockMetaById);
   const syntheticBlocksRef = useRef<TerminalCommandBlock[]>(sharedSyntheticBlocks);
   const activeBlockIdRef = useRef<string | null>(null);
+  const didResolveInitialCwdRef = useRef(cwd !== null);
   const blocksRef = useRef<TerminalCommandBlock[]>([]);
   const commandBlocksRef = useRef<TerminalCommandBlock[]>([]);
   const commandInFlightRef = useRef(false);
@@ -84,6 +93,8 @@ export function useTerminalCommandBlocks(options: UseTerminalCommandBlocksOption
   const [expandedBlockIds, setExpandedBlockIds] = useState<string[]>([]);
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [sessionCwd, setSessionCwd] = useState<string | null>(null);
+  const [completionState, setCompletionState] = useState<TerminalCompletionState | null>(null);
 
   useEffect(() => {
     sharedBlockMetaRef.current = sharedBlockMetaById;
@@ -146,7 +157,18 @@ export function useTerminalCommandBlocks(options: UseTerminalCommandBlocksOption
     setExpandedBlockIds([]);
     setSelectedBlockId(null);
     setError(null);
+    setCompletionState(null);
   }, [applySharedMeta, commitTimeline]);
+
+  const resetCompletionState = useCallback(() => {
+    setCompletionState(null);
+  }, []);
+
+  const upsertCompletionState = useCallback((
+    updater: (current: TerminalCompletionState | null) => TerminalCompletionState | null
+  ) => {
+    setCompletionState((current) => updater(current));
+  }, []);
 
   const upsertBlockMeta = useCallback((blockId: string, meta: TerminalBlockSharedMeta) => {
     const nextMetaById = {
@@ -178,6 +200,8 @@ export function useTerminalCommandBlocks(options: UseTerminalCommandBlocksOption
     })
       .then((session) => {
         sessionRef.current = session;
+        setSessionCwd(session.cwd ?? null);
+        sessionOriginCwdRef.current = session.cwd ?? cwd;
         if (persistedSessionIdRef.current !== session.id) {
           persistedSessionIdRef.current = session.id;
           onSessionChange?.(session.id);
@@ -273,6 +297,8 @@ export function useTerminalCommandBlocks(options: UseTerminalCommandBlocksOption
       shell: sessionRef.current?.shell ?? '',
       cwd: sessionRef.current?.cwd ?? cwd
     };
+    sessionOriginCwdRef.current = cwd;
+    setSessionCwd(sessionRef.current.cwd ?? null);
 
     void Promise.all([
       invoke<TerminalSessionInfo>('terminal_create_session', {
@@ -294,6 +320,8 @@ export function useTerminalCommandBlocks(options: UseTerminalCommandBlocksOption
       }
 
       sessionRef.current = sessionInfo;
+      setSessionCwd(sessionInfo.cwd ?? null);
+      sessionOriginCwdRef.current = sessionInfo.cwd ?? cwd;
       persistedSessionIdRef.current = sessionInfo.id;
       onSessionChange?.(sessionInfo.id);
       replaceBlocks(nextBlocks.map((block) => mergeBlock(block, '', sharedBlockMetaRef.current[block.id])));
@@ -303,6 +331,7 @@ export function useTerminalCommandBlocks(options: UseTerminalCommandBlocksOption
       }
 
       sessionRef.current = null;
+      setSessionCwd(null);
       persistedSessionIdRef.current = null;
       onSessionChange?.(null);
       replaceBlocks([]);
@@ -337,6 +366,8 @@ export function useTerminalCommandBlocks(options: UseTerminalCommandBlocksOption
       if (!activeSession || event.payload.sessionId !== activeSession.id) return;
 
       sessionRef.current = null;
+      setSessionCwd(null);
+      setCompletionState(null);
       setError(
         typeof event.payload.exitCode === 'number'
           ? `Terminal session exited with code ${event.payload.exitCode}.`
@@ -344,10 +375,129 @@ export function useTerminalCommandBlocks(options: UseTerminalCommandBlocksOption
       );
     });
 
+    const sessionCwdSubscription = listen<TerminalSessionCwdEvent>('terminal:session-cwd', (event) => {
+      const activeSession = sessionRef.current;
+      if (!activeSession || event.payload.sessionId !== activeSession.id) return;
+
+      sessionRef.current = {
+        ...activeSession,
+        cwd: event.payload.cwd ?? null
+      };
+      setSessionCwd(event.payload.cwd ?? null);
+    });
+
+    const completionsStartedSubscription = listen<TerminalCompletionsStartedEvent>('terminal:completions-started', (event) => {
+      const activeSession = sessionRef.current;
+      if (!activeSession || event.payload.sessionId !== activeSession.id) return;
+
+      setCompletionState({
+        status: 'running',
+        format: event.payload.format,
+        promptVisible: false,
+        completions: [],
+        lastValue: null
+      });
+    });
+
+    const completionsFinishedSubscription = listen<TerminalCompletionsFinishedEvent>('terminal:completions-finished', (event) => {
+      const activeSession = sessionRef.current;
+      if (!activeSession || event.payload.sessionId !== activeSession.id) return;
+      const lastCompletion = event.payload.data[event.payload.data.length - 1] ?? null;
+
+      setCompletionState((current) => ({
+        status: 'finished',
+        format: current?.format ?? null,
+        promptVisible: false,
+        completions: event.payload.data,
+        lastValue: lastCompletion?.description ?? lastCompletion?.name ?? null
+      }));
+    });
+
+    const completionResultSubscription = listen<TerminalCompletionResultEvent>('terminal:completion-result', (event) => {
+      const activeSession = sessionRef.current;
+      if (!activeSession || event.payload.sessionId !== activeSession.id) return;
+
+      upsertCompletionState((current) => {
+        if (!current) {
+          return {
+            status: 'running',
+            format: null,
+            promptVisible: false,
+            completions: [event.payload.completion],
+            lastValue: event.payload.completion.description ?? event.payload.completion.name
+          };
+        }
+
+        const existingIndex = current.completions.findIndex((item) => item.name === event.payload.completion.name);
+        const nextCompletions = existingIndex >= 0
+          ? current.completions.map((item, index) => (
+              index === existingIndex ? event.payload.completion : item
+            ))
+          : [...current.completions, event.payload.completion];
+
+        return {
+          ...current,
+          completions: nextCompletions,
+          lastValue: event.payload.completion.description ?? event.payload.completion.name
+        };
+      });
+    });
+
+    const completionUpdateSubscription = listen<TerminalCompletionUpdateEvent>('terminal:completion-update', (event) => {
+      const activeSession = sessionRef.current;
+      if (!activeSession || event.payload.sessionId !== activeSession.id) return;
+
+      upsertCompletionState((current) => {
+        if (!current) return current;
+        const nextCompletions = current.completions.length === 0
+          ? current.completions
+          : current.completions.map((item, index) => (
+              index === current.completions.length - 1
+                ? { ...item, description: event.payload.value }
+                : item
+            ));
+
+        return {
+          ...current,
+          completions: nextCompletions,
+          lastValue: event.payload.value
+        };
+      });
+    });
+
+    const completionsPromptSubscription = listen<TerminalCompletionsPromptEvent>('terminal:completions-prompt', (event) => {
+      const activeSession = sessionRef.current;
+      if (!activeSession || event.payload.sessionId !== activeSession.id) return;
+
+      upsertCompletionState((current) => {
+        if (!current) {
+          return {
+            status: 'running',
+            format: null,
+            promptVisible: true,
+            completions: [],
+            lastValue: null
+          };
+        }
+
+        return {
+          ...current,
+          status: current.status === 'finished' ? 'running' : current.status,
+          promptVisible: true
+        };
+      });
+    });
+
     const subscriptions = Promise.all([
       blockSubscription,
       blockOutputSubscription,
-      exitSubscription
+      exitSubscription,
+      sessionCwdSubscription,
+      completionsStartedSubscription,
+      completionsFinishedSubscription,
+      completionResultSubscription,
+      completionUpdateSubscription,
+      completionsPromptSubscription
     ]);
 
     return () => {
@@ -375,12 +525,24 @@ export function useTerminalCommandBlocks(options: UseTerminalCommandBlocksOption
       }
 
       sessionRef.current = null;
+      resetCompletionState();
     };
-  }, [appendOutput, persistSession, upsertBlock]);
+  }, [appendOutput, persistSession, resetCompletionState, upsertBlock, upsertCompletionState]);
 
   useEffect(() => {
     const activeSession = sessionRef.current;
-    if (!activeSession || activeSession.cwd === (cwd ?? null)) {
+    const currentCwd = cwd ?? null;
+
+    if (!didResolveInitialCwdRef.current) {
+      if (currentCwd !== null) {
+        didResolveInitialCwdRef.current = true;
+      }
+
+      sessionOriginCwdRef.current = currentCwd;
+      return;
+    }
+
+    if (!activeSession || sessionOriginCwdRef.current === currentCwd) {
       return;
     }
 
@@ -397,13 +559,16 @@ export function useTerminalCommandBlocks(options: UseTerminalCommandBlocksOption
 
     sessionRef.current = null;
     sessionPromiseRef.current = null;
+    sessionOriginCwdRef.current = currentCwd;
     commandInFlightRef.current = false;
     activeBlockIdRef.current = null;
     pendingCommandOutputRef.current = '';
     pendingOutputRef.current = {};
     blockOptionsRef.current = {};
+    setSessionCwd(null);
     setError(null);
     setBlocks([]);
+    setCompletionState(null);
   }, [cwd, onSessionChange, persistSession]);
 
   const runCommand = useCallback(
@@ -457,6 +622,8 @@ export function useTerminalCommandBlocks(options: UseTerminalCommandBlocksOption
     sessionRef.current = null;
     sessionPromiseRef.current = null;
     persistedSessionIdRef.current = null;
+    sessionOriginCwdRef.current = cwd;
+    setCompletionState(null);
     publishBlockMeta({});
     publishSyntheticBlocks([]);
     onSessionChange?.(null);
@@ -510,6 +677,8 @@ export function useTerminalCommandBlocks(options: UseTerminalCommandBlocksOption
     sessionId: persistedSessionIdRef.current,
     selectedBlockId,
     setSelectedBlockId,
+    cwd: sessionCwd,
+    completionState,
     upsertSyntheticBlock
   };
 }

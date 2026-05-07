@@ -5,6 +5,7 @@ import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { Copy, Play, Save, Check } from 'lucide-react';
 import { useState } from 'react';
 import { CodeDiffView } from './CodeDiffView';
+import { ImplementationPlanBlock, MultiStepPlannerBlock, ThinkingBlock, WebSearchBlock } from './blocks';
 import { visibleChatMessageBody } from '../../hooks/useChat';
 import type { ChatMessage } from '../../types/chat';
 import type { CommandApproval } from '../../types/terminal';
@@ -33,19 +34,50 @@ export function MessageBubble({ message, onRequestCommandApproval }: MessageBubb
       </div>
 
       <div className="message-content">
-        {showStreamingHint && (
+        {message.messageKind === 'reasoning' ? (
+          <ThinkingBlock body={visibleBody} isStreaming={message.isStreaming} />
+        ) : showStreamingHint ? (
           <div className="message-streaming-hint">
             <span className="thinking-dot-animation">Thinking</span>
             {message.status && message.status !== 'queued' && (
               <span className="status-badge"> ({message.status})</span>
             )}
           </div>
-        )}
-        
-        {message.role === 'tool' ? (
-          <div className="tool-output-raw">
-            {message.body}
-          </div>
+        ) : message.role === 'tool' ? (
+          message.toolKind === 'web-search'
+            ? (
+                <div className="tool-output-web-search">
+                  <WebSearchBlock
+                    status={message.webSearchStatus}
+                    results={message.webSearchResults ?? []}
+                  />
+                  {(!message.webSearchResults || message.webSearchResults.length === 0) && message.body.trim().length > 0 && (
+                    <div className="tool-output-raw tool-output-web-search-fallback">
+                      {message.body}
+                    </div>
+                  )}
+                </div>
+              )
+            : message.toolKind === 'plan' && message.executionPlan
+              ? (
+                  <div className="tool-output-plan">
+                    <ImplementationPlanBlock
+                      title={message.executionPlan.title}
+                      version={message.executionPlan.version ?? 'v1'}
+                    />
+                    <MultiStepPlannerBlock
+                      title="Execution Plan"
+                      summary={message.executionPlan.summary}
+                      steps={message.executionPlan.steps}
+                      workstreams={message.executionPlan.workstreams ?? []}
+                    />
+                  </div>
+                )
+            : (
+                <div className="tool-output-raw">
+                  {message.body}
+                </div>
+              )
         ) : (
           <ReactMarkdown
             remarkPlugins={[remarkGfm]}

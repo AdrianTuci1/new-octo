@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { Key, Trash2, X } from 'lucide-react';
 import { useMemoryStore, useUIStore } from '../../../stores';
-import type { AgentProviderStatus } from '../../../types/chat';
+import type { AgentProviderStatus, ConfiguredModel } from '../../../types/chat';
 import { DrawerHeader } from '../drawers/DrawerHeader';
 import './ModelManagementDrawer.css';
 
@@ -12,11 +12,13 @@ const DEFAULT_BASE_URL = 'https://api.openai.com/v1';
 
 export function ModelManagementDrawer() {
   const setIsModelDrawerOpen = useUIStore((state) => state.setIsModelDrawerOpen);
-  const memorySelectedModelId = useMemoryStore((state) => state.settings?.values.selectedModelId ?? null);
+  const selectedModelIdForEdit = useUIStore((state) => state.selectedModelIdForEdit);
+  const setSelectedModelIdForEdit = useUIStore((state) => state.setSelectedModelIdForEdit);
+  const settings = useMemoryStore((state) => state.settings);
   const saveSettings = useMemoryStore((state) => state.saveSettings);
 
   const [providerLabel, setProviderLabel] = useState(DEFAULT_PROVIDER_LABEL);
-  const [modelId, setModelId] = useState(memorySelectedModelId ?? DEFAULT_MODEL_ID);
+  const [modelId, setModelId] = useState(DEFAULT_MODEL_ID);
   const [baseUrl, setBaseUrl] = useState(DEFAULT_BASE_URL);
   const [apiKey, setApiKey] = useState('');
   const [friendlyName, setFriendlyName] = useState('');
@@ -27,28 +29,28 @@ export function ModelManagementDrawer() {
   const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
-    void invoke<AgentProviderStatus>('agent_provider_status')
-      .then((status) => {
-        if (status.source !== 'environment' && status.provider === 'openai-compatible') {
-          setProviderLabel(DEFAULT_PROVIDER_LABEL);
-        }
-
-        if (status.hasApiKey && status.source !== 'environment' && status.modelId) {
-          setModelId(status.modelId);
-        } else if (memorySelectedModelId) {
-          setModelId(memorySelectedModelId);
-        }
-
-        if (status.source !== 'environment' && status.baseUrl && status.baseUrl !== 'local') {
-          setBaseUrl(status.baseUrl);
-        }
-
-        setHasApiKey(status.hasApiKey && status.source !== 'environment');
-      })
-      .catch((error) => {
-        console.warn('[model-management] failed to load provider status', error);
-      });
-  }, [memorySelectedModelId]);
+    const configuredModels = (settings?.values.configuredModels as ConfiguredModel[]) ?? [];
+    if (selectedModelIdForEdit && selectedModelIdForEdit !== 'new') {
+      const editingModel = configuredModels.find((m) => m.id === selectedModelIdForEdit);
+      if (editingModel) {
+        setProviderLabel(editingModel.providerLabel);
+        setModelId(editingModel.modelId);
+        setBaseUrl(editingModel.baseUrl);
+        setFriendlyName(editingModel.friendlyName ?? '');
+        setHasApiKey(editingModel.hasApiKey ?? true);
+        setApiKey('');
+      }
+    } else {
+      setProviderLabel(DEFAULT_PROVIDER_LABEL);
+      setModelId(DEFAULT_MODEL_ID);
+      setBaseUrl(DEFAULT_BASE_URL);
+      setFriendlyName('');
+      setHasApiKey(false);
+      setApiKey('');
+    }
+    setErrorMessage(null);
+    setStatusMessage(null);
+  }, [selectedModelIdForEdit, settings?.values.configuredModels]);
 
   const handleSave = async () => {
     const trimmedModelId = modelId.trim();
@@ -75,27 +77,64 @@ export function ModelManagementDrawer() {
     setStatusMessage(null);
 
     try {
-      const status = await invoke<AgentProviderStatus>('agent_configure_openai_compatible', {
-        request: {
-          apiKey: trimmedApiKey,
-          baseUrl: trimmedBaseUrl,
-          modelId: trimmedModelId
+      let hasKey = hasApiKey;
+      if (trimmedApiKey) {
+        const status = await invoke<AgentProviderStatus>('agent_configure_openai_compatible', {
+          request: {
+            apiKey: trimmedApiKey,
+            baseUrl: trimmedBaseUrl,
+            modelId: trimmedModelId
+          }
+        });
+        hasKey = status.hasApiKey;
+      } else {
+        try {
+          await invoke<AgentProviderStatus>('agent_configure_openai_compatible', {
+            request: {
+              apiKey: '',
+              baseUrl: trimmedBaseUrl,
+              modelId: trimmedModelId
+            }
+          });
+        } catch (err) {
+          console.warn('[model-management] failed to update backend active model', err);
         }
-      });
+      }
+
+      const existingModels = (settings?.values.configuredModels as ConfiguredModel[]) ?? [];
+      const newId = selectedModelIdForEdit && selectedModelIdForEdit !== 'new' ? selectedModelIdForEdit : `model_${Date.now()}`;
+
+      const updatedModel: ConfiguredModel = {
+        id: newId,
+        providerLabel,
+        modelId: trimmedModelId,
+        baseUrl: trimmedBaseUrl,
+        friendlyName: friendlyName.trim() || undefined,
+        hasApiKey: hasKey
+      };
+
+      let nextConfiguredModels: ConfiguredModel[] = [];
+      if (selectedModelIdForEdit && selectedModelIdForEdit !== 'new') {
+        nextConfiguredModels = existingModels.map((m) => m.id === selectedModelIdForEdit ? updatedModel : m);
+      } else {
+        nextConfiguredModels = [...existingModels, updatedModel];
+      }
 
       await saveSettings(
         {
-          selectedModelId: status.modelId,
+          configuredModels: nextConfiguredModels,
+          selectedModelId: updatedModel.id,
           aiProviderLabel: providerLabel,
-          aiModelFriendlyName: friendlyName.trim() || null,
-          aiModelBaseUrl: status.baseUrl
+          aiModelFriendlyName: updatedModel.friendlyName || null,
+          aiModelBaseUrl: updatedModel.baseUrl
         },
         true
       );
 
-      setHasApiKey(status.hasApiKey);
+      setHasApiKey(hasKey);
       setApiKey('');
-      setStatusMessage('Saved securely in the OS keychain.');
+      setSelectedModelIdForEdit(updatedModel.id);
+      setStatusMessage('Saved securely and set as active model.');
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : String(error));
     } finally {
@@ -109,24 +148,53 @@ export function ModelManagementDrawer() {
     setStatusMessage(null);
 
     try {
-      await invoke('agent_clear_openai_compatible');
-      await saveSettings(
-        {
-          selectedModelId: DEFAULT_MODEL_ID,
-          aiProviderLabel: DEFAULT_PROVIDER_LABEL,
-          aiModelFriendlyName: null,
-          aiModelBaseUrl: DEFAULT_BASE_URL
-        },
-        true
-      );
+      const existingModels = (settings?.values.configuredModels as ConfiguredModel[]) ?? [];
+      const nextConfiguredModels = existingModels.filter((m) => m.id !== selectedModelIdForEdit);
+
+      const nextActiveModel = nextConfiguredModels[0] || null;
+
+      if (nextActiveModel) {
+        try {
+          await invoke('agent_configure_openai_compatible', {
+            request: {
+              apiKey: '',
+              baseUrl: nextActiveModel.baseUrl,
+              modelId: nextActiveModel.modelId
+            }
+          });
+        } catch (e) {
+          console.warn('[model-management] failed to switch active backend model on delete', e);
+        }
+
+        await saveSettings(
+          {
+            configuredModels: nextConfiguredModels,
+            selectedModelId: nextActiveModel.id,
+            aiProviderLabel: nextActiveModel.providerLabel,
+            aiModelFriendlyName: nextActiveModel.friendlyName || null,
+            aiModelBaseUrl: nextActiveModel.baseUrl
+          },
+          true
+        );
+      } else {
+        await invoke('agent_clear_openai_compatible');
+        await saveSettings(
+          {
+            configuredModels: [],
+            selectedModelId: DEFAULT_MODEL_ID,
+            aiProviderLabel: DEFAULT_PROVIDER_LABEL,
+            aiModelFriendlyName: null,
+            aiModelBaseUrl: DEFAULT_BASE_URL
+          },
+          true
+        );
+      }
 
       setApiKey('');
       setHasApiKey(false);
-      setModelId(DEFAULT_MODEL_ID);
-      setBaseUrl(DEFAULT_BASE_URL);
       setFriendlyName('');
-      setProviderLabel(DEFAULT_PROVIDER_LABEL);
-      setStatusMessage('Secure credential removed.');
+      setSelectedModelIdForEdit(null);
+      setIsModelDrawerOpen(false);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : String(error));
     } finally {
@@ -137,7 +205,7 @@ export function ModelManagementDrawer() {
   return (
     <div className="model-mgmt-drawer">
       <DrawerHeader
-        title="Add new model"
+        title={selectedModelIdForEdit && selectedModelIdForEdit !== 'new' ? "Edit model details" : "Add new model"}
         action={(
           <button
             className="drawer-header-action-button"
@@ -227,7 +295,7 @@ export function ModelManagementDrawer() {
         <div className="model-mgmt-danger-zone">
           <button className="btn-delete" type="button" onClick={handleDelete} disabled={isDeleting}>
             <Trash2 size={14} />
-            <span>{isDeleting ? 'Deleting...' : 'Delete secure credential'}</span>
+            <span>{isDeleting ? 'Deleting...' : 'Delete model'}</span>
           </button>
         </div>
       </div>

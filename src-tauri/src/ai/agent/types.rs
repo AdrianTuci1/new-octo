@@ -15,6 +15,18 @@ pub struct AgentRunRequest {
     pub messages: Vec<AgentInputMessage>,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentContinueRequest {
+    pub run_id: Option<String>,
+    pub conversation_id: String,
+    pub assistant_message_id: Option<String>,
+    pub cwd: Option<String>,
+    pub model_id: Option<String>,
+    #[serde(default)]
+    pub messages: Vec<AgentInputMessage>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AgentInputMessage {
@@ -113,6 +125,16 @@ pub struct AgentTokenEvent {
     pub conversation_id: String,
     pub assistant_message_id: String,
     pub text: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentReasoningEvent {
+    pub run_id: String,
+    pub conversation_id: String,
+    pub assistant_message_id: String,
+    pub text: String,
+    pub is_complete: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]

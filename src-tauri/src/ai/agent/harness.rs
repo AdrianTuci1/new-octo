@@ -10,13 +10,15 @@ use std::{
 use tauri::{AppHandle, Emitter};
 
 use super::types::{
-    AgentDoneEvent, AgentErrorEvent, AgentInputMessage, AgentRunStatus, AgentRunStatusEvent,
-    AgentTokenEvent, AgentToolCall, AgentToolCallEvent, AgentToolResultEvent, AgentUsage,
+    AgentDoneEvent, AgentErrorEvent, AgentInputMessage, AgentReasoningEvent, AgentRunStatus,
+    AgentRunStatusEvent, AgentTokenEvent, AgentToolCall, AgentToolCallEvent, AgentToolResultEvent,
+    AgentUsage,
 };
 use crate::ai::agent_management::AgentHarnessManager;
 
 const EVENT_STATUS: &str = "agent:status";
 const EVENT_TOKEN: &str = "agent:token";
+const EVENT_REASONING: &str = "agent:reasoning";
 const EVENT_TOOL_CALL: &str = "agent:tool_call";
 const EVENT_TOOL_RESULT: &str = "agent:tool_result";
 const EVENT_DONE: &str = "agent:done";
@@ -135,6 +137,19 @@ impl AgentEventSink {
         if let Err(error) = res {
             println!("[AI] ERROR emitting token event: {:?}", error);
         }
+    }
+
+    pub fn reasoning(&self, text: impl Into<String>, is_complete: bool) {
+        let _ = self.window.emit(
+            EVENT_REASONING,
+            AgentReasoningEvent {
+                run_id: self.run_id.clone(),
+                conversation_id: self.conversation_id.clone(),
+                assistant_message_id: self.assistant_message_id.clone(),
+                text: text.into(),
+                is_complete,
+            },
+        );
     }
 
     pub fn tool_call(&self, tool_call: AgentToolCall) {

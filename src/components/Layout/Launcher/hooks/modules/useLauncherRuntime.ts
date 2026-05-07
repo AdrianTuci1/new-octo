@@ -1,10 +1,12 @@
-import { useCallback, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { invoke } from '@tauri-apps/api/core';
 import * as Hooks from '../../../../../hooks';
 import { useMemoryStore, useLauncherStore, useUIStore } from '../../../../../stores';
 import * as Utils from '../../utils';
 import { consumeShellModeActivator } from '../../../../../lib';
 import type { LauncherProps } from '../types';
 import type { CommandApproval, FileChangeApproval } from '../../../../../types';
+import type { WebSearchRequest, WebSearchResponse } from '../../../../../types/chat';
 
 export function useLauncherRuntime(props: LauncherProps, store: any, tray: any) {
   const {
@@ -64,6 +66,7 @@ export function useLauncherRuntime(props: LauncherProps, store: any, tray: any) 
   ]);
 
   const availableShellCommands = Hooks.useShellCommandIndex();
+  const chatApiRef = useRef<any>(null);
 
   const hasControlledConversation = props.conversationId !== undefined;
   const resolvedConversationId = useMemo(() => hasControlledConversation
@@ -105,6 +108,8 @@ export function useLauncherRuntime(props: LauncherProps, store: any, tray: any) 
     terminalRaw.blocks,
     terminalRaw.error,
     terminalRaw.sessionId,
+    terminalRaw.cwd,
+    terminalRaw.completionState,
     terminalRaw.selectedBlockId,
     terminalRaw.expandedBlockIds,
     terminalRaw.collapseBlock,
@@ -126,6 +131,8 @@ export function useLauncherRuntime(props: LauncherProps, store: any, tray: any) 
     agentTerminalRaw.blocks,
     agentTerminalRaw.error,
     agentTerminalRaw.sessionId,
+    agentTerminalRaw.cwd,
+    agentTerminalRaw.completionState,
     agentTerminalRaw.selectedBlockId,
     agentTerminalRaw.expandedBlockIds,
     agentTerminalRaw.collapseBlock,
@@ -134,6 +141,55 @@ export function useLauncherRuntime(props: LauncherProps, store: any, tray: any) 
     agentTerminalRaw.replaceBlocks,
     agentTerminalRaw.clearBlocks
   ]);
+
+  const requestWebSearch = useCallback(async (request: WebSearchRequest) => {
+    try {
+      void chatApiRef.current?.submitToolResult(
+        request.toolCallId,
+        '',
+        'web-search',
+        request.query,
+        [],
+        { deferFollowUp: true, webSearchStatus: 'searching' }
+      );
+
+      const response = await invoke<WebSearchResponse>('web_search', {
+        request: {
+          query: request.query,
+          maxResults: request.maxResults ?? 5
+        }
+      });
+
+      const formattedResults = response.results.length > 0
+        ? [
+            `Web search results for "${response.query}":`,
+            ...response.results.map((result, index) => [
+              `${index + 1}. ${result.title}`,
+              `URL: ${result.url}`,
+              result.snippet ? `Snippet: ${result.snippet}` : ''
+            ].filter(Boolean).join('\n'))
+          ].join('\n\n')
+        : `No web results found for "${response.query}".`;
+
+      void chatApiRef.current?.submitToolResult(
+        request.toolCallId,
+        formattedResults,
+        'web-search',
+        response.query,
+        response.results,
+        { webSearchStatus: 'success' }
+      );
+    } catch (error) {
+      void chatApiRef.current?.submitToolResult(
+        request.toolCallId,
+        `Web search failed for "${request.query}": ${error}`,
+        'web-search',
+        request.query,
+        [],
+        { deferFollowUp: true, webSearchStatus: 'error' }
+      );
+    }
+  }, []);
 
   const onConversationCreated = useCallback((nextId: string) => {
     setLocalConversationId(nextId);
@@ -165,10 +221,15 @@ export function useLauncherRuntime(props: LauncherProps, store: any, tray: any) 
     terminalBlocks: agentTerminal.blocks,
     onCommandApproval: requestCommandApproval,
     onFileChangeApproval: requestFileChangeApproval,
+    onWebSearch: requestWebSearch,
     onConversationCreated,
     onNewChat,
     active
   });
+
+  useEffect(() => {
+    chatApiRef.current = chatRaw;
+  }, [chatRaw]);
 
   const chat = useMemo(() => chatRaw, [
     chatRaw.messages,

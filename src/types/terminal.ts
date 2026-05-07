@@ -18,6 +18,52 @@ export type TerminalExitEvent = {
   exitCode?: number | null;
 };
 
+export type TerminalSessionCwdEvent = {
+  sessionId: string;
+  cwd?: string | null;
+};
+
+export type TerminalCompletionsFormat = 'raw' | 'incrementally_typed';
+
+export type TerminalShellCompletion = {
+  name: string;
+  description?: string | null;
+};
+
+export type TerminalCompletionsStartedEvent = {
+  sessionId: string;
+  format: TerminalCompletionsFormat;
+};
+
+export type TerminalCompletionsFinishedEvent = {
+  sessionId: string;
+  data: TerminalShellCompletion[];
+};
+
+export type TerminalCompletionResultEvent = {
+  sessionId: string;
+  completion: TerminalShellCompletion;
+};
+
+export type TerminalCompletionUpdateEvent = {
+  sessionId: string;
+  value: string;
+};
+
+export type TerminalCompletionsPromptEvent = {
+  sessionId: string;
+};
+
+export type TerminalCompletionStatus = 'idle' | 'running' | 'finished';
+
+export type TerminalCompletionState = {
+  status: TerminalCompletionStatus;
+  format: TerminalCompletionsFormat | null;
+  promptVisible: boolean;
+  completions: TerminalShellCompletion[];
+  lastValue: string | null;
+};
+
 export type TerminalBlock = {
   id: string;
   command: string;

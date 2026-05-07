@@ -81,7 +81,7 @@ export function ComposerBar({
   onHeightChange,
   placeholder
 }: ComposerBarProps) {
-  const { inputRef, shellRef } = useComposerBar(query, onHeightChange);
+  const { inputRef, shellRef } = useComposerBar(query, onHeightChange, { autoFocus: mode === 'shell' });
   const [isDismissed, setIsDismissed] = useState(false);
   const predictionSuffix = prediction?.completionText ?? '';
   const showShellIndicator = mode === 'shell' && shellSource === 'manual';
@@ -89,7 +89,7 @@ export function ComposerBar({
   // Reset dismissal when recommendation changes
   useEffect(() => {
     setIsDismissed(false);
-  }, [recommendedAction?.label]);
+  }, [recommendedAction?.value]);
 
   const showRecommendation = recommendedAction && query === '' && !isDismissed;
 
@@ -118,7 +118,7 @@ export function ComposerBar({
                     title={recommendedAction.description}
                   >
                     <Sparkles size={12} className="recommendation-icon" />
-                    <span className="recommendation-label">{recommendedAction.label}</span>
+                    <span className="recommendation-label">{recommendedAction.value}</span>
                     <span className="recommendation-accept-group" aria-hidden="true">
                       <span className="recommendation-accept-key">↑</span>
                       <span className="recommendation-accept-key">

@@ -52,10 +52,15 @@ impl BlockTracker {
 
                 self.start_block(session_id, command)
             }
-            ShellHook::PreCmd { status } => self.finish_active_block(session_id, status),
+            ShellHook::PreCmd { status, .. } => self.finish_active_block(session_id, status),
             ShellHook::Finish { block_id, status } => {
                 self.finish_block(session_id, &block_id, status)
             }
+            ShellHook::CompletionsStart { .. }
+            | ShellHook::CompletionsEnd
+            | ShellHook::CompletionResult { .. }
+            | ShellHook::CompletionUpdateDescription { .. }
+            | ShellHook::CompletionsPrompt => Vec::new(),
         }
     }
 

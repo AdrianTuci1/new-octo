@@ -29,7 +29,7 @@ pub fn gather_local_context(cwd: &str) -> TerminalLocalContext {
     }
 }
 
-fn get_current_git_branch(cwd: &str) -> Option<String> {
+pub fn get_current_git_branch(cwd: &str) -> Option<String> {
     let git_path = Path::new(cwd).join(".git");
     if !git_path.exists() {
         return None;

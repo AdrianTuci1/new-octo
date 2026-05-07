@@ -1,8 +1,36 @@
 import { useLayoutEffect, useRef } from 'react';
 
-export function useComposerBar(query: string, onHeightChange?: (height: number) => void) {
+type UseComposerBarOptions = {
+  autoFocus?: boolean;
+};
+
+export function useComposerBar(
+  query: string,
+  onHeightChange?: (height: number) => void,
+  options: UseComposerBarOptions = {}
+) {
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const shellRef = useRef<HTMLDivElement | null>(null);
+  const autoFocus = options.autoFocus ?? false;
+
+  useLayoutEffect(() => {
+    if (!autoFocus) return;
+
+    const element = inputRef.current;
+    if (!element) return;
+
+    const rafId = window.requestAnimationFrame(() => {
+      element.focus({ preventScroll: true });
+      const valueLength = element.value.length;
+      try {
+        element.setSelectionRange(valueLength, valueLength);
+      } catch {
+        // Some browsers / input states can reject selection changes; ignore.
+      }
+    });
+
+    return () => window.cancelAnimationFrame(rafId);
+  }, [autoFocus]);
 
   // Auto-resize textarea
   useLayoutEffect(() => {

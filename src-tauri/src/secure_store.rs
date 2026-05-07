@@ -106,7 +106,9 @@ fn load_secret_macos(account: &str) -> Result<Option<String>, String> {
     }
 
     let stderr = String::from_utf8_lossy(&output.stderr);
-    if stderr.contains("could not be found") || stderr.contains("The specified item could not be found") {
+    if stderr.contains("could not be found")
+        || stderr.contains("The specified item could not be found")
+    {
         return Ok(None);
     }
 
@@ -116,13 +118,7 @@ fn load_secret_macos(account: &str) -> Result<Option<String>, String> {
 #[cfg(target_os = "macos")]
 fn delete_secret_macos(account: &str) -> Result<bool, String> {
     let output = Command::new("security")
-        .args([
-            "delete-generic-password",
-            "-a",
-            account,
-            "-s",
-            SERVICE_NAME,
-        ])
+        .args(["delete-generic-password", "-a", account, "-s", SERVICE_NAME])
         .output()
         .map_err(|error| format!("failed to invoke security: {error}"))?;
 
@@ -131,7 +127,9 @@ fn delete_secret_macos(account: &str) -> Result<bool, String> {
     }
 
     let stderr = String::from_utf8_lossy(&output.stderr);
-    if stderr.contains("could not be found") || stderr.contains("The specified item could not be found") {
+    if stderr.contains("could not be found")
+        || stderr.contains("The specified item could not be found")
+    {
         return Ok(false);
     }
 
@@ -141,7 +139,14 @@ fn delete_secret_macos(account: &str) -> Result<bool, String> {
 #[cfg(target_os = "linux")]
 fn store_secret_linux(account: &str, secret: &str) -> Result<(), String> {
     let mut child = Command::new("secret-tool")
-        .args(["store", "--label=Octomus AI Provider", "service", SERVICE_NAME, "account", account])
+        .args([
+            "store",
+            "--label=Octomus AI Provider",
+            "service",
+            SERVICE_NAME,
+            "account",
+            account,
+        ])
         .stdin(Stdio::piped())
         .stdout(Stdio::null())
         .stderr(Stdio::piped())

@@ -1,9 +1,16 @@
-use std::{collections::HashSet, path::Path};
+use std::{
+    collections::{HashMap, HashSet},
+    path::Path,
+};
 
 use serde_json::{json, Value};
 use uuid::Uuid;
 
 use crate::memory::{
+    execution_plans::{
+        active_step, active_workstream_for_step, collect_execution_plan_snapshots,
+        current_plan_snapshot_for_exchange, step_status, step_task_id, workstream_task_id,
+    },
     paths::MemoryPaths,
     storage::{
         now_string, read_json_or_default, relative_time_label, safe_file_component, truncate_chars,
@@ -65,88 +72,229 @@ pub(crate) fn derive_task_store(
     updated_at: &str,
 ) -> (String, Vec<MemoryTaskRecord>, Vec<MemoryExchangeRecord>) {
     let root_task_id = format!("task_root_{}", safe_file_component(conversation_id));
-    let mut exchanges = Vec::<MemoryExchangeRecord>::new();
-    let mut current_exchange: Option<MemoryExchangeRecord> = None;
-    let mut tool_task_ids = Vec::<String>::new();
-    let mut tool_tasks = Vec::<MemoryTaskRecord>::new();
-    let mut seen_tool_tasks = HashSet::<String>::new();
+    let mut built_exchanges = Vec::<BuiltExchange>::new();
+    let mut current_exchange: Option<BuiltExchange> = None;
+    let mut tool_calls = HashMap::<String, ToolCallState>::new();
 
-    for message in messages {
+    for (message_index, message) in messages.iter().enumerate() {
         let role = message_string(message, "role").unwrap_or_default();
         let message_id =
             message_string(message, "id").unwrap_or_else(|| format!("message_{}", Uuid::new_v4()));
 
         if role == "user" {
             if let Some(mut exchange) = current_exchange.take() {
-                finalize_exchange(&mut exchange, messages);
-                exchanges.push(exchange);
+                finalize_exchange(&mut exchange.record, messages);
+                built_exchanges.push(exchange);
             }
 
-            current_exchange = Some(MemoryExchangeRecord {
-                id: format!(
-                    "exchange_{}_{}",
-                    safe_file_component(conversation_id),
-                    exchanges.len() + 1
-                ),
-                task_id: root_task_id.clone(),
-                parent_exchange_id: None,
-                input_message_ids: vec![message_id],
-                output_message_ids: Vec::new(),
-                tool_call_ids: Vec::new(),
-                status: "streaming".to_string(),
-                started_at: message_string(message, "createdAt").unwrap_or_else(now_string),
-                finished_at: None,
-            });
+            current_exchange = Some(BuiltExchange::new(
+                conversation_id,
+                built_exchanges.len() + 1,
+                root_task_id.clone(),
+                message_index,
+                message_string(message, "createdAt").unwrap_or_else(now_string),
+                vec![message_id],
+            ));
             continue;
         }
 
         if current_exchange.is_none() {
-            current_exchange = Some(MemoryExchangeRecord {
-                id: format!(
-                    "exchange_{}_{}",
-                    safe_file_component(conversation_id),
-                    exchanges.len() + 1
-                ),
-                task_id: root_task_id.clone(),
-                parent_exchange_id: None,
-                input_message_ids: Vec::new(),
-                output_message_ids: Vec::new(),
-                tool_call_ids: Vec::new(),
-                status: "streaming".to_string(),
-                started_at: message_string(message, "createdAt").unwrap_or_else(now_string),
-                finished_at: None,
-            });
+            current_exchange = Some(BuiltExchange::new(
+                conversation_id,
+                built_exchanges.len() + 1,
+                root_task_id.clone(),
+                message_index,
+                message_string(message, "createdAt").unwrap_or_else(now_string),
+                Vec::new(),
+            ));
         }
 
         if let Some(exchange) = &mut current_exchange {
-            exchange.output_message_ids.push(message_id);
+            exchange.record.output_message_ids.push(message_id);
             for (tool_call_id, tool_name) in tool_calls_from_message(message) {
-                if !exchange.tool_call_ids.contains(&tool_call_id) {
-                    exchange.tool_call_ids.push(tool_call_id.clone());
+                if !exchange.record.tool_call_ids.contains(&tool_call_id) {
+                    exchange.record.tool_call_ids.push(tool_call_id.clone());
                 }
-                let tool_task_id = format!("task_tool_{}", safe_file_component(&tool_call_id));
-                if seen_tool_tasks.insert(tool_task_id.clone()) {
-                    tool_task_ids.push(tool_task_id.clone());
-                    tool_tasks.push(MemoryTaskRecord {
-                        id: tool_task_id,
-                        parent_task_id: Some(root_task_id.clone()),
-                        kind: "tool".to_string(),
-                        title: tool_name.unwrap_or_else(|| "Tool call".to_string()),
-                        status: "completed".to_string(),
-                        exchange_ids: Vec::new(),
-                        child_task_ids: Vec::new(),
+                tool_calls
+                    .entry(tool_call_id.clone())
+                    .and_modify(|state| {
+                        if state.title.is_none() {
+                            state.title = tool_name.clone();
+                        }
+                    })
+                    .or_insert_with(|| ToolCallState {
+                        title: tool_name,
                         created_at: message_string(message, "createdAt").unwrap_or_else(now_string),
-                        updated_at: updated_at.to_string(),
-                        metadata: json!({ "toolCallId": tool_call_id }),
                     });
-                }
             }
         }
     }
 
     if let Some(mut exchange) = current_exchange {
-        finalize_exchange(&mut exchange, messages);
-        exchanges.push(exchange);
+        finalize_exchange(&mut exchange.record, messages);
+        built_exchanges.push(exchange);
+    }
+
+    let plan_snapshots = collect_execution_plan_snapshots(messages);
+    let latest_plan_snapshot = plan_snapshots.last();
+    let current_task_id = latest_plan_snapshot.and_then(|snapshot| {
+        active_step(snapshot).map(|(_, step)| {
+            active_workstream_for_step(snapshot, &step.id)
+                .map(|workstream| workstream_task_id(&snapshot.id, &workstream.id))
+                .unwrap_or_else(|| step_task_id(&snapshot.id, &step.id))
+        })
+    });
+
+    for exchange in &mut built_exchanges {
+        let assigned_task_id =
+            current_plan_snapshot_for_exchange(&plan_snapshots, exchange.start_message_index)
+                .and_then(|snapshot| {
+                    active_step(snapshot).map(|(_, step)| {
+                        active_workstream_for_step(snapshot, &step.id)
+                            .map(|workstream| workstream_task_id(&snapshot.id, &workstream.id))
+                            .unwrap_or_else(|| step_task_id(&snapshot.id, &step.id))
+                    })
+                })
+                .unwrap_or_else(|| root_task_id.clone());
+        exchange.record.task_id = assigned_task_id;
+    }
+
+    let mut root_child_task_ids = Vec::<String>::new();
+    let mut plan_tasks = Vec::<MemoryTaskRecord>::new();
+    let mut plan_task_index_by_id = HashMap::<String, usize>::new();
+    let mut workstream_tasks = Vec::<MemoryTaskRecord>::new();
+    let mut workstream_task_index_by_id = HashMap::<String, usize>::new();
+
+    if let Some(snapshot) = latest_plan_snapshot {
+        for (step_index, step) in snapshot.steps.iter().enumerate() {
+            let task_id = step_task_id(&snapshot.id, &step.id);
+            root_child_task_ids.push(task_id.clone());
+            plan_task_index_by_id.insert(task_id.clone(), plan_tasks.len());
+            plan_tasks.push(MemoryTaskRecord {
+                id: task_id,
+                parent_task_id: Some(root_task_id.clone()),
+                kind: "plan-step".to_string(),
+                title: step.label.clone(),
+                status: step_status(snapshot, step_index).to_string(),
+                exchange_ids: Vec::new(),
+                child_task_ids: Vec::new(),
+                created_at: created_at.to_string(),
+                updated_at: updated_at.to_string(),
+                metadata: json!({
+                    "planArtifactId": snapshot.id,
+                    "planTitle": snapshot.title,
+                    "planVersion": snapshot.version,
+                    "planSummary": snapshot.summary,
+                    "stepId": step.id,
+                    "stepIndex": step_index,
+                }),
+            });
+        }
+
+        for workstream in &snapshot.workstreams {
+            let task_id = workstream_task_id(&snapshot.id, &workstream.id);
+            let parent_task_id = workstream
+                .step_ids
+                .first()
+                .map(|step_id| step_task_id(&snapshot.id, step_id))
+                .unwrap_or_else(|| root_task_id.clone());
+
+            if parent_task_id == root_task_id {
+                root_child_task_ids.push(task_id.clone());
+            } else if let Some(parent_index) = plan_task_index_by_id.get(&parent_task_id) {
+                plan_tasks[*parent_index]
+                    .child_task_ids
+                    .push(task_id.clone());
+            }
+
+            workstream_task_index_by_id.insert(task_id.clone(), workstream_tasks.len());
+            workstream_tasks.push(MemoryTaskRecord {
+                id: task_id,
+                parent_task_id: Some(parent_task_id),
+                kind: "workstream".to_string(),
+                title: workstream.title.clone(),
+                status: workstream.status.clone(),
+                exchange_ids: Vec::new(),
+                child_task_ids: Vec::new(),
+                created_at: created_at.to_string(),
+                updated_at: updated_at.to_string(),
+                metadata: json!({
+                    "planArtifactId": snapshot.id,
+                    "workstreamId": workstream.id,
+                    "stepIds": workstream.step_ids,
+                }),
+            });
+        }
+    }
+
+    for exchange in &built_exchanges {
+        if let Some(index) = plan_task_index_by_id.get(&exchange.record.task_id) {
+            plan_tasks[*index]
+                .exchange_ids
+                .push(exchange.record.id.clone());
+        } else if let Some(index) = workstream_task_index_by_id.get(&exchange.record.task_id) {
+            workstream_tasks[*index]
+                .exchange_ids
+                .push(exchange.record.id.clone());
+        }
+    }
+
+    let mut tool_tasks = Vec::<MemoryTaskRecord>::new();
+    let mut tool_task_index_by_id = HashMap::<String, usize>::new();
+
+    for exchange in &built_exchanges {
+        for tool_call_id in &exchange.record.tool_call_ids {
+            let tool_task_id = format!("task_tool_{}", safe_file_component(tool_call_id));
+            if let Some(existing_index) = tool_task_index_by_id.get(&tool_task_id) {
+                let task = &mut tool_tasks[*existing_index];
+                if !task.exchange_ids.contains(&exchange.record.id) {
+                    task.exchange_ids.push(exchange.record.id.clone());
+                }
+                continue;
+            }
+
+            let parent_task_id = exchange.record.task_id.clone();
+            let metadata = json!({
+                "toolCallId": tool_call_id,
+                "assignedTaskId": parent_task_id,
+            });
+            let created_at = tool_calls
+                .get(tool_call_id)
+                .map(|state| state.created_at.clone())
+                .unwrap_or_else(now_string);
+            let title = tool_calls
+                .get(tool_call_id)
+                .and_then(|state| state.title.clone())
+                .unwrap_or_else(|| "Tool call".to_string());
+
+            if parent_task_id == root_task_id {
+                root_child_task_ids.push(tool_task_id.clone());
+            } else if let Some(index) = plan_task_index_by_id.get(&parent_task_id) {
+                plan_tasks[*index].child_task_ids.push(tool_task_id.clone());
+            } else if let Some(index) = workstream_task_index_by_id.get(&parent_task_id) {
+                workstream_tasks[*index]
+                    .child_task_ids
+                    .push(tool_task_id.clone());
+            }
+
+            tool_task_index_by_id.insert(tool_task_id.clone(), tool_tasks.len());
+            tool_tasks.push(MemoryTaskRecord {
+                id: tool_task_id,
+                parent_task_id: Some(parent_task_id),
+                kind: "tool".to_string(),
+                title,
+                status: if exchange.record.status == "error" {
+                    "error".to_string()
+                } else {
+                    "completed".to_string()
+                },
+                exchange_ids: vec![exchange.record.id.clone()],
+                child_task_ids: Vec::new(),
+                created_at,
+                updated_at: updated_at.to_string(),
+                metadata,
+            });
+        }
     }
 
     let root_task = MemoryTaskRecord {
@@ -155,19 +303,32 @@ pub(crate) fn derive_task_store(
         kind: "root".to_string(),
         title: title.to_string(),
         status: status.to_string(),
-        exchange_ids: exchanges
+        exchange_ids: built_exchanges
             .iter()
-            .map(|exchange| exchange.id.clone())
+            .map(|exchange| exchange.record.id.clone())
             .collect(),
-        child_task_ids: tool_task_ids,
+        child_task_ids: root_child_task_ids,
         created_at: created_at.to_string(),
         updated_at: updated_at.to_string(),
-        metadata: json!({ "conversationId": conversation_id }),
+        metadata: json!({
+            "conversationId": conversation_id,
+            "activePlanId": latest_plan_snapshot.map(|snapshot| snapshot.id.clone()),
+            "currentTaskId": current_task_id,
+        }),
     };
 
     let mut tasks = vec![root_task];
+    tasks.extend(plan_tasks);
+    tasks.extend(workstream_tasks);
     tasks.extend(tool_tasks);
-    (root_task_id, tasks, exchanges)
+    (
+        root_task_id,
+        tasks,
+        built_exchanges
+            .into_iter()
+            .map(|exchange| exchange.record)
+            .collect(),
+    )
 }
 
 fn finalize_exchange(exchange: &mut MemoryExchangeRecord, messages: &[Value]) {
@@ -304,4 +465,44 @@ fn message_string(value: &Value, key: &str) -> Option<String> {
         .get(key)
         .and_then(Value::as_str)
         .map(|value| value.to_string())
+}
+
+struct BuiltExchange {
+    record: MemoryExchangeRecord,
+    start_message_index: usize,
+}
+
+impl BuiltExchange {
+    fn new(
+        conversation_id: &str,
+        sequence: usize,
+        root_task_id: String,
+        start_message_index: usize,
+        started_at: String,
+        input_message_ids: Vec<String>,
+    ) -> Self {
+        Self {
+            record: MemoryExchangeRecord {
+                id: format!(
+                    "exchange_{}_{}",
+                    safe_file_component(conversation_id),
+                    sequence
+                ),
+                task_id: root_task_id,
+                parent_exchange_id: None,
+                input_message_ids,
+                output_message_ids: Vec::new(),
+                tool_call_ids: Vec::new(),
+                status: "streaming".to_string(),
+                started_at,
+                finished_at: None,
+            },
+            start_message_index,
+        }
+    }
+}
+
+struct ToolCallState {
+    title: Option<String>,
+    created_at: String,
 }

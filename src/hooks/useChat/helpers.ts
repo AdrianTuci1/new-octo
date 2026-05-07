@@ -1,4 +1,5 @@
 import type { ChatMessage, AgentInputMessage } from '../../types/chat';
+import type { MemoryArtifactRecord } from '../../types/memory';
 import type { TerminalCommandBlock } from '../../types/terminal';
 import { visibleChatMessageBody } from './parsers';
 
@@ -19,20 +20,10 @@ export function buildApprovalReason(command?: string, suggestedReason?: string) 
   return 'Am cerut accesul pentru a rula o comandă în terminal și a verifica rezultatul.';
 }
 
-export function buildToolResultFollowupPrompt(command?: string) {
-  const commandLine = command
-    ? `Comanda aprobată și executată a fost: \`${command}\`. `
-    : '';
-
-  return `${commandLine}Utilizatorul vede deja output-ul brut în blocul de terminal. Răspunde în română, pe scurt, astfel:
-1. Confirmă că ai verificat rezultatul.
-2. Rezumă ce ai observat fără să repeți output-ul brut.
-3. Oferă ajutor suplimentar doar condițional, fără să presupui că utilizatorul vrea stage, commit sau alte modificări.`;
-}
-
 export function chatHistoryFromMessages(messages: ChatMessage[]): AgentInputMessage[] {
   return messages
     .filter((message) => {
+      if (message.messageKind === 'reasoning') return false;
       if (message.isError) return false;
       if (message.body.trim().length > 0) return true;
       if (message.role === 'assistant' && message.toolCalls && message.toolCalls.length > 0) return true;
@@ -102,8 +93,15 @@ export function sameMessages(left: ChatMessage[], right: ChatMessage[]) {
       && candidate.status === message.status
       && candidate.isStreaming === message.isStreaming
       && candidate.isError === message.isError
+      && candidate.messageKind === message.messageKind
+      && candidate.parentMessageId === message.parentMessageId
       && candidate.toolCallId === message.toolCallId
       && JSON.stringify(candidate.toolCalls ?? []) === JSON.stringify(message.toolCalls ?? [])
+      && candidate.toolKind === message.toolKind
+      && candidate.webSearchStatus === message.webSearchStatus
+      && candidate.webSearchQuery === message.webSearchQuery
+      && JSON.stringify(candidate.webSearchResults ?? []) === JSON.stringify(message.webSearchResults ?? [])
+      && JSON.stringify(candidate.executionPlan ?? null) === JSON.stringify(message.executionPlan ?? null)
       && JSON.stringify(candidate.followUpSuggestion ?? null) === JSON.stringify(message.followUpSuggestion ?? null)
       && JSON.stringify(candidate.usage ?? null) === JSON.stringify(message.usage ?? null);
   });
@@ -128,4 +126,25 @@ export function statusFromConversationContent(messages: ChatMessage[], terminalB
   }
 
   return terminalBlocks.some((block) => block.status === 'running') ? 'inProgress' : messageStatus;
+}
+
+export function artifactsFromMessages(messages: ChatMessage[]): MemoryArtifactRecord[] {
+  return messages.flatMap((message) => {
+    if (message.toolKind !== 'plan' || !message.executionPlan) {
+      return [];
+    }
+
+    return [{
+      id: message.executionPlan.id,
+      kind: 'execution-plan',
+      title: message.executionPlan.title,
+      data: {
+        summary: message.executionPlan.summary ?? null,
+        version: message.executionPlan.version ?? null,
+        steps: message.executionPlan.steps,
+        workstreams: message.executionPlan.workstreams ?? []
+      },
+      createdAt: message.createdAt ?? null
+    }];
+  });
 }

@@ -8,17 +8,19 @@ use serde::Serialize;
 use uuid::Uuid;
 
 use super::block::{BlockTracker, TerminalBlock};
+use super::completions::{CompletionTracker, ShellCompletion, ShellCompletionFormat, ShellData};
 
 pub type SharedTerminalSession = Arc<TerminalSession>;
 
 pub struct TerminalSession {
     pub id: String,
     pub shell: String,
-    pub cwd: Option<String>,
+    cwd: Mutex<Option<String>>,
     master: Mutex<Option<Box<dyn MasterPty + Send>>>,
     writer: Mutex<Option<Box<dyn Write + Send>>>,
     child: Mutex<Option<Box<dyn Child + Send>>>,
     blocks: Mutex<BlockTracker>,
+    completions: Mutex<CompletionTracker>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -40,11 +42,12 @@ impl TerminalSession {
         Self {
             id: Uuid::new_v4().to_string(),
             shell,
-            cwd,
+            cwd: Mutex::new(cwd),
             master: Mutex::new(Some(master)),
             writer: Mutex::new(Some(writer)),
             child: Mutex::new(Some(child)),
             blocks: Mutex::new(BlockTracker::default()),
+            completions: Mutex::new(CompletionTracker::default()),
         }
     }
 
@@ -52,11 +55,12 @@ impl TerminalSession {
         Self {
             id: Uuid::new_v4().to_string(),
             shell,
-            cwd,
+            cwd: Mutex::new(cwd),
             master: Mutex::new(None),
             writer: Mutex::new(None),
             child: Mutex::new(None),
             blocks: Mutex::new(BlockTracker::default()),
+            completions: Mutex::new(CompletionTracker::default()),
         }
     }
 
@@ -64,7 +68,19 @@ impl TerminalSession {
         TerminalSessionInfo {
             id: self.id.clone(),
             shell: self.shell.clone(),
-            cwd: self.cwd.clone(),
+            cwd: self.cwd(),
+        }
+    }
+
+    pub fn cwd(&self) -> Option<String> {
+        self.cwd.lock().ok().and_then(|cwd| cwd.clone())
+    }
+
+    pub fn set_cwd(&self, cwd: Option<String>) {
+        if let Some(cwd) = cwd {
+            if let Ok(mut current_cwd) = self.cwd.lock() {
+                *current_cwd = Some(cwd);
+            }
         }
     }
 
@@ -125,6 +141,31 @@ impl TerminalSession {
     pub fn with_blocks<T>(&self, f: impl FnOnce(&mut BlockTracker) -> T) -> Option<T> {
         let mut blocks = self.blocks.lock().ok()?;
         Some(f(&mut blocks))
+    }
+
+    pub fn start_completions_output(&self, format: ShellCompletionFormat) {
+        if let Ok(mut completions) = self.completions.lock() {
+            completions.start(format);
+        }
+    }
+
+    pub fn end_completions_output(&self) -> Option<ShellData> {
+        self.completions
+            .lock()
+            .ok()
+            .and_then(|mut completions| completions.finish())
+    }
+
+    pub fn on_completion_result_received(&self, completion_result: ShellCompletion) {
+        if let Ok(mut completions) = self.completions.lock() {
+            completions.push_result(completion_result);
+        }
+    }
+
+    pub fn update_last_completion_result(&self, update_value: String) {
+        if let Ok(mut completions) = self.completions.lock() {
+            completions.update_last_description(update_value);
+        }
     }
 
     pub fn blocks_snapshot(&self) -> Vec<TerminalBlock> {

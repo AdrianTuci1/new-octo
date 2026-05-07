@@ -253,6 +253,18 @@
   letter-spacing: 0;
 }
 
+.tool-output-web-search {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+}
+
+.tool-output-web-search-fallback {
+  max-width: 850px;
+  color: rgba(244, 247, 246, 0.82);
+}
+
 .terminal-block-summary {
   display: flex;
   align-items: center;
@@ -764,4 +776,3 @@
     transform: translateY(0);
   }
 }
-

@@ -41,6 +41,7 @@ export function useLauncherInterface(params: {
       terminal: runtime.terminal,
       activeTimelineBlocks: store.composerSurface === 'agent' ? runtime.agentTerminal.blocks : runtime.terminal.blocks,
       activeTimelineError: store.composerSurface === 'agent' ? runtime.agentTerminal.error : runtime.terminal.error,
+      completionState: store.composerSurface === 'agent' ? runtime.agentTerminal.completionState : runtime.terminal.completionState,
       shellRef,
       shellSource: composer.shellSource,
       terminalComposerAction: composer.terminalComposerAction,

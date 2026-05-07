@@ -14,7 +14,7 @@ import {
   CornerDownLeft,
   ChevronDown
 } from 'lucide-react';
-import { useUIStore } from '../../../stores';
+import { useMemoryStore, useUIStore } from '../../../stores';
 import { DrawerHeader } from './DrawerHeader';
 import './ProfileEditorDrawer.css';
 
@@ -36,9 +36,10 @@ export function ProfileEditorDrawer() {
   const [askQuestions, setAskQuestions] = useState('Ask unless auto-approve');
   const [callMcp, setCallMcp] = useState('Agent decides');
   const [mcpAllowlist, setMcpAllowlist] = useState('Select MCP servers');
-  
-  const [callWebTools, setCallWebTools] = useState(true);
   const [planAutoSync, setPlanAutoSync] = useState(true);
+  const settings = useMemoryStore((state) => state.settings);
+  const saveSettings = useMemoryStore((state) => state.saveSettings);
+  const callWebTools = settings?.values.webSearchEnabled !== false;
 
   useEffect(() => {
     setProfileName(activeProfileName);
@@ -333,7 +334,7 @@ export function ProfileEditorDrawer() {
 
           {/* Call web tools */}
           <div className="profile-editor-toggle-row mt-24">
-            <div className="toggle-info">
+          <div className="toggle-info">
               <div className="toggle-label-with-icon">
                 <Globe size={16} className="toggle-icon" />
                 <span className="toggle-title">Call web tools</span>
@@ -343,7 +344,7 @@ export function ProfileEditorDrawer() {
             <button 
               className={`profile-editor-toggle ${callWebTools ? 'active' : ''}`}
               type="button"
-              onClick={() => setCallWebTools(!callWebTools)}
+              onClick={() => { void saveSettings({ webSearchEnabled: !callWebTools }, true); }}
             >
               <span />
             </button>

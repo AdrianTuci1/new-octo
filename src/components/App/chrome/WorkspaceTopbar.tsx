@@ -1,6 +1,6 @@
 import './WorkspaceTopbar.css';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { ChevronDown, Inbox, LayoutGrid, PanelLeftOpen, Plus, X, GitBranch, ChevronRight } from 'lucide-react';
+import { ChevronDown, Inbox, LayoutGrid, PanelLeftOpen, Plus, X, GitBranch, ChevronRight, Rocket } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import type { WorkspaceChromeTab } from './workspaceChromeTypes';
 
@@ -215,6 +215,7 @@ export function WorkspaceTopbar({
                 }
               }}
             >
+              {isInLauncher && <Rocket size={10} className="workspace-tab-rocket-icon" />}
               <span className="workspace-tab-label">{tab.label}</span>
               <button
                 className="workspace-tab-close"

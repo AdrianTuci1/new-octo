@@ -15,11 +15,75 @@ export type ChatMessage = {
   toolCallId?: string;
   toolCalls?: any[];
   fileDiffs?: FileDiff[];
+  messageKind?: 'default' | 'reasoning';
+  parentMessageId?: string;
+  toolKind?: 'command' | 'web-search' | 'plan';
+  webSearchStatus?: 'searching' | 'success' | 'error';
+  webSearchQuery?: string;
+  webSearchResults?: WebSearchResult[];
+  executionPlan?: ExecutionPlanArtifact;
   followUpSuggestion?: {
     label: string;
     value: string;
     description?: string;
+    confidence?: number;
   };
+};
+
+export type ExecutionPlanStep = {
+  id: string;
+  label: string;
+  status: 'pending' | 'inProgress' | 'completed' | 'failed';
+};
+
+export type ExecutionPlanWorkstream = {
+  id: string;
+  title: string;
+  status: 'pending' | 'inProgress' | 'completed' | 'failed';
+  stepIds: string[];
+};
+
+export type ExecutionPlanArtifact = {
+  id: string;
+  title: string;
+  summary?: string;
+  version?: string;
+  steps: ExecutionPlanStep[];
+  workstreams?: ExecutionPlanWorkstream[];
+};
+
+export type PlanExecutionUpdate = {
+  planId: string;
+  stepId: string;
+  action: 'started' | 'completed' | 'failed';
+  summary?: string;
+  workstreams?: ExecutionPlanWorkstream[];
+};
+
+export type WebSearchResult = {
+  title: string;
+  url: string;
+  snippet?: string;
+};
+
+export type WebSearchRequest = {
+  toolCallId: string;
+  query: string;
+  maxResults?: number;
+};
+
+export type AgentReasoningEvent = {
+  runId: string;
+  conversationId: string;
+  assistantMessageId: string;
+  text: string;
+  isComplete?: boolean;
+};
+
+export type WebSearchResponse = {
+  query: string;
+  results: WebSearchResult[];
+  source: string;
 };
 
 export type Conversation = {
@@ -54,6 +118,15 @@ export type AgentRunRequest = {
   conversationId?: string | null;
   assistantMessageId?: string | null;
   prompt: string;
+  cwd?: string | null;
+  modelId?: string | null;
+  messages?: AgentInputMessage[];
+};
+
+export type AgentContinueRequest = {
+  runId?: string | null;
+  conversationId: string;
+  assistantMessageId?: string | null;
   cwd?: string | null;
   modelId?: string | null;
   messages?: AgentInputMessage[];
@@ -122,3 +195,15 @@ export type AgentToolCallEvent = {
   assistantMessageId: string;
   toolCall: AgentToolCall;
 };
+
+export type ThinkingDisplayMode = 'show-and-collapse' | 'always-show' | 'never-show';
+
+export interface ConfiguredModel {
+  id: string;
+  providerLabel: string;
+  modelId: string;
+  baseUrl: string;
+  friendlyName?: string;
+  hasApiKey?: boolean;
+}
+

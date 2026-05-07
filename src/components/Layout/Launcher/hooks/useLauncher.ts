@@ -14,7 +14,7 @@ export function useLauncher(props: LauncherProps) {
   // 1. Foundation & Infrastructure
   // We use the whole store here because specialized modules might need various parts.
   // However, useLauncherRuntime now uses fine-grained selectors internally.
-  const store = useLauncherStore();
+  const store = useLauncherStore((state) => state);
   const tray = Modules.useLauncherTrayState();
   const refs = Modules.useLauncherRefs();
   

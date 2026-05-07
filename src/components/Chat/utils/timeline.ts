@@ -43,7 +43,6 @@ export function buildTimelineItems(
   terminalError?: string | null
 ): TimelineItem[] {
   const messageItems = messages
-    .filter(m => m.role !== 'tool')
     .filter(m => {
       if (m.role === 'assistant') {
         const visibleBody = visibleChatMessageBody(m.body);

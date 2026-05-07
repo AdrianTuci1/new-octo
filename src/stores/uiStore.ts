@@ -9,12 +9,14 @@ interface UIState {
   isProfileDrawerOpen: boolean;
   isRulesDrawerOpen: boolean;
   activeProfileName: string;
+  selectedModelIdForEdit: string | null;
   
   // Actions
   setTrayMode: (mode: TrayMode) => void;
   toggleTray: (mode: TrayContentMode) => void;
   setExpanded: (expanded: boolean) => void;
   setIsModelDrawerOpen: (open: boolean) => void;
+  setSelectedModelIdForEdit: (id: string | null) => void;
   openModelDrawer: () => void;
   closeModelDrawer: () => void;
   setIsProfileDrawerOpen: (open: boolean) => void;
@@ -34,6 +36,7 @@ export const useUIStore = create<UIState>((set) => ({
   isProfileDrawerOpen: false,
   isRulesDrawerOpen: false,
   activeProfileName: 'Default',
+  selectedModelIdForEdit: null,
 
   setTrayMode: (mode) => set((state) => {
     if (state.trayMode === mode) {
@@ -57,6 +60,7 @@ export const useUIStore = create<UIState>((set) => ({
 
   setExpanded: (expanded) => set({ isExpanded: expanded }),
   setIsModelDrawerOpen: (open) => set({ isModelDrawerOpen: open }),
+  setSelectedModelIdForEdit: (id) => set({ selectedModelIdForEdit: id }),
   openModelDrawer: () => set({ isModelDrawerOpen: true }),
   closeModelDrawer: () => set({ isModelDrawerOpen: false }),
   setIsProfileDrawerOpen: (open) => set({ isProfileDrawerOpen: open }),

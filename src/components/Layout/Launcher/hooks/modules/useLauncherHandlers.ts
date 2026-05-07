@@ -301,6 +301,7 @@ export function useLauncherHandlers({
         void chat.submitToolResult(
           toolCallId,
           result.output || '(Comanda s-a executat fără output)',
+          'command',
           approval.command
         );
       }
@@ -397,10 +398,8 @@ export function useLauncherHandlers({
   ]);
 
   const handleComposerRecommendationClick = useCallback((action: any) => {
-    store.setComposerSurface('agent');
-    store.setModeLock(action.mode === 'shell' ? 'shell' : null);
     chat.setQuery(action.value);
-  }, [chat.setQuery, store.setComposerSurface, store.setModeLock]);
+  }, [chat.setQuery]);
 
   const handleToggleCommands = useCallback(() => {
     const willOpen = !tray.isTrayOpen || tray.activeTrayMode !== 'commands';

@@ -34,12 +34,30 @@ export function normalizeToolFollowUpSuggestion(args: any): ChatMessage['followU
   }
 
   const description = typeof args?.description === 'string' ? args.description.trim() : '';
+  const confidence = typeof args?.confidence === 'number' && Number.isFinite(args.confidence)
+    ? args.confidence
+    : undefined;
 
   return {
     label: value,
     value,
-    description: description || undefined
+    description: description || undefined,
+    confidence
   };
+}
+
+export function parseToolFollowUpConfidence(args: any) {
+  return typeof args?.confidence === 'number' && Number.isFinite(args.confidence)
+    ? args.confidence
+    : undefined;
+}
+
+export function stripFollowUpBoilerplate(value: string) {
+  return value
+    .replace(/\n?\s*\(\s*am adăugat o sugestie de continuare pentru tine\.\s*\)\s*$/i, '')
+    .replace(/\n?\s*\(\s*i added a follow-up suggestion for you\.\s*\)\s*$/i, '')
+    .replace(/\n?\s*[-_*]{3,}\s*$/i, '')
+    .trimEnd();
 }
 
 export function extractRobustJsonFollowUpSuggestion(raw: string) {
@@ -86,6 +104,7 @@ export function extractRobustJsonFollowUpSuggestion(raw: string) {
     afterJson = afterJson.replace(/^(?:\s*```)/, '');
 
     let visibleBody = (beforeJson.trimEnd() + '\n\n' + afterJson.trim()).trimEnd();
+    visibleBody = stripFollowUpBoilerplate(visibleBody);
 
     return {
       visibleBody,
@@ -105,7 +124,7 @@ export function extractRobustJsonFollowUpSuggestion(raw: string) {
       beforeJson = beforeJson.replace(/(?:\n\s*[-_*]{3,}\s*)$/, '');
 
       return {
-        visibleBody: beforeJson.trimEnd(),
+        visibleBody: stripFollowUpBoilerplate(beforeJson.trimEnd()),
         pendingPayload: potentialJson,
         suggestion: undefined
       };
@@ -169,7 +188,7 @@ export function extractFollowUpSuggestion(raw: string) {
   }
 
   return {
-    visibleBody: `${visibleBody}${trailing}`.trimEnd(),
+    visibleBody: stripFollowUpBoilerplate(`${visibleBody}${trailing}`.trimEnd()),
     pendingPayload: '',
     suggestion
   };

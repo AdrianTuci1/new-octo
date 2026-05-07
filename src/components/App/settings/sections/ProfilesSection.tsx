@@ -14,7 +14,7 @@ import {
   Plus, 
   Terminal 
 } from 'lucide-react';
-import { useUIStore } from '../../../../stores';
+import { useMemoryStore, useUIStore } from '../../../../stores';
 
 function ProfileItem({ 
   icon: Icon, 
@@ -41,6 +41,8 @@ function ProfileItem({
 export function ProfilesSection() {
   const setIsProfileDrawerOpen = useUIStore((state) => state.setIsProfileDrawerOpen);
   const setActiveProfileName = useUIStore((state) => state.setActiveProfileName);
+  const settings = useMemoryStore((state) => state.settings);
+  const webSearchEnabled = settings?.values.webSearchEnabled !== false;
 
   const handleAddProfile = () => {
     setActiveProfileName('New Profile');
@@ -103,7 +105,7 @@ export function ProfilesSection() {
           <ProfileItem icon={Network} label="Call MCP servers" value="Agent decides" />
           <ProfileItem icon={Check} label="MCP allowlist" value="None" isIndented={true} />
           <ProfileItem icon={Ban} label="MCP denylist" value="None" isIndented={true} />
-          <ProfileItem icon={Globe} label="Call web tools" value="On" />
+          <ProfileItem icon={Globe} label="Call web tools" value={webSearchEnabled ? 'On' : 'Off'} />
           <ProfileItem icon={Compass} label="Auto-sync plans to Octo Drive" value="On" />
         </div>
       </div>

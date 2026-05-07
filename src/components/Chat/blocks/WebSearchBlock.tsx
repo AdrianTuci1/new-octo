@@ -1,29 +1,33 @@
-import { Search, ChevronRight } from 'lucide-react';
+import { Search } from 'lucide-react';
+import type { WebSearchResult } from '../../../types/chat';
 import './WebSearchBlock.css';
 
 export type WebSearchBlockProps = {
-  query?: string;
-  urlCount?: number;
-  onClick?: () => void;
+  status?: 'searching' | 'success' | 'error';
+  results?: WebSearchResult[];
 };
 
-export function WebSearchBlock({ query = 'multi-provider AI application architecture patterns 2024 2025', urlCount = 10, onClick }: WebSearchBlockProps) {
+export function WebSearchBlock({
+  status = 'success',
+  results = [],
+}: WebSearchBlockProps) {
+  const metaLabel = status === 'searching'
+    ? 'Searching'
+    : status === 'error'
+      ? 'Failed'
+      : `${results.length} results`;
+
   return (
-    <button
-      className="terminal-block-summary"
-      type="button"
-      onClick={onClick}
-    >
-      <span className="terminal-summary-icon web-search-icon">
-        <Search size={14} />
-      </span>
-      <span className="terminal-summary-command web-search-command">
-        Searched the web for "{query}"
-      </span>
-      <div className="terminal-summary-chevron web-search-chevron-group">
-        <span className="web-search-url-count">{urlCount} URLs</span>
-        <ChevronRight size={17} />
+    <div className={`web-search-card ${status}`}>
+      <div className="web-search-card-header">
+        <span className="web-search-card-icon">
+          <Search size={14} />
+        </span>
+        <div className="web-search-card-meta">
+          <span className="web-search-card-title">Web search</span>
+          <span className="web-search-card-count">{metaLabel}</span>
+        </div>
       </div>
-    </button>
+    </div>
   );
 }

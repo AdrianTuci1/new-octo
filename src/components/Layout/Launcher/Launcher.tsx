@@ -120,6 +120,7 @@ export function Launcher(props: LauncherProps) {
               onToggleGitBranchMenu={launcher.ui.gitContext.toggleBranchMenu}
               onToggleWorkingDirectoryPicker={launcher.ui.workingDirectory.togglePicker}
               onWorkingDirectorySearchChange={launcher.ui.workingDirectory.setSearchQuery}
+              completionState={launcher.terminal.completionState}
               prediction={launcher.ui.activeShellPrediction}
               query={launcher.chat.query}
               recommendedAction={launcher.terminal.terminalComposerAction}

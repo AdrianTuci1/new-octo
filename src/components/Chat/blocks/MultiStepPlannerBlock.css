@@ -20,6 +20,13 @@
   letter-spacing: 0.04em;
 }
 
+.multi-step-planner-summary {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: rgba(244, 247, 246, 0.7);
+  margin-bottom: 4px;
+}
+
 .multi-step-planner-row {
   display: flex;
   align-items: flex-start;
@@ -38,6 +45,14 @@
   color: rgba(244, 247, 246, 0.2);
 }
 
+.multi-step-planner-icon.inProgress {
+  color: #6db6ff;
+}
+
+.multi-step-planner-icon.failed {
+  color: #ff7c7c;
+}
+
 .multi-step-planner-text {
   font-size: 13.5px;
 }
@@ -49,4 +64,59 @@
 
 .multi-step-planner-text.pending {
   color: rgba(244, 247, 246, 0.92);
+}
+
+.multi-step-planner-text.inProgress {
+  color: #d7ecff;
+}
+
+.multi-step-planner-text.failed {
+  color: #ffb4b4;
+}
+
+.multi-step-planner-spinner {
+  animation: multi-step-planner-spin 1.2s linear infinite;
+}
+
+.multi-step-planner-workstreams {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 6px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.multi-step-planner-workstreams-label {
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: rgba(244, 247, 246, 0.48);
+}
+
+.multi-step-planner-workstream-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.multi-step-planner-workstream-content {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.multi-step-planner-workstream-meta {
+  font-size: 11.5px;
+  color: rgba(244, 247, 246, 0.48);
+}
+
+@keyframes multi-step-planner-spin {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
 }

@@ -133,12 +133,122 @@
   overflow: hidden;
 }
 
+.app-window-workspace-panes {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  overflow: hidden;
+  position: relative;
+}
+
 .app-window-launcher-slot {
   flex: 1;
   min-width: 0;
   min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+}
+
+.app-window-launcher-slot-content {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+.app-window-launcher-pane-header {
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 0 12px;
+  background: var(--settings-bg-content);
+  border-bottom: 1px solid var(--border-strong);
+  user-select: none;
+  z-index: 2;
+}
+
+.app-window-launcher-pane-close {
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  border: 0;
+  background: transparent;
+  color: var(--text-soft);
+  cursor: pointer;
+  transition: all 120ms ease;
+  padding: 0;
+}
+
+.app-window-launcher-pane-close:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-main);
+}
+
+.app-window-workspace-split {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
   overflow: hidden;
 }
+
+.app-window-workspace-split.horizontal {
+  flex-direction: row;
+}
+
+.app-window-workspace-split.vertical {
+  flex-direction: column;
+}
+
+.workspace-resize-handle {
+  position: relative;
+  z-index: 10;
+  background: rgba(148, 163, 184, 0.12);
+  transition: background-color 150ms ease;
+  flex-shrink: 0;
+}
+
+.workspace-resize-handle.horizontal {
+  width: 4px;
+  cursor: col-resize;
+  height: 100%;
+}
+
+.workspace-resize-handle.vertical {
+  height: 4px;
+  cursor: row-resize;
+  width: 100%;
+}
+
+.workspace-resize-handle:hover,
+.workspace-resize-handle.hovered,
+.workspace-resize-handle:active {
+  background-color: rgba(94, 241, 161, 0.6); /* emerald theme highlight */
+}
+
+.app-window-launcher-slot.active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 15px;
+  height: 15px;
+  background: linear-gradient(135deg, rgba(94, 241, 161, 0.96), rgba(56, 189, 120, 0.9));
+  clip-path: polygon(0 0, 100% 0, 0 100%);
+  pointer-events: none;
+  z-index: 10;
+  box-shadow: inset -1px -1px 0 rgba(8, 20, 14, 0.22);
+}
+
+
 
 .app-window-spotlight-overlay {
   flex: 1;

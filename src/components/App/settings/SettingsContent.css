@@ -1095,6 +1095,16 @@
   border-color: rgba(255, 255, 255, 0.15);
 }
 
+.settings-model-card.active {
+  border-color: var(--accent-blue);
+  background: rgba(0, 162, 232, 0.06);
+}
+
+.settings-model-card.active:hover {
+  background: rgba(0, 162, 232, 0.09);
+  border-color: var(--accent-blue);
+}
+
 .settings-model-card-info {
   display: flex;
   flex-direction: column;

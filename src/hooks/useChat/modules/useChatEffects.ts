@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import type { UseChatOptions } from '../types';
+import type { ExecutionPlanArtifact, PlanExecutionUpdate } from '../../../types/chat';
 import type { useChatState } from './useChatState';
 import { ensureAgentEventBridge, setAssistantRegistration, deleteOwnerRegistrations } from '../bridge';
 import { useMemoryStore } from '../../../stores/memoryStore';
@@ -8,12 +9,17 @@ import { sameMessages } from '../helpers';
 type UseChatEffectsProps = {
   options: UseChatOptions;
   state: ReturnType<typeof useChatState>;
-  actions: { saveCurrentConversation: () => Promise<any> };
+  actions: {
+    saveCurrentConversation: () => Promise<any>;
+    submitPlanProposal: (toolCallId: string, plan: ExecutionPlanArtifact) => void;
+    submitPlanExecution: (toolCallId: string, update: PlanExecutionUpdate) => void;
+  };
   onCommandApprovalRef: React.MutableRefObject<UseChatOptions['onCommandApproval']>;
   onFileChangeApprovalRef: React.MutableRefObject<UseChatOptions['onFileChangeApproval']>;
+  onWebSearchRef: React.MutableRefObject<UseChatOptions['onWebSearch']>;
 };
 
-export function useChatEffects({ options, state, actions, onCommandApprovalRef, onFileChangeApprovalRef }: UseChatEffectsProps) {
+export function useChatEffects({ options, state, actions, onCommandApprovalRef, onFileChangeApprovalRef, onWebSearchRef }: UseChatEffectsProps) {
   const conversationRecord = useMemoryStore((s: any) => options.conversationId ? s.conversationRecords[options.conversationId] : undefined);
 
   useEffect(() => {
@@ -37,6 +43,10 @@ export function useChatEffects({ options, state, actions, onCommandApprovalRef, 
   }, [options.onFileChangeApproval, onFileChangeApprovalRef]);
 
   useEffect(() => {
+    onWebSearchRef.current = options.onWebSearch;
+  }, [options.onWebSearch, onWebSearchRef]);
+
+  useEffect(() => {
     const owner = state.instanceIdRef.current;
     const streamingMessageIds = state.messages
       .filter((message) => message.role === 'assistant' && message.isStreaming)
@@ -47,11 +57,15 @@ export function useChatEffects({ options, state, actions, onCommandApprovalRef, 
         owner,
         append: (text) => state.appendToMessage(assistantMessageId, text),
         update: (updater) => state.updateMessage(assistantMessageId, updater),
+        upsertReasoning: (payload) => state.upsertReasoningMessage(assistantMessageId, payload),
+        showPlan: (plan, toolCallId) => actions.submitPlanProposal(toolCallId, plan),
+        applyPlanExecution: (update, toolCallId) => actions.submitPlanExecution(toolCallId, update),
         onCommandApproval: (approval) => onCommandApprovalRef.current?.(approval),
-        onFileChangeApproval: (approval) => onFileChangeApprovalRef.current?.(approval)
+        onFileChangeApproval: (approval) => onFileChangeApprovalRef.current?.(approval),
+        onWebSearch: (request) => onWebSearchRef.current?.(request)
       });
     }
-  }, [state.appendToMessage, state.messages, state.updateMessage, onCommandApprovalRef, onFileChangeApprovalRef, state.instanceIdRef]);
+  }, [actions, state.appendToMessage, state.messages, state.updateMessage, state.upsertReasoningMessage, onCommandApprovalRef, onFileChangeApprovalRef, onWebSearchRef, state.instanceIdRef]);
 
   useEffect(() => {
     const owner = state.instanceIdRef.current;

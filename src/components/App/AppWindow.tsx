@@ -8,26 +8,229 @@ import { WorkspaceSidebar } from './chrome/WorkspaceSidebar';
 import { useAppWindow } from './hooks/useAppWindow';
 import { AgentsView } from './agents/AgentsView';
 import { useEditorStore } from '../../stores/editorStore';
-import { useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { AppWindowDrawers } from './drawers/AppWindowDrawers';
+import { useBackendShortcutActions } from './hooks/useBackendShortcutActions';
+import type { WorkspacePaneNode } from './chrome';
+import { LauncherStoreProvider, createLauncherStore, type LauncherStoreApi } from '../../stores';
+import { X } from 'lucide-react';
+import * as Utils from './utils';
+
+function WorkspacePaneSlot(props: {
+  paneId: string;
+  tabId: string;
+  active: boolean;
+  onFocusPane: (paneId: string) => void;
+  onClosePane?: (paneId: string) => void;
+  hasMultiplePanes?: boolean;
+  launcherProps: ReturnType<ReturnType<typeof useAppWindow>['actions']['getLauncherProps']>;
+}) {
+  const storeRef = useRef<LauncherStoreApi | null>(null);
+
+  if (!storeRef.current) {
+    storeRef.current = createLauncherStore(props.launcherProps.initialComposerSurface ?? 'terminal');
+  }
+
+  return (
+    <div
+      className={`app-window-launcher-slot ${props.active ? 'active' : ''}`}
+      onMouseDown={() => props.onFocusPane(props.paneId)}
+    >
+      {props.hasMultiplePanes && (
+        <div className="app-window-launcher-pane-header">
+          {props.onClosePane && (
+            <button
+              className="app-window-launcher-pane-close"
+              type="button"
+              aria-label="Close window"
+              onClick={(e) => {
+                e.stopPropagation();
+                props.onClosePane?.(props.paneId);
+              }}
+            >
+              <X size={14} />
+            </button>
+          )}
+        </div>
+      )}
+      <div className="app-window-launcher-slot-content">
+        <LauncherStoreProvider store={storeRef.current}>
+          <Launcher {...props.launcherProps} />
+        </LauncherStoreProvider>
+      </div>
+    </div>
+  );
+}
 
 export function AppWindow() {
   const app = useAppWindow();
   const { tabs } = useEditorStore();
   const isEditorOpen = tabs.length > 0;
   const [isKeyboardShortcutsDrawerOpen, setIsKeyboardShortcutsDrawerOpen] = useState(false);
-  const selectedLauncherTab = app.workspace.tabs.find(
-    (tab) => tab.kind === 'terminal' && tab.id === app.chrome.selectedTab.id
-  );
-  const selectedTabIsSpotlightOwned = Boolean(
-    selectedLauncherTab && selectedLauncherTab.id === app.chrome.launcherTabId && app.chrome.isSpotlightVisible
-  );
+  const isSpotlightOwned = app.chrome.selectedTab.id === app.chrome.launcherTabId && app.chrome.isSpotlightVisible;
+
+  const [paneSizes, setPaneSizes] = useState<Record<string, number>>({});
+  const [hoveredHandleKey, setHoveredHandleKey] = useState<string | null>(null);
+
+  const handleResizeStart = useCallback((
+    event: React.MouseEvent,
+    direction: 'horizontal' | 'vertical',
+    index: number,
+    key1: string,
+    key2: string,
+    splitElement: HTMLDivElement | null
+  ) => {
+    event.preventDefault();
+    if (!splitElement) return;
+
+    const childrenElements = Array.from(splitElement.children).filter(
+      (el) => !el.classList.contains('workspace-resize-handle')
+    ) as HTMLElement[];
+
+    const childEl1 = childrenElements[index];
+    const childEl2 = childrenElements[index + 1];
+    if (!childEl1 || !childEl2) return;
+
+    const rect1 = childEl1.getBoundingClientRect();
+    const rect2 = childEl2.getBoundingClientRect();
+
+    const isHorizontal = direction === 'horizontal';
+    const initialPos = isHorizontal ? event.clientX : event.clientY;
+    
+    const size1 = isHorizontal ? rect1.width : rect1.height;
+    const size2 = isHorizontal ? rect2.width : rect2.height;
+    const totalSize = size1 + size2;
+
+    const f1 = paneSizes[key1] ?? 1;
+    const f2 = paneSizes[key2] ?? 1;
+    const totalFlex = f1 + f2;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const currentPos = isHorizontal ? e.clientX : e.clientY;
+      const delta = currentPos - initialPos;
+
+      let newSize1 = size1 + delta;
+      const minSize = 80;
+      if (newSize1 < minSize) newSize1 = minSize;
+      if (totalSize - newSize1 < minSize) newSize1 = totalSize - minSize;
+
+      const ratio1 = newSize1 / totalSize;
+      const nextF1 = ratio1 * totalFlex;
+      const nextF2 = totalFlex - nextF1;
+
+      setPaneSizes((current) => ({
+        ...current,
+        [key1]: nextF1,
+        [key2]: nextF2
+      }));
+    };
+
+    const handleMouseUp = () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+  }, [paneSizes]);
 
   const { width: sidebarWidth, isResizing: isResizingSidebarState, startResizing: startResizingSidebar } = useAppResize({
     initialWidth: 240,
     minWidth: 150,
     maxWidth: 500,
     direction: 'left'
+  });
+
+  const handleOpenSettingsTab = useCallback(() => {
+    app.actions.onOpenSettingsSection();
+  }, [app.actions]);
+
+  const workspacePaneTree = useMemo(() => {
+    const paneIds = app.workspace.paneLayout ? Utils.collectPaneIdsFromLayout(app.workspace.paneLayout) : [];
+    const hasMultiplePanes = paneIds.length > 1;
+
+    const renderPaneNode = (node: WorkspacePaneNode, depth = 0): JSX.Element => {
+      if (node.type === 'leaf') {
+        return (
+          <WorkspacePaneSlot
+            active={app.workspace.activePaneId === node.paneId}
+            launcherProps={app.actions.getLauncherProps(app.chrome.selectedTab.id, node.paneId)}
+            onFocusPane={app.actions.onFocusPane}
+            onClosePane={app.actions.onClosePane}
+            hasMultiplePanes={hasMultiplePanes}
+            paneId={node.paneId}
+            tabId={app.chrome.selectedTab.id}
+          />
+        );
+      }
+
+      const splitRef = { current: null as HTMLDivElement | null };
+      const isHorizontal = node.direction === 'horizontal';
+      const prefix = `${isHorizontal ? 'col' : 'row'}_d${depth}`;
+
+      return (
+        <div
+          key={`${node.direction}-${node.children.length}`}
+          ref={(el) => { splitRef.current = el; }}
+          className={`app-window-workspace-split ${node.direction}`}
+          style={{ flex: 1, minWidth: 0, minHeight: 0, display: 'flex' }}
+        >
+          {node.children.map((child, index) => {
+            const isLast = index === node.children.length - 1;
+            const sizeKey = `${prefix}_${index}`;
+            const size = paneSizes[sizeKey] ?? 1;
+
+            return (
+              <div
+                key={index}
+                style={{
+                  flexGrow: size,
+                  flexBasis: 0,
+                  minWidth: 0,
+                  minHeight: 0,
+                  display: 'flex',
+                  flexDirection: isHorizontal ? 'row' : 'column'
+                }}
+              >
+                <div style={{ flex: 1, minWidth: 0, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+                  {renderPaneNode(child, depth + 1)}
+                </div>
+                {!isLast && (
+                  <div
+                    className={`workspace-resize-handle ${node.direction} ${hoveredHandleKey === sizeKey ? 'hovered' : ''}`}
+                    onMouseDown={(e) => handleResizeStart(e, node.direction, index, sizeKey, `${prefix}_${index + 1}`, splitRef.current)}
+                    onMouseEnter={() => setHoveredHandleKey(sizeKey)}
+                    onMouseLeave={() => setHoveredHandleKey(null)}
+                  />
+                )}
+              </div>
+            );
+          })}
+        </div>
+      );
+    };
+
+    return app.workspace.paneLayout ? renderPaneNode(app.workspace.paneLayout.root) : null;
+  }, [
+    app.actions,
+    app.chrome.selectedTab.id,
+    app.workspace.activePaneId,
+    app.workspace.paneLayout,
+    paneSizes,
+    hoveredHandleKey,
+    handleResizeStart
+  ]);
+
+  useBackendShortcutActions({
+    activeTabId: app.chrome.selectedTab.id,
+    onCloseActiveTab: app.actions.onCloseTab,
+    onNewConversationTab: app.actions.onNewConversationInNewTab,
+    onNewTerminalTab: app.actions.onNewTerminalTab,
+    onOpenKeyboardShortcuts: () => setIsKeyboardShortcutsDrawerOpen(true),
+    onOpenSettingsTab: handleOpenSettingsTab,
+    onSplitTerminal: app.actions.onSplitTerminal,
+    onToggleAgents: app.actions.onToggleAgents,
+    onToggleSidebar: app.actions.onToggleSidebar
   });
 
   return (
@@ -71,7 +274,7 @@ export function AppWindow() {
               onClose={app.actions.onToggleSidebar}
               onNewConversation={app.actions.onNewConversationInNewTab}
               onDeleteConversation={app.actions.handleDeleteConversation}
-              onForkConversationInNewPane={app.actions.handleForkConversationInNewTab}
+              onForkConversationInNewPane={app.actions.handleForkConversationInNewPane}
               onForkConversationInNewTab={app.actions.handleForkConversationInNewTab}
               onSelectConversation={app.actions.onSelectConversation}
               selectedConversationId={app.sidebar.selectedOpenConversationId}
@@ -93,23 +296,17 @@ export function AppWindow() {
           <div className="app-window-content-wrapper">
             <div className="app-window-workspace-container">
               <div className="app-window-workspace" style={{ display: app.workspace.isLauncherView ? 'flex' : 'none' }}>
-                {selectedLauncherTab && (
-                  <div
-                    key={selectedLauncherTab.id}
-                    className="app-window-launcher-slot"
-                    style={{ display: 'flex' }}
-                  >
-                    {selectedTabIsSpotlightOwned ? (
-                      <div className="app-window-spotlight-overlay">
-                        <div className="app-window-spotlight-overlay-title">
-                          This tab is controlled by spotlight. Close spotlight or switch to another workspace tab.
-                        </div>
+                <div className="app-window-workspace-panes">
+                  {isSpotlightOwned ? (
+                    <div className="app-window-spotlight-overlay">
+                      <div className="app-window-spotlight-overlay-title">
+                        This tab is controlled by spotlight. Close spotlight or switch to another workspace tab.
                       </div>
-                    ) : (
-                      <Launcher key={selectedLauncherTab.id} {...app.actions.getLauncherProps(selectedLauncherTab)} />
-                    )}
-                  </div>
-                )}
+                    </div>
+                  ) : (
+                    workspacePaneTree
+                  )}
+                </div>
               </div>
 
               {app.workspace.isSettingsView ? (

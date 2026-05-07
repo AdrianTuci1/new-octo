@@ -14,6 +14,7 @@ pub struct SpawnedPty {
 }
 
 pub fn spawn_terminal(rows: u16, cols: u16, cwd: Option<String>) -> Result<SpawnedPty, String> {
+    let cwd = resolve_spawn_cwd(cwd);
     let shell = default_shell();
     let shell_kind = ShellKind::from_shell_path(&shell);
     let integration = ShellIntegration::create(shell_kind)?;
@@ -70,6 +71,14 @@ fn default_shell() -> String {
     }
 
     env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".to_string())
+}
+
+fn resolve_spawn_cwd(cwd: Option<String>) -> Option<String> {
+    cwd.filter(|value| !value.trim().is_empty()).or_else(|| {
+        env::current_dir()
+            .ok()
+            .map(|path| path.to_string_lossy().to_string())
+    })
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -171,6 +180,7 @@ fn create_zsh_integration() -> Result<ShellIntegration, String> {
     rc.push_str(
         r#"
 autoload -Uz add-zsh-hook 2>/dev/null || true
+autoload -Uz compinit && compinit -u 2>/dev/null || true
 
 __octomus_escape_osc() {
   local value="${1//$'\a'/}"
@@ -189,13 +199,41 @@ __octomus_preexec() {
 
 __octomus_precmd() {
   local status="$?"
-  printf '\033]7777;precmd;%s\007' "$status"
+  local pwd
+  pwd="$(__octomus_escape_osc "$PWD")"
+  printf '\033]7777;precmd;%s;%s\007' "$status" "$pwd"
 }
 
 if typeset -f add-zsh-hook >/dev/null 2>&1; then
   add-zsh-hook preexec __octomus_preexec
   add-zsh-hook precmd __octomus_precmd
 fi
+
+__octomus_get_completions() {
+  local query="$1"
+  local -a completions
+  local old_buffer="$BUFFER"
+  local old_cursor="$CURSOR"
+  
+  BUFFER="$query"
+  CURSOR=$#BUFFER
+  
+  local -a +h comppostfuncs
+  comppostfuncs=(__octomus_capture_completions)
+  
+  _main_complete 2>/dev/null
+  
+  BUFFER="$old_buffer"
+  CURSOR="$old_cursor"
+}
+
+__octomus_capture_completions() {
+  printf '\033]9280;completions;A;raw\007'
+  for key in "${(k)compstate[completions]}"; do
+    printf '\033]9280;completions;C;%s\007' "$key"
+  done
+  printf '\033]9280;completions;B\007'
+}
 "#,
     );
 
@@ -244,7 +282,9 @@ __octomus_preexec() {
 __octomus_precmd() {
   local status="$?"
   __octomus_in_prompt=1
-  printf '\033]7777;precmd;%s\007' "$status"
+  local pwd
+  pwd="$(__octomus_escape_osc "$PWD")"
+  printf '\033]7777;precmd;%s;%s\007' "$status" "$pwd"
   __octomus_in_prompt=0
   return "$status"
 }
@@ -252,6 +292,23 @@ __octomus_precmd() {
 trap '__octomus_preexec' DEBUG
 __octomus_original_prompt_command="${PROMPT_COMMAND:-}"
 PROMPT_COMMAND='__octomus_precmd; if [[ -n "$__octomus_original_prompt_command" ]]; then eval "$__octomus_original_prompt_command"; fi'
+
+__octomus_get_completions() {
+  local query="$1"
+  local cmd=$(echo "$query" | awk '{print $1}')
+  local word=$(echo "$query" | awk '{print $NF}')
+  
+  printf '\033]9280;completions;A;raw\007'
+  
+  local -a completions
+  mapfile -t completions < <(compgen -a -c -f -d -- "$word" 2>/dev/null)
+  
+  for c in "${completions[@]}"; do
+    printf '\033]9280;completions;C;%s\007' "$c"
+  done
+  
+  printf '\033]9280;completions;B\007'
+}
 "#,
     );
 
@@ -282,7 +339,9 @@ fn create_fish_integration() -> Result<ShellIntegration, String> {
     rc.push_str(
         r#"
 function __octomus_emit_precmd --on-event fish_prompt
-  printf '\033]7777;precmd;%s\007' $status
+  set -l pwd (string replace -a \e '' -- $PWD)
+  set pwd (string replace -a \a '' -- $pwd)
+  printf '\033]7777;precmd;%s;%s\007' $status "$pwd"
 end
 
 function __octomus_emit_preexec --on-event fish_preexec
