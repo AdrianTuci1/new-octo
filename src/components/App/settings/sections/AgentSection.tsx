@@ -1,14 +1,16 @@
 import React, { type ReactNode } from 'react';
 import { ChevronDown, Plus } from 'lucide-react';
-import { useUIStore } from '../../../../stores';
+import { useMemoryStore, useUIStore } from '../../../../stores';
+import type { ThinkingDisplayMode, ConfiguredModel } from '../../../../types/chat';
 
-function SettingsToggle({ checked = false }: { checked?: boolean }) {
+function SettingsToggle({ checked = false, onChange }: { checked?: boolean; onChange?: () => void }) {
   return (
     <button
       className={`settings-toggle ${checked ? 'active' : ''}`}
       type="button"
       role="switch"
       aria-checked={checked}
+      onClick={onChange}
     >
       <span />
     </button>
@@ -47,6 +49,41 @@ function SettingsRow({
 
 export function AgentSection() {
   const setIsModelDrawerOpen = useUIStore((state) => state.setIsModelDrawerOpen);
+  const setSelectedModelIdForEdit = useUIStore((state) => state.setSelectedModelIdForEdit);
+  const settings = useMemoryStore((state) => state.settings);
+  const saveSettings = useMemoryStore((state) => state.saveSettings);
+  const modelId = settings?.values.selectedModelId ?? null;
+  const webSearchEnabled = settings?.values.webSearchEnabled !== false;
+  const thinkingDisplayMode = settings?.values.thinkingDisplayMode === 'always-show'
+    || settings?.values.thinkingDisplayMode === 'never-show'
+    || settings?.values.thinkingDisplayMode === 'show-and-collapse'
+    ? settings.values.thinkingDisplayMode as ThinkingDisplayMode
+    : 'show-and-collapse';
+  const providerLabel = typeof settings?.values.aiProviderLabel === 'string' && settings.values.aiProviderLabel.trim().length > 0
+    ? settings.values.aiProviderLabel
+    : 'Configured provider';
+  const friendlyName = typeof settings?.values.aiModelFriendlyName === 'string' && settings.values.aiModelFriendlyName.trim().length > 0
+    ? settings.values.aiModelFriendlyName
+    : null;
+
+  const configuredModels = (settings?.values.configuredModels as ConfiguredModel[]) ?? (modelId ? [{
+    id: modelId,
+    providerLabel,
+    modelId,
+    baseUrl: typeof settings?.values.aiModelBaseUrl === 'string' ? settings.values.aiModelBaseUrl : 'https://api.openai.com/v1',
+    friendlyName: friendlyName ?? undefined,
+    hasApiKey: true
+  }] : []);
+  const nextThinkingDisplayMode: Record<ThinkingDisplayMode, ThinkingDisplayMode> = {
+    'show-and-collapse': 'always-show',
+    'always-show': 'never-show',
+    'never-show': 'show-and-collapse'
+  };
+  const thinkingDisplayModeLabel: Record<ThinkingDisplayMode, string> = {
+    'show-and-collapse': 'Show & collapse',
+    'always-show': 'Always show',
+    'never-show': 'Never show'
+  };
 
   return (
     <section className="settings-panel">
@@ -120,32 +157,64 @@ export function AgentSection() {
       </div>
 
       <div className="settings-group">
+        <SectionHeader title="Permissions" />
+        <SettingsRow
+          title="Web search"
+          description="Let the agent fetch fresh public information and show it as a dedicated card in chat."
+          action={
+            <SettingsToggle
+              checked={webSearchEnabled}
+              onChange={() => { void saveSettings({ webSearchEnabled: !webSearchEnabled }, true); }}
+            />
+          }
+        />
+      </div>
+
+      <div className="settings-group">
         <SectionHeader title="Connected Models" />
         <div className="settings-group-description">
           Add and manage model configurations from different providers. Your API keys are stored locally.
         </div>
 
         <div className="settings-models-list">
-          {/* Mock models for now */}
-          <div className="settings-model-card" onClick={() => setIsModelDrawerOpen(true)}>
-            <div className="settings-model-card-info">
-              <div className="settings-model-card-name">GPT-4o Mini</div>
-              <div className="settings-model-card-provider">OpenAI</div>
+          {configuredModels.length > 0 ? (
+            configuredModels.map((model) => {
+              const isActive = settings?.values.selectedModelId === model.id;
+              return (
+                <div 
+                  key={model.id} 
+                  className={`settings-model-card ${isActive ? 'active' : ''}`}
+                  onClick={() => {
+                    setSelectedModelIdForEdit(model.id);
+                    setIsModelDrawerOpen(true);
+                  }}
+                >
+                  <div className="settings-model-card-info">
+                    <div className="settings-model-card-name">{model.friendlyName ?? model.modelId}</div>
+                    <div className="settings-model-card-provider">{model.providerLabel}</div>
+                  </div>
+                  <div className={`settings-model-card-status ${isActive ? 'active' : ''}`}>
+                    {isActive ? 'Active' : 'Configured'}
+                  </div>
+                </div>
+              );
+            })
+          ) : (
+            <div className="settings-model-card">
+              <div className="settings-model-card-info">
+                <div className="settings-model-card-name">No models configured yet</div>
+                <div className="settings-model-card-provider">Open the drawer to connect one locally.</div>
+              </div>
+              <div className="settings-model-card-status">Setup</div>
             </div>
-            <div className="settings-model-card-status">Active</div>
-          </div>
-
-          <div className="settings-model-card" onClick={() => setIsModelDrawerOpen(true)}>
-            <div className="settings-model-card-info">
-              <div className="settings-model-card-name">Claude 3.5 Sonnet</div>
-              <div className="settings-model-card-provider">Anthropic</div>
-            </div>
-            <div className="settings-model-card-status">Configured</div>
-          </div>
+          )}
 
           <button 
             className="settings-add-model-btn" 
-            onClick={() => setIsModelDrawerOpen(true)}
+            onClick={() => {
+              setSelectedModelIdForEdit('new');
+              setIsModelDrawerOpen(true);
+            }}
           >
             <div className="add-icon-wrapper">
               <Plus size={16} />
@@ -179,8 +248,11 @@ export function AgentSection() {
           title="Agent thinking display"
           description="Controls how reasoning/thinking traces are displayed."
           action={
-            <button className="settings-select">
-              <span>Show & collapse</span>
+            <button
+              className="settings-select"
+              onClick={() => { void saveSettings({ thinkingDisplayMode: nextThinkingDisplayMode[thinkingDisplayMode] }, true); }}
+            >
+              <span>{thinkingDisplayModeLabel[thinkingDisplayMode]}</span>
               <ChevronDown size={14} />
             </button>
           }

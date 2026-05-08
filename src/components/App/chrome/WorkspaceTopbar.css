@@ -34,8 +34,9 @@
 .workspace-topbar-tabs {
   flex: 0 1 auto;
   min-width: 0;
-  max-width: min(520px, 54vw);
+  max-width: 850px;
   overflow: hidden;
+  display: flex;
   align-items: stretch;
 }
 
@@ -54,7 +55,8 @@
 .workspace-topbar-right {
   flex: 0 0 auto;
   gap: 2px;
-  padding: 0 8px 0 6px;
+  padding: 0 13px 0 6px;
+  display: flex;
   align-items: center;
 }
 
@@ -137,25 +139,30 @@
 .workspace-topbar-avatar-button {
   width: 24px;
   height: 24px;
-  display: grid;
-  place-items: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   border: 0;
   background: transparent;
   color: var(--text-soft);
   transition: all 140ms ease;
   cursor: pointer;
+  padding: 0;
+  margin: 0;
 }
 
 .workspace-tab {
   -webkit-app-region: no-drag;
-  min-width: 140px;
+  flex: 1 1 auto;
+  min-width: 48px;
+  width: 200px;
   max-width: 220px;
   position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 0;
-  padding: 0 24px;
+  padding: 0 12px;
   margin: 0;
   border: 0;
   background: color-mix(in srgb, var(--tab-tint, transparent) 16%, transparent);
@@ -173,11 +180,9 @@
   content: '';
   position: absolute;
   inset: 0;
-  background: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--tab-tint, transparent) 28%, transparent),
-    transparent 72%
-  );
+  background: linear-gradient(180deg,
+      color-mix(in srgb, var(--tab-tint, transparent) 28%, transparent),
+      transparent 72%);
   opacity: 0.9;
   pointer-events: none;
 }
@@ -188,17 +193,27 @@
   box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.02);
 }
 
-.workspace-tab.launcher-bound::after {
-  content: '';
+.workspace-tab-rocket-icon {
   position: absolute;
-  left: 0;
-  top: 0;
-  width: 15px;
-  height: 15px;
-  background: linear-gradient(135deg, rgba(94, 241, 161, 0.96), rgba(56, 189, 120, 0.9));
-  clip-path: polygon(0 0, 100% 0, 0 100%);
-  pointer-events: none;
-  box-shadow: inset -1px -1px 0 rgba(8, 20, 14, 0.22);
+  left: 4px;
+  top: 4px;
+  color: #10b981; /* beautiful emerald green */
+  flex-shrink: 0;
+  display: inline-block;
+  animation: rocket-pulse 2s infinite ease-in-out;
+  z-index: 5;
+}
+
+@keyframes rocket-pulse {
+  0%, 100% {
+    transform: scale(1) translateY(0);
+    opacity: 0.95;
+  }
+  50% {
+    transform: scale(1.08) translateY(-0.5px);
+    opacity: 1;
+    filter: drop-shadow(0 0 2px rgba(16, 185, 129, 0.4));
+  }
 }
 
 .workspace-tab-label {
@@ -313,11 +328,183 @@
     overflow-x: auto;
   }
 
-  .workspace-topbar-left {
-    padding-left: 12px;
-  }
-
   .workspace-topbar-tabs {
     overflow-x: hidden;
   }
+}
+
+/* User Avatar & Account Menu Styles */
+.workspace-topbar-avatar {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #40c6ff, #0072ff);
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  user-select: none;
+}
+
+.workspace-topbar-account-menu {
+  position: absolute;
+  z-index: 100;
+  min-width: 180px;
+  padding: 6px;
+  border-radius: 8px;
+  background: rgba(17, 21, 29, 0.98);
+  border: 1px solid var(--border-strong);
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.38);
+  display: grid;
+  gap: 2px;
+  animation: slide-down 0.12s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.workspace-topbar-account-menu button {
+  width: 100%;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-main);
+  text-align: left;
+  padding: 8px 10px;
+  font-size: 12px;
+  line-height: 1.2;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.workspace-topbar-account-menu button:hover {
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.workspace-topbar-account-menu-divider {
+  height: 1px;
+  background: var(--border-strong);
+  margin: 4px 6px;
+}
+
+.workspace-topbar-account-menu button.sign-out-btn:hover {
+  background: rgba(239, 68, 68, 0.12);
+  color: #ef4444;
+}
+
+/* Plus Dropdown Context Menu */
+.workspace-topbar-plus-context-menu {
+  position: absolute;
+  z-index: 100;
+  border-radius: 8px;
+  background: rgba(17, 21, 29, 0.98);
+  border: 1px solid var(--border-strong);
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.38);
+  display: flex;
+  overflow: hidden;
+  animation: slide-down 0.12s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.plus-context-menu-main {
+  width: 240px;
+  padding: 6px;
+  display: grid;
+  gap: 2px;
+}
+
+.plus-context-menu-main button {
+  width: 100%;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-main);
+  display: flex;
+  align-items: center;
+  padding: 8px 10px;
+  font-size: 12px;
+  line-height: 1.2;
+  cursor: pointer;
+  transition: all 0.1s ease;
+  text-align: left;
+}
+
+.plus-context-menu-main button:hover {
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.plus-context-menu-main button.active {
+  background: #00b0ff;
+  color: #ffffff;
+}
+
+.plus-context-menu-main button.active .plus-menu-icon {
+  color: #ffffff;
+}
+
+.plus-menu-icon {
+  margin-right: 8px;
+  color: var(--text-soft);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.plus-menu-label {
+  flex-grow: 1;
+}
+
+.plus-menu-shortcut {
+  color: var(--text-dim);
+  font-size: 11px;
+  font-family: var(--font-mono, monospace);
+  opacity: 0.8;
+}
+
+.plus-menu-chevron {
+  color: var(--text-soft);
+  display: flex;
+  align-items: center;
+}
+
+.plus-context-menu-divider {
+  height: 1px;
+  background: var(--border-strong);
+  margin: 4px 6px;
+}
+
+/* Sub-pane Details Panel on the Right */
+.plus-context-menu-sidebar {
+  width: 200px;
+  border-left: 1px solid var(--border-strong);
+  background: rgba(10, 13, 20, 0.4);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.plus-sidebar-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-main);
+  padding: 2px 4px;
+}
+
+.make-default-btn {
+  width: 100%;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 6px;
+  color: var(--text-main);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 8px 12px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.1s ease;
+}
+
+.make-default-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.25);
 }

@@ -13,7 +13,9 @@ use super::{
         AgentRunSnapshot, AgentRunStatus, AgentRunStatusEvent, AgentStartResponse,
     },
 };
-use crate::ai::agent_management::{persist_provider_config, AgentHarnessManager};
+use crate::ai::agent_management::{
+    clear_persisted_provider_config, persist_provider_config, AgentHarnessManager,
+};
 
 const DEFAULT_MODEL_ID: &str = "octomus-scripted-harness";
 const EVENT_STATUS: &str = "agent:status";
@@ -45,7 +47,14 @@ pub async fn agent_start(
         .unwrap_or_else(|| format!("assistant_{}", Uuid::new_v4()));
     let provider_config = manager
         .load_provider_config_from_disk()?
-        .or_else(|| manager.provider_config().ok().flatten())
+        .filter(|config| !config.api_key.trim().is_empty())
+        .or_else(|| {
+            manager
+                .provider_config()
+                .ok()
+                .flatten()
+                .filter(|config| !config.api_key.trim().is_empty())
+        })
         .or_else(OpenAiCompatibleConfig::from_env);
     let model_id = request
         .model_id
@@ -131,16 +140,29 @@ pub fn agent_configure_openai_compatible(
     manager: State<'_, AgentHarnessManager>,
     request: AgentProviderConfigRequest,
 ) -> Result<AgentProviderStatus, String> {
-    if request.api_key.trim().is_empty() {
-        return Err("API key cannot be empty".to_string());
-    }
+    let existing = manager
+        .load_provider_config_from_disk()?
+        .or_else(|| manager.provider_config().ok().flatten());
+    let api_key = if request.api_key.trim().is_empty() {
+        existing
+            .as_ref()
+            .filter(|config| !config.api_key.trim().is_empty())
+            .map(|config| config.api_key.clone())
+            .ok_or_else(|| "API key cannot be empty".to_string())?
+    } else {
+        request.api_key
+    };
 
-    let config = OpenAiCompatibleConfig::new(
-        request.api_key,
+    let mut config = OpenAiCompatibleConfig::new(
+        api_key,
         request.base_url,
         request.model_id,
         "runtime".to_string(),
     );
+    if let Some(existing) = existing {
+        config = config.with_secret_id(Some(existing.secret_id));
+    }
+
     let status = provider_status_from_config(&config);
     manager.set_provider_config(config)?;
     if let Some(current) = manager.provider_config()? {
@@ -168,6 +190,14 @@ pub fn agent_provider_status(
         has_api_key: false,
         source: "fallback".to_string(),
     })
+}
+
+pub fn agent_clear_openai_compatible(
+    manager: State<'_, AgentHarnessManager>,
+) -> Result<(), String> {
+    clear_persisted_provider_config()?;
+    manager.clear_provider_config()?;
+    Ok(())
 }
 
 pub fn agent_cancel(
@@ -203,7 +233,7 @@ pub fn agent_list_runs(
     manager.list()
 }
 
-async fn run_harness<H: AgentHarness>(
+pub(super) async fn run_harness<H: AgentHarness>(
     harness: H,
     context: AgentHarnessContext,
     sink: AgentEventSink,

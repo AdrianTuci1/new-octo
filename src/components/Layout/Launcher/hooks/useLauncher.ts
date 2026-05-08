@@ -14,7 +14,7 @@ export function useLauncher(props: LauncherProps) {
   // 1. Foundation & Infrastructure
   // We use the whole store here because specialized modules might need various parts.
   // However, useLauncherRuntime now uses fine-grained selectors internally.
-  const store = useLauncherStore();
+  const store = useLauncherStore((state) => state);
   const tray = Modules.useLauncherTrayState();
   const refs = Modules.useLauncherRefs();
   
@@ -38,7 +38,7 @@ export function useLauncher(props: LauncherProps) {
 
   // 4. Lifecycle & Sync
   Modules.useLauncherMemorySync({ store, props, runtime });
-  Modules.useLauncherEffects({ store, props, runtime, history, ui, tray, refs, clearTerminalSurface: actions.clearTerminalSurface });
+  Modules.useLauncherEffects({ store, props, runtime, history, ui, tray, refs, actions, clearTerminalSurface: actions.clearTerminalSurface });
   Hooks.useWindowSync(refs.shellRef, active);
 
   // 5. Shortcuts & System Integration
@@ -50,6 +50,8 @@ export function useLauncher(props: LauncherProps) {
     clearTerminalSurface: actions.clearTerminalSurface,
     launchAgentComposer: actions.launchAgentComposer,
     openAppWindow: actions.openAppWindow,
+    openModelDrawer: actions.openModelDrawer,
+    closeModelDrawer: actions.closeModelDrawer,
     shellRef: refs.shellRef,
     dockRef: refs.dockRef
   });

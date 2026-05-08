@@ -2,8 +2,10 @@
 /**
  * Module: useLauncherShortcuts
  */
+import { listen } from '@tauri-apps/api/event';
 import { useEffect, type KeyboardEvent } from 'react';
 import * as Hooks from '../../../../../hooks';
+import type { BackendShortcutCommandEvent } from '../../../../../types/keybindings';
 import * as Utils from '../../utils';
 import type { LauncherProps } from '../types';
 
@@ -52,8 +54,13 @@ export function useLauncherShortcuts({
     ),
     isShellMode: store.composerSurface === 'terminal' || store.modeLock === 'shell',
     isManualShellMode: store.composerSurface !== 'terminal' && store.modeLock === 'shell',
-    hasPrediction: false, // This will be updated if needed
-    onAcceptPrediction: () => {}, 
+    hasPrediction: Boolean(ui.activeShellPrediction?.completionText),
+    onAcceptPrediction: () => {
+      const suffix = ui.activeShellPrediction?.completionText ?? '';
+      if (suffix) {
+        chat.setQuery(chat.query + suffix);
+      }
+    }, 
     onCyclePrediction: () => {},
     onExitShellMode: () => store.setModeLock(chat.query.trim().length > 0 ? 'chat' : null),
     onToggleShellMode: () => store.setModeLock(store.modeLock === 'shell' ? 'chat' : 'shell'),
@@ -73,6 +80,26 @@ export function useLauncherShortcuts({
     };
     window.addEventListener('keydown', handleOpenAppShortcut, true);
     return () => window.removeEventListener('keydown', handleOpenAppShortcut, true);
+  }, [active, openAppWindow, variant]);
+
+  useEffect(() => {
+    if (!active || variant !== 'panel' || !openAppWindow || !(window as any).__TAURI_INTERNALS__) {
+      return;
+    }
+
+    const unlistenPromise = listen<BackendShortcutCommandEvent>('keybinding:command', (event) => {
+      if (document.visibilityState === 'hidden') {
+        return;
+      }
+
+      if (event.payload.commandId === 'app.open-workspace-window') {
+        openAppWindow();
+      }
+    });
+
+    return () => {
+      void unlistenPromise.then((unlisten) => unlisten());
+    };
   }, [active, openAppWindow, variant]);
 
   // 3. UI Interaction Handlers
@@ -101,6 +128,11 @@ export function useLauncherShortcuts({
         }
         void Utils.runCommandInSurface(command, 'terminal', terminal, agentTerminal, clearTerminalSurface, 'user').then(() => chat.setQuery(''));
         return;
+      }
+      
+      if (event.key === 'ArrowRight' || event.key === 'Tab' || event.key === 'ArrowDown') {
+        handleKeyDown(event);
+        if (event.defaultPrevented) return;
       }
       return;
     }

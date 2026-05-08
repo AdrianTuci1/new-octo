@@ -1,3 +1,5 @@
+import type { FileDiff } from './diff';
+
 export type TerminalStatus = 'starting' | 'running' | 'exited' | 'error';
 
 export type TerminalSessionInfo = {
@@ -14,6 +16,52 @@ export type TerminalDataEvent = {
 export type TerminalExitEvent = {
   sessionId: string;
   exitCode?: number | null;
+};
+
+export type TerminalSessionCwdEvent = {
+  sessionId: string;
+  cwd?: string | null;
+};
+
+export type TerminalCompletionsFormat = 'raw' | 'incrementally_typed';
+
+export type TerminalShellCompletion = {
+  name: string;
+  description?: string | null;
+};
+
+export type TerminalCompletionsStartedEvent = {
+  sessionId: string;
+  format: TerminalCompletionsFormat;
+};
+
+export type TerminalCompletionsFinishedEvent = {
+  sessionId: string;
+  data: TerminalShellCompletion[];
+};
+
+export type TerminalCompletionResultEvent = {
+  sessionId: string;
+  completion: TerminalShellCompletion;
+};
+
+export type TerminalCompletionUpdateEvent = {
+  sessionId: string;
+  value: string;
+};
+
+export type TerminalCompletionsPromptEvent = {
+  sessionId: string;
+};
+
+export type TerminalCompletionStatus = 'idle' | 'running' | 'finished';
+
+export type TerminalCompletionState = {
+  status: TerminalCompletionStatus;
+  format: TerminalCompletionsFormat | null;
+  promptVisible: boolean;
+  completions: TerminalShellCompletion[];
+  lastValue: string | null;
 };
 
 export type TerminalBlock = {
@@ -66,8 +114,23 @@ export type TerminalCommandBlock = TerminalBlock & {
   conversationTitle?: string;
 };
 
+export type FileChangeApproval = {
+  kind: 'file-change';
+  summary?: string;
+  fileDiffs: FileDiff[];
+  refineLabel?: string;
+  editLabel?: string;
+  acceptLabel?: string;
+};
+
 export type CommandApproval = {
+  kind?: 'command';
   command: string;
   toolCallId?: string;
   reason?: string;
-};
+} | {
+  kind: 'topic-change';
+  reason?: string;
+  startNewConversationLabel?: string;
+  continueConversationLabel?: string;
+} | FileChangeApproval;

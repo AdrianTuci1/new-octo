@@ -14,6 +14,7 @@ import {
   Plus, 
   Terminal 
 } from 'lucide-react';
+import { useMemoryStore, useUIStore } from '../../../../stores';
 
 function ProfileItem({ 
   icon: Icon, 
@@ -38,11 +39,30 @@ function ProfileItem({
 }
 
 export function ProfilesSection() {
+  const setIsProfileDrawerOpen = useUIStore((state) => state.setIsProfileDrawerOpen);
+  const setActiveProfileName = useUIStore((state) => state.setActiveProfileName);
+  const settings = useMemoryStore((state) => state.settings);
+  const webSearchEnabled = settings?.values.webSearchEnabled !== false;
+
+  const handleAddProfile = () => {
+    setActiveProfileName('New Profile');
+    setIsProfileDrawerOpen(true);
+  };
+
+  const handleEditProfile = (name: string) => {
+    setActiveProfileName(name);
+    setIsProfileDrawerOpen(true);
+  };
+
   return (
     <section className="settings-panel">
       <div className="settings-panel-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <h1>Profiles</h1>
-        <button className="settings-primary-button" type="button">
+        <button 
+          className="settings-primary-button" 
+          type="button"
+          onClick={handleAddProfile}
+        >
           <Plus size={14} style={{ marginRight: '6px' }} />
           Add Profile
         </button>
@@ -57,7 +77,11 @@ export function ProfilesSection() {
       <div className="profile-card">
         <div className="profile-card-header">
           <h2 className="profile-card-title">Default</h2>
-          <button className="profile-card-edit" type="button">
+          <button 
+            className="profile-card-edit" 
+            type="button"
+            onClick={() => handleEditProfile('Default')}
+          >
             <Pencil size={14} />
             Edit
           </button>
@@ -81,7 +105,7 @@ export function ProfilesSection() {
           <ProfileItem icon={Network} label="Call MCP servers" value="Agent decides" />
           <ProfileItem icon={Check} label="MCP allowlist" value="None" isIndented={true} />
           <ProfileItem icon={Ban} label="MCP denylist" value="None" isIndented={true} />
-          <ProfileItem icon={Globe} label="Call web tools" value="On" />
+          <ProfileItem icon={Globe} label="Call web tools" value={webSearchEnabled ? 'On' : 'Off'} />
           <ProfileItem icon={Compass} label="Auto-sync plans to Octo Drive" value="On" />
         </div>
       </div>

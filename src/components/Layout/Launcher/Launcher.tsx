@@ -14,13 +14,18 @@
 */
 
 import { ChatPanel } from '../../Chat';
-import { CommandApprovalComposer, ComposerBar, TerminalComposer } from '../../Composer';
+import { ComposerBar, ModelSetupOverlay, TerminalComposer } from '../../Composer';
 import { TrayPanel } from '../../Tray';
 import { useLauncher, type LauncherProps } from './hooks';
 import { COMMAND_ITEMS, HELP_ITEMS } from '../../../lib';
 
 export function Launcher(props: LauncherProps) {
   const launcher = useLauncher(props);
+  const modelSetupRequired = launcher.ui.modelSelection.requiresModelSetup;
+  const handleOpenModelSettings = () => {
+    launcher.actions.openAppWindow();
+    launcher.actions.openModelDrawer();
+  };
 
 
   return (
@@ -35,7 +40,14 @@ export function Launcher(props: LauncherProps) {
               emptyStateVariant={launcher.ui.variant === 'workspace' ? 'workspace' : 'default'}
               isOpen={true}
               messages={launcher.ui.activeMessages}
+              pendingApproval={launcher.ui.resolvedPendingApproval}
               showEmptyTopbar={launcher.ui.variant === 'workspace' && launcher.store.composerSurface !== 'terminal' && launcher.ui.composerMode !== 'shell'}
+              onRefinePendingApproval={launcher.actions.handlePendingApprovalRefine}
+              onEditPendingApproval={launcher.actions.handlePendingApprovalEdit}
+              onAcceptPendingApproval={launcher.actions.handlePendingApprovalAccept}
+              onAutoApprovePendingApproval={launcher.actions.handlePendingApprovalAutoApprove}
+              onStartNewConversationPendingApproval={launcher.actions.handlePendingTopicChangeStartNewConversation}
+              onContinueCurrentConversationPendingApproval={launcher.actions.handlePendingTopicChangeContinueConversation}
               expandedTerminalBlockIds={launcher.store.composerSurface === 'agent' ? launcher.terminal.agentTerminal.expandedBlockIds : launcher.terminal.terminal.expandedBlockIds}
               onCollapseTerminalBlock={launcher.store.composerSurface === 'agent' ? launcher.terminal.agentTerminal.collapseBlock : launcher.terminal.terminal.collapseBlock}
               onExpandTerminalBlock={launcher.store.composerSurface === 'agent' ? launcher.terminal.agentTerminal.expandBlock : launcher.terminal.terminal.expandBlock}
@@ -51,7 +63,7 @@ export function Launcher(props: LauncherProps) {
         )}
 
         <div ref={launcher.ui.dockRef} className="dock-stack">
-          {(!launcher.ui.isTerminalSurface || launcher.ui.isTerminalCommandsTrayOpen) && (
+          {!modelSetupRequired && !launcher.ui.resolvedPendingApproval && (!launcher.ui.isTerminalSurface || launcher.ui.isTerminalCommandsTrayOpen) && (
             <TrayPanel
               activeConversationId={launcher.ui.resolvedConversationId}
               activeMode={launcher.tray.activeTrayMode}
@@ -67,6 +79,7 @@ export function Launcher(props: LauncherProps) {
               modelTab={launcher.store.modelTab}
               modelEntries={launcher.ui.visibleModels}
               onOpenApp={launcher.actions.openAppWindow}
+              onOpenModelSettings={launcher.actions.openModelDrawer}
               onConversationSearchChange={launcher.store.setConversationSearchQuery}
               onExitShellMode={() => launcher.store.setModeLock(launcher.chat.query.trim().length > 0 ? 'chat' : null)}
               onHistoryTabChange={launcher.store.setHistoryTab}
@@ -75,7 +88,7 @@ export function Launcher(props: LauncherProps) {
               onNewConversation={launcher.actions.handleNewConversation}
               onSelectConversation={launcher.actions.handleTrayConversationSelect}
               onSelectHistoryEntry={launcher.actions.handleHistoryEntrySelect}
-              onSelectModel={(modelId: string) => launcher.ui.modelSelection.selectModel(modelId, false)}
+              onSelectModel={(modelId: string) => launcher.ui.modelSelection.selectModel(modelId, true)}
               shellSource={launcher.terminal.shellSource}
               shellShortcutTokens={launcher.terminal.shellShortcutTokens}
               showOpenInApp={launcher.ui.variant === 'panel'}
@@ -88,14 +101,7 @@ export function Launcher(props: LauncherProps) {
             />
           )}
 
-          {launcher.ui.resolvedPendingApproval ? (
-            <CommandApprovalComposer
-              approval={launcher.ui.resolvedPendingApproval}
-              onEdit={launcher.actions.handleCommandApprovalEdit}
-              onReject={launcher.actions.handleCommandApprovalReject}
-              onRun={launcher.actions.handleCommandApprovalRun}
-            />
-          ) : launcher.store.composerSurface === 'terminal' ? (
+          {launcher.ui.resolvedPendingApproval ? null : launcher.store.composerSurface === 'terminal' ? (
             <TerminalComposer
               gitBranchMenuOpen={launcher.ui.gitContext.isBranchMenuOpen}
               gitContext={launcher.ui.gitContext.gitContext}
@@ -114,6 +120,7 @@ export function Launcher(props: LauncherProps) {
               onToggleGitBranchMenu={launcher.ui.gitContext.toggleBranchMenu}
               onToggleWorkingDirectoryPicker={launcher.ui.workingDirectory.togglePicker}
               onWorkingDirectorySearchChange={launcher.ui.workingDirectory.setSearchQuery}
+              completionState={launcher.terminal.completionState}
               prediction={launcher.ui.activeShellPrediction}
               query={launcher.chat.query}
               recommendedAction={launcher.terminal.terminalComposerAction}
@@ -124,6 +131,15 @@ export function Launcher(props: LauncherProps) {
               workingDirectoryListing={launcher.ui.workingDirectory.listing}
               workingDirectoryPickerOpen={launcher.ui.workingDirectory.isPickerOpen}
               workingDirectorySearch={launcher.ui.workingDirectory.searchQuery}
+            />
+          ) : modelSetupRequired ? (
+            <ModelSetupOverlay
+              onBack={() => {
+                launcher.actions.closeModelDrawer();
+                launcher.store.setComposerSurface('terminal');
+                launcher.tray.closeTray();
+              }}
+              onOpenModelSettings={handleOpenModelSettings}
             />
           ) : (
             <ComposerBar
@@ -140,12 +156,12 @@ export function Launcher(props: LauncherProps) {
               onSelectGitBranch={launcher.ui.gitContext.switchBranch}
               onNavigateToParentDirectory={launcher.ui.workingDirectory.navigateToParent}
               onToggleGitBranchMenu={launcher.ui.gitContext.toggleBranchMenu}
-              onToggleModelTray={() => launcher.tray.toggleTray('models')}
+              onToggleModelTray={() => (modelSetupRequired ? launcher.actions.openModelDrawer() : launcher.tray.toggleTray('models'))}
               placeholder="Octomus anything e.g. Find and fix race conditions in my Python application"
               prediction={launcher.ui.activeShellPrediction}
               query={launcher.chat.query}
               recommendedAction={launcher.ui.recommendedAction}
-              selectedModelLabel={launcher.ui.modelSelection.selectedModel.label}
+              selectedModelLabel={launcher.ui.modelSelection.selectedModelLabel}
               terminalAutoDetectEnabled={launcher.store.terminalAutoDetectEnabled}
               workingDirectory={launcher.ui.workingDirectory.currentPath}
               workingDirectoryLabel={launcher.ui.workingDirectory.buttonLabel}

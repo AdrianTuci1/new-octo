@@ -13,6 +13,7 @@ use crate::ai::agent::{
     openai::OpenAiCompatibleConfig,
     types::{AgentRunSnapshot, AgentRunStatus},
 };
+use crate::secure_store;
 
 #[derive(Clone, Default)]
 pub struct AgentHarnessManager {
@@ -39,6 +40,15 @@ impl AgentHarnessManager {
             .provider_config
             .lock()
             .map_err(|_| "agent provider config lock is poisoned".to_string())? = Some(config);
+
+        Ok(())
+    }
+
+    pub fn clear_provider_config(&self) -> Result<(), String> {
+        *self
+            .provider_config
+            .lock()
+            .map_err(|_| "agent provider config lock is poisoned".to_string())? = None;
 
         Ok(())
     }
@@ -161,6 +171,61 @@ impl AgentHarnessManager {
 }
 
 pub fn persist_provider_config(config: &OpenAiCompatibleConfig) -> Result<(), String> {
+    if config.api_key.trim().is_empty() {
+        return Err("provider api key cannot be empty".to_string());
+    }
+
+    secure_store::store_secret(&config.secret_id, &config.api_key)?;
+    write_persisted_provider_config(config)
+}
+
+pub fn read_persisted_provider_config() -> Result<Option<OpenAiCompatibleConfig>, String> {
+    let path = provider_config_path()?;
+    let Ok(contents) = std::fs::read_to_string(&path) else {
+        return Ok(None);
+    };
+
+    let value: Value = serde_json::from_str(&contents)
+        .map_err(|error| format!("failed to parse provider config: {error}"))?;
+    let mut config = OpenAiCompatibleConfig::from_persisted_value(&value)
+        .ok_or_else(|| "failed to parse provider config".to_string())?;
+
+    if config.api_key.trim().is_empty() {
+        if let Some(secret) = secure_store::load_secret(&config.secret_id)? {
+            config.api_key = secret;
+        }
+    } else {
+        let _ = secure_store::store_secret(&config.secret_id, &config.api_key);
+        let _ = write_persisted_provider_config(&config);
+    }
+
+    Ok(Some(config))
+}
+
+pub fn clear_persisted_provider_config() -> Result<(), String> {
+    if let Some(config) = read_persisted_provider_config()? {
+        let _ = secure_store::delete_secret(&config.secret_id)?;
+    }
+
+    let path = provider_config_path()?;
+    match std::fs::remove_file(&path) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(format!("failed to remove provider config: {error}")),
+    }
+}
+
+fn provider_config_path() -> Result<std::path::PathBuf, String> {
+    let home = std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
+        .ok_or_else(|| "home directory was not found".to_string())?;
+
+    Ok(std::path::PathBuf::from(home)
+        .join(".octomus")
+        .join("ai-provider.json"))
+}
+
+fn write_persisted_provider_config(config: &OpenAiCompatibleConfig) -> Result<(), String> {
     let path = provider_config_path()?;
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)
@@ -174,25 +239,4 @@ pub fn persist_provider_config(config: &OpenAiCompatibleConfig) -> Result<(), St
             .map_err(|error| format!("failed to serialize provider config: {error}"))?,
     )
     .map_err(|error| format!("failed to write provider config: {error}"))
-}
-
-pub fn read_persisted_provider_config() -> Result<Option<OpenAiCompatibleConfig>, String> {
-    let path = provider_config_path()?;
-    let Ok(contents) = std::fs::read_to_string(&path) else {
-        return Ok(None);
-    };
-
-    let value: Value = serde_json::from_str(&contents)
-        .map_err(|error| format!("failed to parse provider config: {error}"))?;
-    Ok(OpenAiCompatibleConfig::from_persisted_value(&value))
-}
-
-fn provider_config_path() -> Result<std::path::PathBuf, String> {
-    let home = std::env::var_os("HOME")
-        .or_else(|| std::env::var_os("USERPROFILE"))
-        .ok_or_else(|| "home directory was not found".to_string())?;
-
-    Ok(std::path::PathBuf::from(home)
-        .join(".octomus")
-        .join("ai-provider.json"))
 }

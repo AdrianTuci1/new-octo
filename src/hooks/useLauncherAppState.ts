@@ -9,6 +9,7 @@ import type { MemoryWorkspaceSnapshot } from '../types/memory';
 import type { CommandApproval, TerminalBlockSharedMeta } from '../types/terminal';
 import type { TerminalCommandBlock } from '../types/terminal';
 import type { PanelMode } from '../types/ui';
+import { createDefaultPaneLayout } from '../components/App/utils';
 
 const EMPTY_META: Record<string, TerminalBlockSharedMeta> = {};
 
@@ -49,6 +50,9 @@ function buildWorkspaceForLauncher(
     tabs: initialWorkspaceChromeTabs,
     selectedTabId: 'terminal-main',
     launcherTabId: 'terminal-main',
+    paneLayoutsByTabId: {
+      'terminal-main': createDefaultPaneLayout('terminal-main')
+    },
     conversations: [],
     terminalSessions: {
       'terminal-main': createEmptyTerminalSession()
@@ -164,6 +168,10 @@ export function useLauncherAppState(): UseLauncherAppStateResult {
       ],
       launcherTabId: nextTabId,
       selectedTabId: nextTabId,
+      paneLayoutsByTabId: {
+        ...(latestWorkspace.paneLayoutsByTabId ?? {}),
+        [nextTabId]: createDefaultPaneLayout(nextTabId)
+      },
       nextTerminalIndex: Math.max(
         latestWorkspace.nextTerminalIndex || 1,
         nextTerminalIndex + 1

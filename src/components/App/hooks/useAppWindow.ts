@@ -7,7 +7,7 @@ import { formatCompactPathLabel } from '../../../lib/pathLabels';
 import { useMemoryStore } from '../../../stores/memoryStore';
 import type { FilesystemPathContext } from '../../../types/filesystem';
 import type { CommandApproval, TerminalBlockSharedMeta, TerminalCommandBlock } from '../../../types/terminal';
-import type { WorkspaceChromeTab, WorkspaceConversation } from '../chrome';
+import type { WorkspaceChromeTab, WorkspaceConversation, WorkspacePaneLayout } from '../chrome';
 import * as Utils from '../utils';
 import type { TerminalSessionState } from '../utils';
 
@@ -23,6 +23,7 @@ function buildEmptyWorkspaceSnapshot(options: {
     tabs: [],
     selectedTabId: null,
     launcherTabId: null,
+    paneLayoutsByTabId: {},
     conversations: [],
     terminalSessions: {},
     activeSectionId: options.activeSectionId,
@@ -35,10 +36,15 @@ function buildEmptyWorkspaceSnapshot(options: {
   };
 }
 
+const SETTINGS_TAB_ID = 'settings';
+
 export function useAppWindow() {
   const [tabs, setTabs] = useState<WorkspaceChromeTab[]>(initialWorkspaceChromeTabs);
   const [selectedTabId, setSelectedTabId] = useState(defaultWorkspaceChromeTabId);
   const [launcherTabId, setLauncherTabId] = useState<string | null>('terminal-main');
+  const [paneLayoutsByTabId, setPaneLayoutsByTabId] = useState<Record<string, WorkspacePaneLayout>>({
+    'terminal-main': Utils.createDefaultPaneLayout('terminal-main')
+  });
   const [activeSectionId, setActiveSectionId] = useState(settingsDefaultSectionId);
   const [expandedGroupIds, setExpandedGroupIds] = useState<string[]>(settingsDefaultExpandedGroupIds);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -63,15 +69,23 @@ export function useAppWindow() {
   const memoryConversationsById = useMemo(() => new Map(memoryConversations.map((conversation) => [conversation.id, conversation])), [memoryConversations]);
 
   const selectedTab = tabs.find((tab) => tab.id === selectedTabId) ?? tabs[0] ?? initialWorkspaceChromeTabs[0];
-  const activeConversationId = selectedTab.kind === 'terminal'
-    ? terminalSessions[selectedTab.id]?.activeConversationId ?? null
+  const selectedPaneLayout = selectedTab.kind === 'terminal'
+    ? paneLayoutsByTabId[selectedTab.id] ?? Utils.createDefaultPaneLayout(selectedTab.id)
+    : null;
+  const selectedPaneIds = selectedPaneLayout ? Utils.collectPaneIdsFromLayout(selectedPaneLayout) : [];
+  const activePaneId = selectedPaneLayout?.activePaneId ?? selectedPaneIds[0] ?? null;
+  const activeConversationId = activePaneId
+    ? terminalSessions[activePaneId]?.activeConversationId ?? null
     : null;
   const isSettingsView = selectedTab.kind === 'settings';
   const isLauncherView = !isAgentsActive && selectedTab.kind === 'terminal';
   const orderedConversationIds = useMemo(() => tabs
     .filter((tab) => tab.kind === 'terminal')
-    .map((tab) => terminalSessions[tab.id]?.activeConversationId ?? null)
-    .filter((conversationId): conversationId is string => Boolean(conversationId)), [tabs, terminalSessions]);
+    .flatMap((tab) => Utils.collectPaneIdsFromLayout(
+      paneLayoutsByTabId[tab.id] ?? Utils.createDefaultPaneLayout(tab.id)
+    ))
+    .map((paneId) => terminalSessions[paneId]?.activeConversationId ?? null)
+    .filter((conversationId): conversationId is string => Boolean(conversationId)), [paneLayoutsByTabId, tabs, terminalSessions]);
   const dedupedOrderedConversationIds = useMemo(() => Array.from(new Set(orderedConversationIds)), [orderedConversationIds]);
   const openConversationIds = useMemo(
     () => dedupedOrderedConversationIds.filter((conversationId) => !(conversationId in openPastConversationBaselineById)),
@@ -141,7 +155,8 @@ export function useAppWindow() {
       return tab;
     }
 
-    const session = terminalSessions[tab.id];
+    const activePaneIdForTab = paneLayoutsByTabId[tab.id]?.activePaneId ?? tab.id;
+    const session = terminalSessions[activePaneIdForTab];
     const activeConversation = session?.activeConversationId
       ? memoryConversationsById.get(session.activeConversationId) ?? null
       : null;
@@ -154,13 +169,14 @@ export function useAppWindow() {
       ...tab,
       label: tab.customLabel?.trim() || activeConversation?.title || (session?.activeConversationId ? 'New agent conversation' : pathLabel)
     };
-  }), [tabs, terminalSessions, memoryConversationsById, pathContext]);
+  }), [tabs, terminalSessions, memoryConversationsById, paneLayoutsByTabId, pathContext]);
 
   useEffect(() => {
     latestLocalWorkspaceComparableRef.current = Utils.buildWorkspaceComparableSnapshot(
       tabs,
       selectedTabId,
       launcherTabId,
+      paneLayoutsByTabId,
       terminalSessions,
       activeSectionId,
       expandedGroupIds,
@@ -175,6 +191,7 @@ export function useAppWindow() {
     isSidebarOpen,
     launcherTabId,
     nextTerminalIndex,
+    paneLayoutsByTabId,
     selectedTabId,
     tabs,
     terminalSessions
@@ -244,6 +261,7 @@ export function useAppWindow() {
     setTabs(nextComparable.tabs);
     setSelectedTabId(nextComparable.selectedTabId);
     setLauncherTabId(nextComparable.launcherTabId);
+    setPaneLayoutsByTabId(nextComparable.paneLayoutsByTabId);
     setActiveSectionId(nextComparable.activeSectionId);
     setExpandedGroupIds(nextComparable.expandedGroupIds);
     setIsSidebarOpen(nextComparable.isSidebarOpen);
@@ -251,6 +269,37 @@ export function useAppWindow() {
     setNextTerminalIndex(nextComparable.nextTerminalIndex);
     setTerminalSessions(nextComparable.terminalSessions);
   }, [memoryStatus, memoryWorkspace, pathContext?.homeDir]);
+
+  useEffect(() => {
+    const normalizedPaneLayouts = Utils.normalizePaneLayoutsByTabId(tabs, paneLayoutsByTabId);
+    const normalizedPaneIds = new Set(
+      Object.values(normalizedPaneLayouts).flatMap((layout) => Utils.collectPaneIdsFromLayout(layout))
+    );
+
+    if (JSON.stringify(normalizedPaneLayouts) !== JSON.stringify(paneLayoutsByTabId)) {
+      setPaneLayoutsByTabId(normalizedPaneLayouts);
+      return;
+    }
+
+    setTerminalSessions((current) => {
+      const nextSessions = Object.fromEntries(
+        Object.entries(current).filter(([paneId]) => normalizedPaneIds.has(paneId))
+      ) as Record<string, TerminalSessionState>;
+
+      let changed = Object.keys(nextSessions).length !== Object.keys(current).length;
+
+      normalizedPaneIds.forEach((paneId) => {
+        if (nextSessions[paneId]) {
+          return;
+        }
+
+        nextSessions[paneId] = Utils.createEmptyTerminalSession(pathContext?.homeDir ?? null);
+        changed = true;
+      });
+
+      return changed ? nextSessions : current;
+    });
+  }, [paneLayoutsByTabId, pathContext?.homeDir, tabs]);
 
   useEffect(() => {
     if (memoryStatus !== 'ready' || !didRestoreWorkspaceRef.current || isClosingWorkspaceRef.current) {
@@ -275,6 +324,7 @@ export function useAppWindow() {
         tabs,
         selectedTabId,
         launcherTabId,
+        paneLayoutsByTabId,
         conversations: workspaceConversations.filter((c) => openConversationIdSet.has(c.id)),
         terminalSessions,
         activeSectionId,
@@ -299,6 +349,7 @@ export function useAppWindow() {
     saveWorkspace,
     launcherTabId,
     nextTerminalIndex,
+    paneLayoutsByTabId,
     selectedTabId,
     tabs,
     terminalSessions,
@@ -309,19 +360,13 @@ export function useAppWindow() {
   const createTerminalTab = useCallback(() => {
     const nextTab = Utils.buildTerminalTab(nextTerminalIndex, '~');
     setTabs((current) => [...current, nextTab]);
+    setPaneLayoutsByTabId((current) => ({
+      ...current,
+      [nextTab.id]: Utils.createDefaultPaneLayout(nextTab.id)
+    }));
     setTerminalSessions((current) => ({
       ...current,
-      [nextTab.id]: {
-        activeConversationId: null,
-        composerSurface: 'terminal',
-        workingDirectory: pathContext?.homeDir ?? null,
-        terminalSessionId: null,
-        agentTerminalSessionId: null,
-        pendingApproval: null,
-        terminalBlockMetaById: {},
-        agentTerminalBlockMetaById: {},
-        syntheticBlocks: []
-      }
+      [nextTab.id]: Utils.createEmptyTerminalSession(pathContext?.homeDir ?? null)
     }));
     setNextTerminalIndex((value) => value + 1);
     return nextTab;
@@ -369,6 +414,12 @@ export function useAppWindow() {
     return nextTab.id;
   }, [createTerminalTab, isSpotlightVisible, launcherTabId, selectedTab, tabs]);
 
+  const resolvePaneId = useCallback((tabId: string) => {
+    const paneLayout = paneLayoutsByTabId[tabId] ?? Utils.createDefaultPaneLayout(tabId);
+    const paneIds = Utils.collectPaneIdsFromLayout(paneLayout);
+    return paneLayout.activePaneId ?? paneIds[0] ?? tabId;
+  }, [paneLayoutsByTabId]);
+
   const onToggleGroup = useCallback((groupId: string) => {
     setExpandedGroupIds((current) =>
       current.includes(groupId) ? current.filter((id) => id !== groupId) : [...current, groupId]
@@ -390,9 +441,12 @@ export function useAppWindow() {
   }, [createTerminalTab]);
 
   const onSelectConversation = useCallback((conversationId: string) => {
-    const existingTab = tabs.find((tab) =>
-      tab.kind === 'terminal' && terminalSessions[tab.id]?.activeConversationId === conversationId
-    );
+    const existingPaneId = Object.entries(terminalSessions).find(([, session]) => (
+      session.activeConversationId === conversationId
+    ))?.[0] ?? null;
+    const existingTabId = existingPaneId
+      ? Utils.findTabIdForPane(paneLayoutsByTabId, existingPaneId)
+      : null;
     const shouldKeepConversationInPast = memoryConversationsById.has(conversationId);
 
     if (shouldKeepConversationInPast) {
@@ -407,8 +461,17 @@ export function useAppWindow() {
       ));
     }
 
-    if (existingTab) {
-      if (selectedTabId !== existingTab.id) setSelectedTabId(existingTab.id);
+    if (existingPaneId && existingTabId) {
+      if (selectedTabId !== existingTabId) {
+        setSelectedTabId(existingTabId);
+      }
+      setPaneLayoutsByTabId((current) => ({
+        ...current,
+        [existingTabId]: {
+          ...(current[existingTabId] ?? Utils.createDefaultPaneLayout(existingTabId)),
+          activePaneId: existingPaneId
+        }
+      }));
       return;
     }
 
@@ -422,11 +485,12 @@ export function useAppWindow() {
       }
     }));
     setSelectedTabId(nextTab.id);
-  }, [createTerminalTab, memoryConversationsById, selectedTabId, tabs, terminalSessions]);
+  }, [createTerminalTab, memoryConversationsById, paneLayoutsByTabId, selectedTabId, terminalSessions]);
 
   const onNewConversation = useCallback((_options?: { seedPrompt?: string }) => {
     const nextConversationId = Utils.createConversationId();
     const terminalTabId = resolveTerminalTabId();
+    const paneId = resolvePaneId(terminalTabId);
 
     setOpenPastConversationBaselineById((current) => {
       if (!(nextConversationId in current)) {
@@ -439,18 +503,18 @@ export function useAppWindow() {
     });
 
     setTerminalSessions((current) => {
-      if (current[terminalTabId]?.activeConversationId === nextConversationId) return current;
+      if (current[paneId]?.activeConversationId === nextConversationId) return current;
       return {
         ...current,
-        [terminalTabId]: {
-          ...current[terminalTabId],
+        [paneId]: {
+          ...current[paneId],
           activeConversationId: nextConversationId,
           composerSurface: 'agent'
         }
       };
     });
     return nextConversationId;
-  }, [resolveTerminalTabId]);
+  }, [resolvePaneId, resolveTerminalTabId]);
 
   const onNewConversationInNewTab = useCallback((_options?: { seedPrompt?: string }) => {
     const nextConversationId = Utils.createConversationId();
@@ -478,16 +542,63 @@ export function useAppWindow() {
     return nextConversationId;
   }, [createTerminalTab]);
 
+  const onFocusPane = useCallback((paneId: string) => {
+    if (selectedTab.kind !== 'terminal' || activePaneId === paneId) {
+      return;
+    }
+
+    setPaneLayoutsByTabId((current) => ({
+      ...current,
+      [selectedTab.id]: {
+        ...(current[selectedTab.id] ?? Utils.createDefaultPaneLayout(selectedTab.id)),
+        activePaneId: paneId
+      }
+    }));
+  }, [activePaneId, selectedTab]);
+
+  const onSplitTerminal = useCallback((direction: 'right' | 'up') => {
+    const tabId = selectedTab.kind === 'terminal' ? selectedTab.id : resolveTerminalTabId();
+    const sourcePaneId = resolvePaneId(tabId);
+    const nextPaneId = Utils.buildPaneId(
+      tabId,
+      Object.values(paneLayoutsByTabId).flatMap((layout) => Utils.collectPaneIdsFromLayout(layout))
+    );
+    const sourceSession = terminalSessions[sourcePaneId] ?? Utils.createEmptyTerminalSession(pathContext?.homeDir ?? null);
+
+    setPaneLayoutsByTabId((current) => ({
+      ...current,
+      [tabId]: Utils.splitPaneLayout(
+        current[tabId] ?? Utils.createDefaultPaneLayout(tabId),
+        sourcePaneId,
+        direction === 'up' ? 'vertical' : 'horizontal',
+        nextPaneId
+      )
+    }));
+    setTerminalSessions((current) => ({
+      ...current,
+      [nextPaneId]: {
+        ...Utils.createEmptyTerminalSession(sourceSession.workingDirectory),
+        workingDirectory: sourceSession.workingDirectory
+      }
+    }));
+    setSelectedTabId(tabId);
+  }, [paneLayoutsByTabId, pathContext?.homeDir, resolvePaneId, resolveTerminalTabId, selectedTab, terminalSessions]);
+
   const onCloseTab = useCallback((tabId: string) => {
     if (tabs.length <= 1) {
       void closeAppWindowWithFreshWorkspace();
       return;
     }
 
-    const closingSessionIds = [
-      terminalSessions[tabId]?.terminalSessionId ?? null,
-      terminalSessions[tabId]?.agentTerminalSessionId ?? null
-    ].filter((sessionId): sessionId is string => Boolean(sessionId));
+    const paneIds = Utils.collectPaneIdsFromLayout(
+      paneLayoutsByTabId[tabId] ?? Utils.createDefaultPaneLayout(tabId)
+    );
+    const closingSessionIds = paneIds
+      .flatMap((paneId) => [
+        terminalSessions[paneId]?.terminalSessionId ?? null,
+        terminalSessions[paneId]?.agentTerminalSessionId ?? null
+      ])
+      .filter((sessionId): sessionId is string => Boolean(sessionId));
 
     closingSessionIds.forEach((sessionId) => {
       void invoke('terminal_kill_session', {
@@ -514,12 +625,62 @@ export function useAppWindow() {
       const fallbackTerminal = tabs.find((tab) => tab.id !== tabId && tab.kind === 'terminal');
       return fallbackTerminal?.id ?? null;
     });
+    setPaneLayoutsByTabId((current) => {
+      const nextLayouts = { ...current };
+      delete nextLayouts[tabId];
+      return nextLayouts;
+    });
     setTerminalSessions((current) => {
       const nextSessions = { ...current };
-      delete nextSessions[tabId];
+      paneIds.forEach((paneId) => {
+        delete nextSessions[paneId];
+      });
       return nextSessions;
     });
-  }, [closeAppWindowWithFreshWorkspace, tabs, terminalSessions, selectedTabId]);
+  }, [closeAppWindowWithFreshWorkspace, paneLayoutsByTabId, tabs, terminalSessions, selectedTabId]);
+
+  const onClosePane = useCallback((paneId: string) => {
+    const tabId = Utils.findTabIdForPane(paneLayoutsByTabId, paneId);
+    if (!tabId) {
+      return;
+    }
+
+    const paneIds = Utils.collectPaneIdsFromLayout(paneLayoutsByTabId[tabId]);
+    if (paneIds.length <= 1) {
+      onCloseTab(tabId);
+      return;
+    }
+
+    const session = terminalSessions[paneId];
+    if (session) {
+      const closingSessionIds = [session.terminalSessionId, session.agentTerminalSessionId].filter(
+        (id): id is string => Boolean(id)
+      );
+      closingSessionIds.forEach((sessionId) => {
+        void invoke('terminal_kill_session', {
+          request: { sessionId }
+        }).catch(() => {});
+      });
+    }
+
+    setPaneLayoutsByTabId((current) => {
+      const layout = current[tabId];
+      if (!layout) {
+        return current;
+      }
+      const nextLayout = Utils.removePaneFromLayout(layout, paneId);
+      return {
+        ...current,
+        [tabId]: nextLayout ?? Utils.createDefaultPaneLayout(tabId)
+      };
+    });
+
+    setTerminalSessions((current) => {
+      const next = { ...current };
+      delete next[paneId];
+      return next;
+    });
+  }, [paneLayoutsByTabId, onCloseTab, terminalSessions]);
 
   const handleTerminalWorkingDirectoryChange = useCallback((tabId: string, path: string | null) => {
     setTerminalSessions((current) => {
@@ -650,6 +811,10 @@ export function useAppWindow() {
 
   const handleDeleteConversation = useCallback(async (conversationId: string) => {
     await deleteConversation(conversationId);
+    const matchingPaneIds = Object.entries(terminalSessions)
+      .filter(([, session]) => session.activeConversationId === conversationId)
+      .map(([paneId]) => paneId);
+
     setOpenPastConversationBaselineById((current) => {
       if (!(conversationId in current)) {
         return current;
@@ -659,21 +824,21 @@ export function useAppWindow() {
       delete next[conversationId];
       return next;
     });
+    if (matchingPaneIds.length === 0) {
+      return;
+    }
     setTerminalSessions((current) => {
-      const next = Object.fromEntries(
-        Object.entries(current).map(([tabId, session]) => [
-          tabId,
-          {
-            ...session,
-            activeConversationId: session.activeConversationId === conversationId ? null : session.activeConversationId,
-            composerSurface: session.activeConversationId === conversationId ? 'terminal' : session.composerSurface
-          } satisfies TerminalSessionState
-        ])
-      );
-      if (JSON.stringify(current) === JSON.stringify(next)) return current;
+      const next = { ...current };
+      matchingPaneIds.forEach((paneId) => {
+        next[paneId] = {
+          ...next[paneId],
+          activeConversationId: null,
+          composerSurface: 'terminal'
+        };
+      });
       return next;
     });
-  }, [deleteConversation]);
+  }, [deleteConversation, terminalSessions]);
 
   const handleForkConversationInNewTab = useCallback((conversationId: string) => {
     const nextTab = createTerminalTab();
@@ -687,6 +852,35 @@ export function useAppWindow() {
     }));
     setSelectedTabId(nextTab.id);
   }, [createTerminalTab]);
+
+  const handleForkConversationInNewPane = useCallback((conversationId: string) => {
+    const tabId = selectedTab.kind === 'terminal' ? selectedTab.id : resolveTerminalTabId();
+    const sourcePaneId = resolvePaneId(tabId);
+    const nextPaneId = Utils.buildPaneId(
+      tabId,
+      Object.values(paneLayoutsByTabId).flatMap((layout) => Utils.collectPaneIdsFromLayout(layout))
+    );
+    const sourceSession = terminalSessions[sourcePaneId] ?? Utils.createEmptyTerminalSession(pathContext?.homeDir ?? null);
+
+    setTerminalSessions((current) => ({
+      ...current,
+      [nextPaneId]: {
+        ...Utils.createEmptyTerminalSession(sourceSession.workingDirectory),
+        activeConversationId: conversationId,
+        composerSurface: 'agent'
+      }
+    }));
+    setPaneLayoutsByTabId((current) => ({
+      ...current,
+      [tabId]: Utils.splitPaneLayout(
+        current[tabId] ?? Utils.createDefaultPaneLayout(tabId),
+        sourcePaneId,
+        'horizontal',
+        nextPaneId
+      )
+    }));
+    setSelectedTabId(tabId);
+  }, [paneLayoutsByTabId, pathContext?.homeDir, resolvePaneId, resolveTerminalTabId, selectedTab, terminalSessions]);
 
   const handleRenameTab = useCallback((tabId: string) => {
     const tab = tabs.find((candidate) => candidate.id === tabId);
@@ -729,13 +923,22 @@ export function useAppWindow() {
   const handleCloseOtherTabs = useCallback((tabId: string) => {
     setTabs((current) => current.filter((tab) => tab.id === tabId));
     setSelectedTabId(tabId);
-    setTerminalSessions((current) => (
+    setPaneLayoutsByTabId((current) => (
       current[tabId]
         ? { [tabId]: current[tabId] }
         : {}
     ));
+    setTerminalSessions((current) => {
+      const keptPaneIds = new Set(Utils.collectPaneIdsFromLayout(
+        paneLayoutsByTabId[tabId] ?? Utils.createDefaultPaneLayout(tabId)
+      ));
+
+      return Object.fromEntries(
+        Object.entries(current).filter(([paneId]) => keptPaneIds.has(paneId))
+      ) as Record<string, TerminalSessionState>;
+    });
     setLauncherTabId((current) => current === tabId ? current : null);
-  }, []);
+  }, [paneLayoutsByTabId]);
 
   const handleCloseTabsToRight = useCallback((tabId: string) => {
     setTabs((current) => {
@@ -746,12 +949,24 @@ export function useAppWindow() {
 
       return current.slice(0, index + 1);
     });
-    setTerminalSessions((current) => {
+    setPaneLayoutsByTabId((current) => {
       const tabIndex = tabs.findIndex((tab) => tab.id === tabId);
       const keptTabIds = new Set(tabs.slice(0, tabIndex + 1).map((tab) => tab.id));
       return Object.fromEntries(
         Object.entries(current).filter(([id]) => keptTabIds.has(id))
       );
+    });
+    setTerminalSessions((current) => {
+      const tabIndex = tabs.findIndex((tab) => tab.id === tabId);
+      const keptTabIds = new Set(tabs.slice(0, tabIndex + 1).map((tab) => tab.id));
+      const keptPaneIds = new Set(
+        Array.from(keptTabIds).flatMap((keptId) => Utils.collectPaneIdsFromLayout(
+          paneLayoutsByTabId[keptId] ?? Utils.createDefaultPaneLayout(keptId)
+        ))
+      );
+      return Object.fromEntries(
+        Object.entries(current).filter(([paneId]) => keptPaneIds.has(paneId))
+      ) as Record<string, TerminalSessionState>;
     });
     setLauncherTabId((current) => {
       if (!current) {
@@ -762,7 +977,7 @@ export function useAppWindow() {
       const keptTabIds = new Set(tabs.slice(0, tabIndex + 1).map((tab) => tab.id));
       return keptTabIds.has(current) ? current : null;
     });
-  }, [tabs]);
+  }, [paneLayoutsByTabId, tabs]);
 
   const handleSaveTabAsConfig = useCallback((tabId: string) => {
     const tab = tabs.find((candidate) => candidate.id === tabId);
@@ -784,13 +999,13 @@ export function useAppWindow() {
       name: nextName.trim(),
       createdAt: new Date().toISOString(),
       tab,
-      terminalSession: terminalSessions[tabId] ?? null
+      terminalSession: terminalSessions[paneLayoutsByTabId[tabId]?.activePaneId ?? tabId] ?? null
     };
 
     void saveSettings({
       savedWorkspaceTabConfigs: [nextConfig, ...savedConfigs].slice(0, 24)
     }, true);
-  }, [displayTabs, saveSettings, tabs, terminalSessions]);
+  }, [displayTabs, paneLayoutsByTabId, saveSettings, tabs, terminalSessions]);
 
   const handleSetTabTint = useCallback((tabId: string, tintColor: string | null) => {
     setTabs((current) => current.map((tab) => (
@@ -810,35 +1025,62 @@ export function useAppWindow() {
     setIsAgentsActive((current) => !current);
   }, []);
 
-  const getLauncherProps = useCallback((tab: WorkspaceChromeTab) => ({
-    active: tab.id === selectedTab.id,
+  const onOpenSettingsSection = useCallback((sectionId?: string) => {
+    setTabs((current) => {
+      const hasSettingsTab = current.some((tab) => tab.id === SETTINGS_TAB_ID);
+      if (hasSettingsTab) {
+        return current;
+      }
+
+      const settingsTab = initialWorkspaceChromeTabs.find((tab) => tab.id === SETTINGS_TAB_ID) ?? {
+        id: SETTINGS_TAB_ID,
+        label: 'Settings',
+        kind: 'settings' as const
+      };
+
+      const nextTabs = [...current];
+      const insertAt = Math.min(1, nextTabs.length);
+      nextTabs.splice(insertAt, 0, settingsTab);
+      return nextTabs;
+    });
+
+    if (sectionId) {
+      setActiveSectionId(sectionId);
+    }
+
+    setSelectedTabId(SETTINGS_TAB_ID);
+  }, []);
+
+  const getLauncherProps = useCallback((tabId: string, paneId: string) => ({
+    active: tabId === selectedTab.id && paneId === activePaneId,
     chatMode: 'always-open' as const,
-    conversationId: terminalSessions[tab.id]?.activeConversationId ?? null,
-    initialComposerSurface: terminalSessions[tab.id]?.composerSurface ?? ((terminalSessions[tab.id]?.activeConversationId ?? null) ? 'agent' as const : 'terminal' as const),
-    initialTerminalSessionId: terminalSessions[tab.id]?.terminalSessionId ?? null,
-    initialAgentTerminalSessionId: terminalSessions[tab.id]?.agentTerminalSessionId ?? null,
-    initialWorkingDirectory: terminalSessions[tab.id]?.workingDirectory ?? pathContext?.homeDir ?? null,
-    onComposerSurfaceChange: (composerSurface: 'agent' | 'terminal') => handleTerminalComposerSurfaceChange(tab.id, composerSurface),
-    onConversationChange: (conversationId: string | null) => handleTerminalConversationChange(tab.id, conversationId),
+    conversationId: terminalSessions[paneId]?.activeConversationId ?? null,
+    initialComposerSurface: terminalSessions[paneId]?.composerSurface ?? ((terminalSessions[paneId]?.activeConversationId ?? null) ? 'agent' as const : 'terminal' as const),
+    initialTerminalSessionId: terminalSessions[paneId]?.terminalSessionId ?? null,
+    initialAgentTerminalSessionId: terminalSessions[paneId]?.agentTerminalSessionId ?? null,
+    initialWorkingDirectory: terminalSessions[paneId]?.workingDirectory ?? pathContext?.homeDir ?? null,
+    onComposerSurfaceChange: (composerSurface: 'agent' | 'terminal') => handleTerminalComposerSurfaceChange(paneId, composerSurface),
+    onConversationChange: (conversationId: string | null) => handleTerminalConversationChange(paneId, conversationId),
     onNewConversation,
-    onPendingApprovalChange: (approval: CommandApproval | null) => handleTerminalPendingApprovalChange(tab.id, approval),
+    onPendingApprovalChange: (approval: CommandApproval | null) => handleTerminalPendingApprovalChange(paneId, approval),
     onSelectConversation,
-    onSyntheticBlocksChange: (syntheticBlocks: TerminalCommandBlock[]) => handleSyntheticBlocksChange(tab.id, syntheticBlocks),
-    onTerminalBlockMetaChange: (terminalBlockMetaById: Record<string, TerminalBlockSharedMeta>) => handleTerminalBlockMetaChange(tab.id, terminalBlockMetaById),
-    onTerminalSessionChange: (sessionId: string | null) => handleTerminalSessionChange(tab.id, sessionId),
-    onAgentTerminalBlockMetaChange: (terminalBlockMetaById: Record<string, TerminalBlockSharedMeta>) => handleAgentTerminalBlockMetaChange(tab.id, terminalBlockMetaById),
-    onAgentTerminalSessionChange: (sessionId: string | null) => handleAgentTerminalSessionChange(tab.id, sessionId),
-    onWorkingDirectoryChange: (path: string | null) => handleTerminalWorkingDirectoryChange(tab.id, path),
-    pendingApproval: terminalSessions[tab.id]?.pendingApproval ?? null,
+    onSyntheticBlocksChange: (syntheticBlocks: TerminalCommandBlock[]) => handleSyntheticBlocksChange(paneId, syntheticBlocks),
+    onTerminalBlockMetaChange: (terminalBlockMetaById: Record<string, TerminalBlockSharedMeta>) => handleTerminalBlockMetaChange(paneId, terminalBlockMetaById),
+    onTerminalSessionChange: (sessionId: string | null) => handleTerminalSessionChange(paneId, sessionId),
+    onAgentTerminalBlockMetaChange: (terminalBlockMetaById: Record<string, TerminalBlockSharedMeta>) => handleAgentTerminalBlockMetaChange(paneId, terminalBlockMetaById),
+    onAgentTerminalSessionChange: (sessionId: string | null) => handleAgentTerminalSessionChange(paneId, sessionId),
+    onWorkingDirectoryChange: (path: string | null) => handleTerminalWorkingDirectoryChange(paneId, path),
+    pendingApproval: terminalSessions[paneId]?.pendingApproval ?? null,
     persistWorkingDirectory: false,
     persistTerminalSession: true,
     resetOnMount: true,
-    sharedTerminalBlockMetaById: terminalSessions[tab.id]?.terminalBlockMetaById ?? Utils.EMPTY_META,
-    sharedSyntheticBlocks: terminalSessions[tab.id]?.syntheticBlocks ?? Utils.EMPTY_SYNTHETIC_BLOCKS,
-    sharedAgentTerminalBlockMetaById: terminalSessions[tab.id]?.agentTerminalBlockMetaById ?? Utils.EMPTY_META,
-    title: displayTabs.find((t) => t.id === tab.id)?.label,
+    sharedTerminalBlockMetaById: terminalSessions[paneId]?.terminalBlockMetaById ?? Utils.EMPTY_META,
+    sharedSyntheticBlocks: terminalSessions[paneId]?.syntheticBlocks ?? Utils.EMPTY_SYNTHETIC_BLOCKS,
+    sharedAgentTerminalBlockMetaById: terminalSessions[paneId]?.agentTerminalBlockMetaById ?? Utils.EMPTY_META,
+    title: displayTabs.find((t) => t.id === tabId)?.label,
     variant: 'workspace' as const
   }), [
+    activePaneId,
     displayTabs,
     handleAgentTerminalBlockMetaChange,
     handleAgentTerminalSessionChange,
@@ -865,12 +1107,14 @@ export function useAppWindow() {
       launcherTabId,
       selectedTab,
       activeWorkingDirectory: selectedTab.kind === 'terminal' 
-        ? terminalSessions[selectedTab.id]?.workingDirectory ?? pathContext?.homeDir ?? null
+        ? terminalSessions[activePaneId ?? selectedTab.id]?.workingDirectory ?? pathContext?.homeDir ?? null
         : pathContext?.homeDir ?? null
     },
     workspace: {
+      activePaneId,
       isLauncherView,
       isSettingsView,
+      paneLayout: selectedPaneLayout,
       tabs
     },
     sidebar: {
@@ -887,15 +1131,19 @@ export function useAppWindow() {
       handleCloseOtherTabs,
       handleCloseTabsToRight,
       handleDeleteConversation,
+      handleForkConversationInNewPane,
       handleForkConversationInNewTab,
       handleMoveTab,
       handleRenameTab,
       handleSaveTabAsConfig,
       handleSetTabTint,
       onCloseTab,
+      onClosePane,
       onNewConversation,
       onNewConversationInNewTab,
       onNewTerminalTab,
+      onFocusPane,
+      onSplitTerminal,
       onSelectConversation,
       onSelectSection,
       onSelectTab,
@@ -903,7 +1151,8 @@ export function useAppWindow() {
       onRemoveTabFromLauncher: handleRemoveTabFromLauncher,
       onToggleAgents,
       onToggleSidebar,
-      setLauncherTabId
+      setLauncherTabId,
+      onOpenSettingsSection
     }
   };
 }

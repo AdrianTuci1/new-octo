@@ -4,6 +4,8 @@ import * as Hooks from '../../../../../hooks';
 import * as Utils from '../../utils';
 import type { ShellModeSource } from '../../../../../types';
 
+const FOLLOW_UP_MIN_CONFIDENCE = 0.7;
+
 export type ComposerStateParams = {
   store: any;
   runtime: any;
@@ -27,18 +29,22 @@ export function useLauncherComposer(params: ComposerStateParams) {
 
   const isTerminalSurface = store.composerSurface === 'terminal';
   const intelligenceTerminalBlocks = isTerminalSurface ? terminalCommandBlocks : agentTerminalCommandBlocks;
-  const activeMessages = isTerminalSurface ? [] : chat.messages;
+  const terminalSurfaceCwd = terminal.cwd ?? workingDirectory.currentPath;
+  const activeMessages = isTerminalSurface
+    ? []
+    : chat.messages.filter((message: any) => !(message.role === 'tool' && message.toolKind === 'web-search'));
 
   const composerIntelligenceContextKey = useMemo(() => {
     return isTerminalSurface
-      ? `terminal:${terminal.sessionId ?? 'local'}:${workingDirectory.currentPath ?? ''}`
+      ? `terminal:${terminal.sessionId ?? 'local'}:${terminalSurfaceCwd ?? ''}`
       : `composer:${resolvedConversationId ?? 'none'}:${agentTerminal.sessionId ?? 'local'}:${workingDirectory.currentPath ?? ''}`;
-  }, [isTerminalSurface, terminal.sessionId, workingDirectory.currentPath, resolvedConversationId, agentTerminal.sessionId]);
+  }, [isTerminalSurface, terminal.sessionId, terminalSurfaceCwd, workingDirectory.currentPath, resolvedConversationId, agentTerminal.sessionId]);
 
   const composerIntelligence = Hooks.useComposerIntelligence({
     contextKey: composerIntelligenceContextKey,
     query: queryWithoutActivator,
-    cwd: workingDirectory.currentPath,
+    cwd: isTerminalSurface ? terminalSurfaceCwd : workingDirectory.currentPath,
+    sessionId: isTerminalSurface ? terminal.sessionId : agentTerminal.sessionId,
     gitBranch: gitContext.gitContext?.currentBranch ?? null,
     availableCommands: availableShellCommands,
     historyEntries: commandHistory,
@@ -74,7 +80,26 @@ export function useLauncherComposer(params: ComposerStateParams) {
 
   const composerMode = composerState.mode;
   const shellSource: ShellModeSource | null = composerState.shellSource;
-  const activeShellPrediction = composerMode === 'shell' ? composerIntelligence.prediction : null;
+
+  const getCompletionPrediction = (q: string, completions: any[]) => {
+    if (!completions || completions.length === 0) return null;
+    const firstCompletion = completions[0].name;
+    const tokens = q.split(/\s+/);
+    const lastToken = tokens[tokens.length - 1] ?? '';
+    if (lastToken && firstCompletion.startsWith(lastToken)) {
+      const suffix = firstCompletion.slice(lastToken.length);
+      return {
+        fullCommand: q + suffix,
+        completionText: suffix,
+        hint: 'Tab or Right Arrow to accept'
+      };
+    }
+    return null;
+  };
+
+  const completionState = isTerminalSurface ? terminal.completionState : agentTerminal.completionState;
+  const rawPrediction = composerMode === 'shell' ? composerIntelligence.prediction : null;
+  const activeShellPrediction = rawPrediction || (completionState?.completions ? getCompletionPrediction(chat.query, completionState.completions) : null);
 
   const latestAssistantFollowUp = useMemo(() => {
     if (isTerminalSurface) return null;
@@ -84,10 +109,12 @@ export function useLauncherComposer(params: ComposerStateParams) {
       if (
         message?.role === 'assistant' &&
         !message.isError &&
-        (message.followUpSuggestion?.value?.trim() || Hooks.followUpSuggestionFromMessageBody(message.body)?.value?.trim())
+        (isFollowUpSuggestionEligible(message.followUpSuggestion) || isFollowUpSuggestionEligible(Hooks.followUpSuggestionFromMessageBody(message.body)))
       ) {
-        const followUpSuggestion = message.followUpSuggestion ?? Hooks.followUpSuggestionFromMessageBody(message.body);
-        if (!followUpSuggestion?.value?.trim()) continue;
+        const followUpSuggestion = isFollowUpSuggestionEligible(message.followUpSuggestion)
+          ? message.followUpSuggestion
+          : Hooks.followUpSuggestionFromMessageBody(message.body);
+        if (!isFollowUpSuggestionEligible(followUpSuggestion)) continue;
 
         return {
           id: `follow-up:${message.id}`,
@@ -155,4 +182,12 @@ export function useLauncherComposer(params: ComposerStateParams) {
     terminalComposerAction,
     composerIntelligence,
   };
+}
+
+function isFollowUpSuggestionEligible(
+  suggestion: { value?: string; confidence?: number } | null | undefined
+) {
+  if (!suggestion?.value?.trim()) return false;
+  if (typeof suggestion.confidence !== 'number') return true;
+  return suggestion.confidence >= FOLLOW_UP_MIN_CONFIDENCE;
 }

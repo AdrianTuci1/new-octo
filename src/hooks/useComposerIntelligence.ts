@@ -10,6 +10,7 @@ type ComposerIntelligenceOptions = {
   contextKey: string;
   query: string;
   cwd: string | null;
+  sessionId?: string | null;
   gitBranch?: string | null;
   availableCommands: string[];
   historyEntries: ShellHistoryEntry[];
@@ -44,6 +45,13 @@ type BackendResponse = {
   recommendedAction: BackendRecommendedAction | null;
 };
 
+type BackendGhostPrediction = {
+  input: string;
+  suggestion: string;
+  confidence: number;
+  kind: string;
+};
+
 const DEFAULT_RESPONSE: BackendResponse = {
   mode: 'chat',
   shellSource: null,
@@ -56,6 +64,7 @@ export function useComposerIntelligence(options: ComposerIntelligenceOptions) {
     contextKey,
     query,
     cwd,
+    sessionId = null,
     gitBranch = null,
     availableCommands,
     historyEntries,
@@ -108,6 +117,49 @@ export function useComposerIntelligence(options: ComposerIntelligenceOptions) {
     generationRef.current = generation;
 
     const timer = window.setTimeout(() => {
+      if (surface === 'terminal') {
+        void invoke<BackendGhostPrediction | null>('terminal_get_prediction', {
+          request: {
+            sessionId,
+            input: query,
+            cwd,
+            availableCommands
+          }
+        })
+          .then((nextPrediction) => {
+            if (generationRef.current !== generation) {
+              return;
+            }
+
+            setResponse({
+              mode: 'shell',
+              shellSource: 'manual',
+              prediction: nextPrediction
+                ? {
+                    suggestion: nextPrediction.suggestion,
+                    suggestions: [nextPrediction.suggestion],
+                    kind: nextPrediction.kind
+                  }
+                : null,
+              recommendedAction: null
+            });
+            setSelectedPredictionIndex(0);
+          })
+          .catch(() => {
+            if (generationRef.current !== generation) {
+              return;
+            }
+
+            setResponse({
+              mode: 'shell',
+              shellSource: 'manual',
+              prediction: null,
+              recommendedAction: null
+            });
+          });
+        return;
+      }
+
       void invoke<BackendResponse>('terminal_get_composer_intelligence', {
         request: {
           contextKey,

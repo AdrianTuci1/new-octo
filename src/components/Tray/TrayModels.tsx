@@ -7,18 +7,11 @@ type TrayModelsProps = {
   models: ModelSpec[];
   activeTab: ModelTrayTab;
   selectedIndex: number;
-  selectedModelId: string;
+  selectedModelId: string | null;
   onSelectModel: (modelId: string) => void;
   onTabChange: (tab: ModelTrayTab) => void;
+  onOpenModelSettings?: () => void;
 };
-
-function Meter({ value }: { value: number }) {
-  return (
-    <div className="tray-model-meter">
-      <div className="tray-model-meter-fill" style={{ width: `${value}%` }} />
-    </div>
-  );
-}
 
 export function TrayModels({
   models,
@@ -26,13 +19,19 @@ export function TrayModels({
   selectedIndex,
   selectedModelId,
   onSelectModel,
-  onTabChange
+  onTabChange,
+  onOpenModelSettings
 }: TrayModelsProps) {
   if (models.length === 0) {
     return (
       <section className="tray-pane tray-models" aria-label="Model selector">
-        <div className="tray-pane-placeholder">
-          <p>No models available.</p>
+        <div className="tray-pane-placeholder tray-models-empty">
+          <p>You don't have any model.</p>
+          {onOpenModelSettings && (
+            <button className="tray-models-empty-action" type="button" onClick={onOpenModelSettings}>
+              Open model settings
+            </button>
+          )}
         </div>
       </section>
     );
@@ -77,27 +76,29 @@ export function TrayModels({
         </div>
 
         <div className="tray-models-specs">
-          <h3>Model Specs</h3>
+          <h3>Configured model</h3>
           <p>
-            Compare model quality, speed, and relative cost inside the current Octomus workflow.
+            This is the provider stored on this device and used by the launcher.
           </p>
 
-          <div className="tray-model-spec-row">
-            <span>Intelligence</span>
-            <Meter value={selectedModel.intelligence} />
+          <div className="tray-model-detail">
+            <span>Provider</span>
+            <strong>{selectedModel.provider}</strong>
           </div>
-          <div className="tray-model-spec-row">
-            <span>Speed</span>
-            <Meter value={selectedModel.speed} />
+          <div className="tray-model-detail">
+            <span>Model ID</span>
+            <strong>{selectedModel.id}</strong>
           </div>
-          <div className="tray-model-spec-row">
-            <span>Cost</span>
-            <Meter value={selectedModel.cost} />
-          </div>
+          {selectedModel.baseUrl && (
+            <div className="tray-model-detail">
+              <span>Base URL</span>
+              <strong>{selectedModel.baseUrl}</strong>
+            </div>
+          )}
 
           <div className="tray-model-meta">
-            <span>{selectedModel.provider}</span>
-            <p>{selectedModel.note ?? 'No extra notes available for this model.'}</p>
+            <span>{selectedModel.label}</span>
+            <p>{selectedModel.note ?? 'Configured locally on this device.'}</p>
           </div>
         </div>
       </div>

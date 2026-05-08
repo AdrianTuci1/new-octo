@@ -3,6 +3,10 @@ use std::time::Duration;
 use futures_util::StreamExt;
 use reqwest::header::{HeaderMap, HeaderValue, CONTENT_TYPE};
 use serde_json::{json, Value};
+use uuid::Uuid;
+
+mod prompt;
+mod tools;
 
 use super::{
     harness::{
@@ -22,6 +26,7 @@ pub struct OpenAiCompatibleConfig {
     pub base_url: String,
     pub model_id: String,
     pub source: String,
+    pub secret_id: String,
 }
 
 impl OpenAiCompatibleConfig {
@@ -57,7 +62,16 @@ impl OpenAiCompatibleConfig {
                 .filter(|model| !model.trim().is_empty())
                 .unwrap_or_else(|| DEFAULT_MODEL_ID.to_string()),
             source,
+            secret_id: format!("provider-{}", Uuid::new_v4()),
         }
+    }
+
+    pub fn with_secret_id(mut self, secret_id: Option<String>) -> Self {
+        if let Some(secret_id) = secret_id.filter(|value| !value.trim().is_empty()) {
+            self.secret_id = secret_id;
+        }
+
+        self
     }
 
     pub fn redacted_status(&self) -> (String, String, String, bool, String) {
@@ -72,15 +86,19 @@ impl OpenAiCompatibleConfig {
 
     pub fn to_persisted_value(&self) -> Value {
         json!({
-            "api_key": self.api_key,
             "base_url": self.base_url,
             "model_id": self.model_id,
             "source": self.source,
+            "secret_id": self.secret_id,
         })
     }
 
     pub fn from_persisted_value(value: &Value) -> Option<Self> {
-        let api_key = value.get("api_key")?.as_str()?.to_string();
+        let api_key = value
+            .get("api_key")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string();
         let base_url = value
             .get("base_url")
             .and_then(Value::as_str)
@@ -94,8 +112,13 @@ impl OpenAiCompatibleConfig {
             .and_then(Value::as_str)
             .unwrap_or("persisted")
             .to_string();
+        let secret_id = value
+            .get("secret_id")
+            .and_then(Value::as_str)
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| format!("provider-{}", Uuid::new_v4()));
 
-        Some(Self::new(api_key, base_url, model_id, source))
+        Some(Self::new(api_key, base_url, model_id, source).with_secret_id(Some(secret_id)))
     }
 }
 
@@ -169,58 +192,7 @@ async fn stream_chat_completion(
         }
     }
 
-    let tools = json!([
-        {
-            "type": "function",
-            "function": {
-                "name": "propose_terminal_command",
-                "description": "Propose a terminal command to the user for approval and execution.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "command": {
-                            "type": "string",
-                            "description": "The shell command to propose (e.g. 'ls -la', 'git status')."
-                        },
-                        "requiresApproval": {
-                            "type": "boolean",
-                            "description": "Whether the user must approve the command before running (always true for safety)."
-                        },
-                        "reason": {
-                            "type": "string",
-                            "description": "A short Romanian sentence that explains why access is being requested, for example: 'Am cerut accesul pentru verificarea statusului repository-ului.'"
-                        }
-                    },
-                    "required": ["command"]
-                }
-            }
-        },
-        {
-            "type": "function",
-            "function": {
-                "name": "suggest_follow_up",
-                "description": "Attach one natural-language follow-up prompt suggestion for the UI chip. This is metadata only; it is not visible assistant text and it is not a command.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "label": {
-                            "type": "string",
-                            "description": "Short chip text, at most 10 words. It must be a concrete next prompt, not a topic."
-                        },
-                        "prompt": {
-                            "type": "string",
-                            "description": "The exact natural-language user message to insert if the user accepts the suggestion."
-                        },
-                        "description": {
-                            "type": "string",
-                            "description": "One short sentence explaining why this follow-up is useful."
-                        }
-                    },
-                    "required": ["prompt"]
-                }
-            }
-        }
-    ]);
+    let tools = tools::build_tool_definitions();
 
     let request = json!({
         "model": context.model_id,
@@ -262,6 +234,7 @@ async fn stream_chat_completion(
     );
 
     let mut streamed = String::new();
+    let mut streamed_reasoning = String::new();
     let mut current_tool_call_id: Option<String> = None;
     let mut current_tool_name = String::new();
     let mut current_tool_args = String::new();
@@ -293,18 +266,26 @@ async fn stream_chat_completion(
                 let data = data.trim();
                 if data == "[DONE]" {
                     println!("[AI] Stream finished via [DONE]");
+                    if !streamed_reasoning.trim().is_empty() {
+                        sink.reasoning(streamed_reasoning.clone(), true);
+                    }
                     return Ok(done_outcome(&context.prompt, &streamed, usage));
                 }
 
                 match handle_stream_payload(data, &sink, &mut streamed, &mut usage) {
-                    Ok(Some(delta_tool_call)) => {
-                        if let Some(id) = delta_tool_call.id {
+                    Ok(Some(delta_payload)) => {
+                        if let Some(reasoning_delta) = delta_payload.reasoning {
+                            streamed_reasoning.push_str(&reasoning_delta);
+                            sink.reasoning(streamed_reasoning.clone(), false);
+                        }
+
+                        if let Some(id) = delta_payload.id {
                             current_tool_call_id = Some(id);
                         }
-                        if let Some(name) = delta_tool_call.name {
+                        if let Some(name) = delta_payload.name {
                             current_tool_name.push_str(&name);
                         }
-                        if let Some(args) = delta_tool_call.arguments {
+                        if let Some(args) = delta_payload.arguments {
                             current_tool_args.push_str(&args);
                         }
                     }
@@ -346,6 +327,10 @@ async fn stream_chat_completion(
         }
     }
 
+    if !streamed_reasoning.trim().is_empty() {
+        sink.reasoning(streamed_reasoning, true);
+    }
+
     Ok(done_outcome(&context.prompt, &streamed, usage))
 }
 
@@ -353,6 +338,7 @@ struct DeltaToolCall {
     id: Option<String>,
     name: Option<String>,
     arguments: Option<String>,
+    reasoning: Option<String>,
 }
 
 fn handle_stream_payload(
@@ -411,8 +397,19 @@ fn handle_stream_payload(
                 id,
                 name,
                 arguments,
+                reasoning: None,
             }));
         }
+    }
+
+    let reasoning = extract_reasoning_delta(delta);
+    if reasoning.is_some() {
+        return Ok(Some(DeltaToolCall {
+            id: None,
+            name: None,
+            arguments: None,
+            reasoning,
+        }));
     }
 
     Ok(None)
@@ -424,30 +421,7 @@ fn build_chat_messages(context: &AgentHarnessContext) -> Vec<Value> {
 
     messages.push(json!({
         "role": "system",
-        "content": format!(
-            "Ești Octomus, un inginer software de elită integrat într-un launcher inteligent. \
-            Misiunea ta este să ajuți utilizatorul să navigheze, să înțeleagă și să automatizeze sarcini complexe în terminal. \
-            CWD curent: {}. \
-            \
-            FILOZOFIA TA DE OPERARE: \
-            - Nu ești doar un executant, ci un partener. Analizează rezultatele și caută anomalii, oportunități sau soluții mai bune. \
-            - IMPORTANT: Utilizatorul vede deja output-ul brut al comenzii într-un bloc de terminal separat. NU repeta niciodată datele brute în răspunsul tău text sub formă de liste lungi sau blocuri de cod. \
-            - Oferă direct INTROSPECȚIE: 'Văd că ai 5 erori în fișierul X, vrei să le reparăm?' în loc de 'Iată erorile: ...'. \
-            \
-            REGULI CRITICE: \
-            1. Nu cere permisiune verbal ('Vrei să...?'). Când ai nevoie de o comandă, formulează scurt motivul la persoana I ('Am cerut accesul pentru...') și transmite-l în câmpul `reason` al uneltei `propose_terminal_command`. \
-            2. Folosește un ton modern, minimalist și extrem de util. \
-            3. După ce utilizatorul rulează o comandă de citire/verificare, confirmă că ai verificat rezultatul și oferă ajutor suplimentar doar dacă utilizatorul vrea să continue, fără să presupui automat modificări precum stage sau commit. \
-            4. Analizează contextul și fii cu un pas înaintea utilizatorului. \
-            5. După răspunsul vizibil, atașează o singură recomandare de follow-up folosind tool-ul `suggest_follow_up`. Nu scrie niciodată XML, JSON sau tag-uri în textul vizibil. \
-            6. `prompt` din `suggest_follow_up` trebuie să fie exact următorul mesaj natural pe care utilizatorul l-ar putea trimite. Trebuie să fie tratabil ca text normal de user, nu ca metadată și nu ca instrucțiune de sistem. \
-            7. `label` trebuie să fie o versiune foarte scurtă a acelui prompt, maximum 10 cuvinte, clară și specifică. \
-            8. Nu scrie niciodată în răspunsul vizibil secțiuni precum 'Sugestie de continuare:', 'Follow-up suggestion:', 'Description:', 'Label:', 'Descriere:', 'Etichetă:' sau 'Prompt:'. Acestea apar doar în argumentele tool-ului `suggest_follow_up`. \
-            9. Nu folosi recomandări generice precum 'continue this task', 'recommend next step', 'follow up', 'based on the previous request' sau variante similare. \
-            10. Dacă contextul este despre o comandă de terminal, output sau eșec, follow-up-ul trebuie să fie o întrebare ori cerere de analiză despre acel context, de exemplu în stilul 'Explică de ce a eșuat comanda și care e pasul sigur următor'. \
-            11. Dacă contextul este o cerere normală în composer, follow-up-ul trebuie să fie continuarea cea mai inteligentă după cererea anterioară, ca și cum ai anticipa următoarea întrebare utilă a utilizatorului.",
-            cwd
-        )
+        "content": prompt::build_system_prompt(cwd)
     }));
 
     for message in context.messages.iter().filter_map(sanitize_message) {
@@ -471,10 +445,12 @@ fn build_chat_messages(context: &AgentHarnessContext) -> Vec<Value> {
         messages.push(api_message);
     }
 
-    messages.push(json!({
-        "role": "user",
-        "content": context.prompt,
-    }));
+    if !context.prompt.trim().is_empty() {
+        messages.push(json!({
+            "role": "user",
+            "content": context.prompt,
+        }));
+    }
 
     messages
 }
@@ -521,6 +497,46 @@ fn parse_usage(value: Option<&Value>) -> Option<AgentUsage> {
         completion_tokens,
         total_tokens,
     })
+}
+
+fn extract_reasoning_delta(delta: Option<&Value>) -> Option<String> {
+    let delta = delta?;
+
+    if let Some(reasoning) = delta.get("reasoning").and_then(Value::as_str) {
+        let trimmed = reasoning.trim();
+        if !trimmed.is_empty() {
+            return Some(trimmed.to_string());
+        }
+    }
+
+    if let Some(reasoning) = delta.get("reasoning_content").and_then(Value::as_str) {
+        let trimmed = reasoning.trim();
+        if !trimmed.is_empty() {
+            return Some(trimmed.to_string());
+        }
+    }
+
+    let array_value = delta
+        .get("reasoning_content")
+        .or_else(|| delta.get("reasoning"))
+        .and_then(Value::as_array)?;
+
+    let merged = array_value
+        .iter()
+        .filter_map(|item| {
+            item.get("text")
+                .and_then(Value::as_str)
+                .or_else(|| item.get("content").and_then(Value::as_str))
+                .or_else(|| item.as_str())
+        })
+        .collect::<String>();
+
+    let trimmed = merged.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    Some(trimmed.to_string())
 }
 
 fn done_outcome(prompt: &str, streamed: &str, usage: Option<AgentUsage>) -> AgentHarnessOutcome {

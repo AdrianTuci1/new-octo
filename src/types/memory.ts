@@ -1,6 +1,11 @@
 import type { ChatMessage } from './chat';
 import type { CommandApproval, TerminalBlockSharedMeta, TerminalCommandBlock } from './terminal';
-import type { WorkspaceChromeTab, WorkspaceConversation } from '../components/App/chrome';
+import type {
+  WorkspaceChromeTab,
+  WorkspaceConversation,
+  WorkspacePaneDirection,
+  WorkspacePaneLayout
+} from '../components/App/chrome';
 
 export type MemorySyncState = {
   status: 'local' | 'dirty' | 'synced' | 'pending' | 'error' | string;
@@ -21,6 +26,8 @@ export type MemorySettingsValues = {
   selectedModelId?: string;
   lastWorkingDirectory?: string | null;
   terminalAutoDetectEnabled?: boolean;
+  webSearchEnabled?: boolean;
+  thinkingDisplayMode?: 'show-and-collapse' | 'always-show' | 'never-show';
   syncEndpoint?: string | null;
   telemetryEnabled?: boolean;
   [key: string]: unknown;
@@ -40,6 +47,9 @@ export type MemoryWorkspaceSnapshot = {
   tabs: WorkspaceChromeTab[];
   selectedTabId?: string | null;
   launcherTabId?: string | null;
+  paneLayoutsByTabId?: Record<string, WorkspacePaneLayout>;
+  paneTabIds?: string[];
+  paneDirection?: WorkspacePaneDirection | null;
   conversations: WorkspaceConversation[];
   terminalSessions?: Record<string, {
     activeConversationId: string | null;

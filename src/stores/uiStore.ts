@@ -6,12 +6,26 @@ interface UIState {
   lastTrayMode: TrayContentMode;
   isExpanded: boolean;
   isModelDrawerOpen: boolean;
+  isProfileDrawerOpen: boolean;
+  isRulesDrawerOpen: boolean;
+  activeProfileName: string;
+  selectedModelIdForEdit: string | null;
   
   // Actions
   setTrayMode: (mode: TrayMode) => void;
   toggleTray: (mode: TrayContentMode) => void;
   setExpanded: (expanded: boolean) => void;
   setIsModelDrawerOpen: (open: boolean) => void;
+  setSelectedModelIdForEdit: (id: string | null) => void;
+  openModelDrawer: () => void;
+  closeModelDrawer: () => void;
+  setIsProfileDrawerOpen: (open: boolean) => void;
+  openProfileDrawer: () => void;
+  closeProfileDrawer: () => void;
+  setIsRulesDrawerOpen: (open: boolean) => void;
+  openRulesDrawer: () => void;
+  closeRulesDrawer: () => void;
+  setActiveProfileName: (name: string) => void;
 }
 
 export const useUIStore = create<UIState>((set) => ({
@@ -19,6 +33,10 @@ export const useUIStore = create<UIState>((set) => ({
   lastTrayMode: 'help',
   isExpanded: false,
   isModelDrawerOpen: false,
+  isProfileDrawerOpen: false,
+  isRulesDrawerOpen: false,
+  activeProfileName: 'Default',
+  selectedModelIdForEdit: null,
 
   setTrayMode: (mode) => set((state) => {
     if (state.trayMode === mode) {
@@ -41,5 +59,15 @@ export const useUIStore = create<UIState>((set) => ({
   }),
 
   setExpanded: (expanded) => set({ isExpanded: expanded }),
-  setIsModelDrawerOpen: (open) => set({ isModelDrawerOpen: open })
+  setIsModelDrawerOpen: (open) => set({ isModelDrawerOpen: open }),
+  setSelectedModelIdForEdit: (id) => set({ selectedModelIdForEdit: id }),
+  openModelDrawer: () => set({ isModelDrawerOpen: true }),
+  closeModelDrawer: () => set({ isModelDrawerOpen: false }),
+  setIsProfileDrawerOpen: (open) => set({ isProfileDrawerOpen: open }),
+  openProfileDrawer: () => set({ isProfileDrawerOpen: true }),
+  closeProfileDrawer: () => set({ isProfileDrawerOpen: false }),
+  setIsRulesDrawerOpen: (open) => set({ isRulesDrawerOpen: open }),
+  openRulesDrawer: () => set({ isRulesDrawerOpen: true }),
+  closeRulesDrawer: () => set({ isRulesDrawerOpen: false }),
+  setActiveProfileName: (name) => set({ activeProfileName: name })
 }));

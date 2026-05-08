@@ -21,7 +21,10 @@ use tauri::{
 };
 
 mod ai;
+mod keybindings;
 mod memory;
+mod secure_store;
+mod shell_signatures;
 mod terminal;
 
 #[cfg(target_os = "macos")]
@@ -132,7 +135,10 @@ fn show_settings_window<R: Runtime>(app: &AppHandle<R>) {
     hide_onboarding(app);
 
     if let Some(window) = app.get_webview_window(SETTINGS_WINDOW_LABEL) {
-        let _ = window.destroy();
+        let _ = window.unminimize();
+        let _ = window.show();
+        let _ = window.set_focus();
+        return;
     }
 
     let Some(settings_config) = app
@@ -251,6 +257,7 @@ fn build_tray_menu<R: Runtime, M: Manager<R>>(app: &M) -> tauri::Result<Menu<R>>
 
 fn main() {
     load_env_file();
+    shell_signatures::warm_up();
 
     tauri::Builder::default()
         .manage(terminal::TerminalManager::default())
@@ -259,11 +266,14 @@ fn main() {
         .manage(memory::OctomusMemoryManager::default())
         .invoke_handler(tauri::generate_handler![
             ai::agent_start,
+            ai::agent_continue,
             ai::agent_cancel,
             ai::agent_get_run,
             ai::agent_list_runs,
             ai::agent_configure_openai_compatible,
+            ai::agent_clear_openai_compatible,
             ai::agent_provider_status,
+            ai::web_search,
             ai::ai_predict_command_smart,
             ai::diff::apply_file_diff,
             terminal::terminal_create_session,
@@ -291,6 +301,7 @@ fn main() {
             memory::memory_get_conversation,
             memory::memory_list_conversations,
             memory::memory_delete_conversation,
+            keybindings::keybindings_list_definitions,
             memory::memory_put_cloud_object,
             memory::memory_get_cloud_object,
             memory::memory_list_cloud_object_index,
@@ -310,6 +321,8 @@ fn main() {
                 let _ = window.set_background_color(None);
                 let _ = window.set_shadow(false);
             }
+
+            keybindings::install(&app.handle())?;
 
             #[cfg(desktop)]
             {

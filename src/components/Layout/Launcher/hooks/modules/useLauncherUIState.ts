@@ -17,7 +17,8 @@ export function useLauncherUIState({
     chat, 
     agentTerminal, 
     terminal, 
-    activeTimelineError 
+    activeTimelineError,
+    resolvedPendingApproval
   } = runtime;
 
   const chatMode = props.chatMode || 'auto';
@@ -52,17 +53,18 @@ export function useLauncherUIState({
     }));
   }, [store.conversationSearchQuery, memoryConversations]);
 
-  const hasChatContent = activeMessages.length > 0 || activeTimelineBlocks.length > 0 || Boolean(activeTimelineError);
+  const isTraySuppressed = Boolean(resolvedPendingApproval);
+  const hasChatContent = activeMessages.length > 0 || activeTimelineBlocks.length > 0 || Boolean(activeTimelineError) || isTraySuppressed;
   const isChatOpen = chatMode === 'always-open' ? true : hasChatContent;
-  const isChatVisible = chatMode === 'always-open' ? true : hasChatContent && !tray.isTrayOpen;
-  const isExpanded = chatMode === 'always-open' ? true : tray.isTrayOpen || hasChatContent;
+  const isChatVisible = chatMode === 'always-open' ? true : hasChatContent && (!tray.isTrayOpen || isTraySuppressed);
+  const isExpanded = chatMode === 'always-open' ? true : (tray.isTrayOpen && !isTraySuppressed) || hasChatContent;
 
   const launcherRootClassName = props.variant === 'workspace' ? 'launcher-workspace-root' : 'prototype-root';
   const launcherShellClassName = [
     'launcher-shell',
     props.variant === 'workspace' ? 'workspace-shell' : 'panel-shell',
     isChatVisible ? 'chat-active' : '',
-    tray.isTrayOpen ? 'tray-active' : '',
+    tray.isTrayOpen && !isTraySuppressed ? 'tray-active' : '',
     isExpanded ? 'expanded' : 'collapsed'
   ].filter(Boolean).join(' ');
 

@@ -1,5 +1,6 @@
 mod cloud;
 mod conversations;
+mod execution_plans;
 mod paths;
 mod storage;
 mod sync;
@@ -17,12 +18,14 @@ use crate::memory::{
         derive_task_store, first_message_created_at, status_from_messages,
         summary_from_conversation, title_from_messages, upsert_conversation_summary,
     },
-    storage::{merge_values, now_string, read_json_or_default, write_json_atomic},
+    storage::{merge_values, now_string, write_json_atomic},
     sync::{enqueue_sync_operation_inner, sync_status_from_queue},
     types::*,
 };
 
 pub use paths::OctomusMemoryManager;
+pub(crate) use storage::read_json_or_default;
+pub(crate) use types::{MemoryConversationIndex, MemoryConversationRecord};
 
 const EVENT_WORKSPACE_UPDATED: &str = "memory:workspace-updated";
 const EVENT_CONVERSATION_UPDATED: &str = "memory:conversation-updated";
@@ -585,6 +588,109 @@ mod tests {
         );
         assert_eq!(exchanges[0].tool_call_ids, vec!["call-1"]);
         assert!(tasks.iter().any(|task| task.kind == "tool"));
+    }
+
+    #[test]
+    fn assigns_exchanges_to_active_plan_step_tasks() {
+        let messages = vec![
+            json!({
+                "id": "user-1",
+                "role": "user",
+                "body": "Plan the rollout",
+                "createdAt": "2026-05-03T10:00:00Z"
+            }),
+            json!({
+                "id": "assistant-1",
+                "role": "assistant",
+                "body": "I will outline the execution plan.",
+                "createdAt": "2026-05-03T10:00:01Z"
+            }),
+            json!({
+                "id": "tool-plan-1",
+                "role": "tool",
+                "title": "Execution Plan",
+                "body": "Plan proposed.",
+                "toolKind": "plan",
+                "createdAt": "2026-05-03T10:00:02Z",
+                "executionPlan": {
+                    "id": "plan-phase-3",
+                    "title": "Execution plan",
+                    "summary": "Test orchestration",
+                    "version": "v1",
+                    "steps": [
+                        { "id": "step-1", "label": "Design task model", "status": "completed" },
+                        { "id": "step-2", "label": "Attach exchanges to steps", "status": "inProgress" },
+                        { "id": "step-3", "label": "Refine orchestration", "status": "pending" }
+                    ],
+                    "workstreams": [
+                        {
+                            "id": "memory-graph",
+                            "title": "Memory graph integration",
+                            "status": "inProgress",
+                            "stepIds": ["step-2"]
+                        },
+                        {
+                            "id": "ui-sync",
+                            "title": "UI sync for task state",
+                            "status": "pending",
+                            "stepIds": ["step-2", "step-3"]
+                        }
+                    ]
+                }
+            }),
+            json!({
+                "id": "user-2",
+                "role": "user",
+                "body": "Continue with step 2",
+                "createdAt": "2026-05-03T10:01:00Z"
+            }),
+            json!({
+                "id": "assistant-2",
+                "role": "assistant",
+                "body": "I am attaching the exchange to the active step.",
+                "createdAt": "2026-05-03T10:01:01Z",
+                "toolCalls": [{
+                    "id": "call-2",
+                    "function": { "name": "propose_plan" }
+                }]
+            }),
+        ];
+
+        let (root_task_id, tasks, exchanges) = derive_task_store(
+            "conversation-02",
+            "Execution plan",
+            "inProgress",
+            &messages,
+            "2026-05-03T10:00:00Z",
+            "2026-05-03T10:01:02Z",
+        );
+
+        assert_eq!(root_task_id, "task_root_conversation-02");
+        assert_eq!(exchanges.len(), 2);
+        assert_eq!(exchanges[0].task_id, root_task_id);
+
+        let active_workstream_task_id = "task_workstream_plan-phase-3_memory-graph";
+        assert_eq!(exchanges[1].task_id, active_workstream_task_id);
+
+        let workstream_task = tasks
+            .iter()
+            .find(|task| task.id == active_workstream_task_id)
+            .expect("active workstream task should exist");
+        assert_eq!(workstream_task.kind, "workstream");
+        assert_eq!(workstream_task.status, "inProgress");
+        assert_eq!(
+            workstream_task.exchange_ids,
+            vec!["exchange_conversation-02_2"]
+        );
+
+        let step_task = tasks
+            .iter()
+            .find(|task| task.id == "task_plan_plan-phase-3_step-2")
+            .expect("step task should exist");
+        assert_eq!(step_task.kind, "plan-step");
+        assert!(step_task
+            .child_task_ids
+            .contains(&active_workstream_task_id.to_string()));
     }
 
     #[test]

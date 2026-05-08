@@ -1,0 +1,60 @@
+.web-search-card {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  max-width: 720px;
+  padding: 10px 12px;
+  border-radius: 11px;
+  background: rgba(45, 47, 47, 0.96);
+  border: 1px solid rgba(255, 255, 255, 0.045);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.025) inset;
+  color: rgba(244, 247, 246, 0.94);
+}
+
+.web-search-card.searching {
+  border-color: rgba(56, 189, 248, 0.16);
+}
+
+.web-search-card.error {
+  border-color: rgba(248, 113, 113, 0.18);
+}
+
+.web-search-card-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  width: 100%;
+}
+
+.web-search-card-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(244, 247, 246, 0.84);
+  flex-shrink: 0;
+}
+
+.web-search-card-meta {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+}
+
+.web-search-card-title {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(244, 247, 246, 0.96);
+  white-space: nowrap;
+}
+
+.web-search-card-count {
+  font-size: 11px;
+  color: rgba(244, 247, 246, 0.56);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}

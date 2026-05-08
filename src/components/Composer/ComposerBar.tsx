@@ -25,6 +25,7 @@ type ComposerBarProps = {
   workingDirectorySearch: string;
   selectedModelLabel: string;
   terminalAutoDetectEnabled: boolean;
+  modelSetupRequired?: boolean;
   onQueryChange: (query: string) => void;
   onKeyDown: (event: KeyboardEvent<HTMLTextAreaElement>) => void;
   onRecommendedActionClick: (action: RecommendedComposerAction) => void;
@@ -39,6 +40,8 @@ type ComposerBarProps = {
   onToggleModelTray: () => void;
   onCloseGitBranchMenu: () => void;
   onSelectGitBranch: (branch: string) => void;
+  onBackFromModelSetup?: () => void;
+  onOpenModelSettings?: () => void;
   onHeightChange?: (height: number) => void;
   placeholder?: string;
 };
@@ -59,6 +62,7 @@ export function ComposerBar({
   workingDirectorySearch,
   selectedModelLabel,
   terminalAutoDetectEnabled,
+  modelSetupRequired = false,
   onQueryChange,
   onKeyDown,
   onRecommendedActionClick,
@@ -72,10 +76,12 @@ export function ComposerBar({
   onToggleModelTray,
   onCloseGitBranchMenu,
   onSelectGitBranch,
+  onBackFromModelSetup,
+  onOpenModelSettings,
   onHeightChange,
   placeholder
 }: ComposerBarProps) {
-  const { inputRef, shellRef } = useComposerBar(query, onHeightChange);
+  const { inputRef, shellRef } = useComposerBar(query, onHeightChange, { autoFocus: mode === 'shell' });
   const [isDismissed, setIsDismissed] = useState(false);
   const predictionSuffix = prediction?.completionText ?? '';
   const showShellIndicator = mode === 'shell' && shellSource === 'manual';
@@ -83,7 +89,7 @@ export function ComposerBar({
   // Reset dismissal when recommendation changes
   useEffect(() => {
     setIsDismissed(false);
-  }, [recommendedAction?.label]);
+  }, [recommendedAction?.value]);
 
   const showRecommendation = recommendedAction && query === '' && !isDismissed;
 
@@ -112,7 +118,7 @@ export function ComposerBar({
                     title={recommendedAction.description}
                   >
                     <Sparkles size={12} className="recommendation-icon" />
-                    <span className="recommendation-label">{recommendedAction.label}</span>
+                    <span className="recommendation-label">{recommendedAction.value}</span>
                     <span className="recommendation-accept-group" aria-hidden="true">
                       <span className="recommendation-accept-key">↑</span>
                       <span className="recommendation-accept-key">
@@ -141,16 +147,43 @@ export function ComposerBar({
                 ref={inputRef}
                 className={`chat-input ${showRecommendation ? 'has-recommendation' : ''}`}
                 value={query}
+                disabled={modelSetupRequired}
                 onChange={(event) => onQueryChange(event.target.value)}
                 onKeyDown={handleInternalKeyDown}
                 rows={showRecommendation ? 1 : 2}
                 placeholder={
                   mode === 'shell'
                     ? 'Run a terminal command'
-                    : placeholder ?? 'Octomus anything, or use / for tools'
+                  : placeholder ?? 'Octomus anything, or use / for tools'
                 }
               />
             </div>
+
+            {modelSetupRequired && (
+              <div className="composer-model-setup-card" role="status" aria-live="polite">
+                <div className="composer-model-setup-copy">
+                  <span className="composer-model-setup-eyebrow">Model onboarding</span>
+                  <strong>You don't have any model</strong>
+                  <p>Add one to unlock the launcher and connect your provider securely.</p>
+                </div>
+                <div className="composer-model-setup-actions">
+                  <button
+                    className="composer-model-setup-back"
+                    onClick={onBackFromModelSetup ?? onOpenModelSettings}
+                    type="button"
+                  >
+                    Back
+                  </button>
+                  <button
+                    className="composer-model-setup-primary"
+                    onClick={onOpenModelSettings}
+                    type="button"
+                  >
+                    Open model settings
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>

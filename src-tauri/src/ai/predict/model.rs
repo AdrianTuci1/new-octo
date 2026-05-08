@@ -39,81 +39,36 @@ pub fn predict_from_history(
     history: &[crate::terminal::ShellHistoryEntry],
 ) -> Option<CommandPrediction> {
     let normalized_input = input.to_lowercase();
-    use chrono::{DateTime, Utc};
-    use std::collections::HashMap;
-
-    // 1. Filter and group by command value to count frequency and collect metadata
-    // Map: command -> (frequency, is_same_dir, last_executed_at)
-    let mut stats_map: HashMap<String, (usize, bool, DateTime<Utc>)> = HashMap::new();
+    let mut same_dir_matches = Vec::new();
+    let mut other_matches = Vec::new();
 
     for entry in history {
-        if entry.value.to_lowercase().starts_with(&normalized_input)
-            && entry.value.len() > input.len()
-        {
-            let is_same_dir =
-                cwd.map_or(false, |dir| entry.pwd.as_ref().map_or(false, |p| p == dir));
-            let executed_at = DateTime::parse_from_rfc3339(&entry.executed_at)
-                .map(|dt| dt.with_timezone(&Utc))
-                .unwrap_or_else(|_| Utc::now());
+        if !entry.value.to_lowercase().starts_with(&normalized_input) {
+            continue;
+        }
+        if entry.value.trim().len() <= input.trim().len() {
+            continue;
+        }
 
-            let stats = stats_map
-                .entry(entry.value.clone())
-                .or_insert((0, false, executed_at));
-            stats.0 += 1;
-            if is_same_dir {
-                stats.1 = true;
-            }
-            if executed_at > stats.2 {
-                stats.2 = executed_at;
-            }
+        let prediction = CommandPrediction {
+            input: input.to_string(),
+            suggestion: entry.value.trim().to_string(),
+            confidence: if is_same_working_directory(cwd, entry.pwd.as_deref()) {
+                0.95
+            } else {
+                0.85
+            },
+            kind: PredictionKind::History,
+        };
+
+        if is_same_working_directory(cwd, entry.pwd.as_deref()) {
+            same_dir_matches.push(prediction);
+        } else {
+            other_matches.push(prediction);
         }
     }
 
-    if stats_map.is_empty() {
-        return None;
-    }
-
-    // 2. Rank based on our scoring module
-    let now = Utc::now();
-    let mut ranked_matches: Vec<_> = stats_map.into_iter().collect();
-    ranked_matches.sort_by(
-        |(val_a, (freq_a, same_dir_a, last_a)), (val_b, (freq_b, same_dir_b, last_b))| {
-            let hours_a = (now - *last_a).num_hours() as f32;
-            let hours_b = (now - *last_b).num_hours() as f32;
-
-            let score_a =
-                super::scoring::PredictionScore::calculate(val_a, *freq_a, *same_dir_a, hours_a)
-                    .total_score;
-            let score_b =
-                super::scoring::PredictionScore::calculate(val_b, *freq_b, *same_dir_b, hours_b)
-                    .total_score;
-
-            score_b
-                .partial_cmp(&score_a)
-                .unwrap_or(std::cmp::Ordering::Equal)
-                .then_with(|| val_b.len().cmp(&val_a.len())) // Prefer LONGER (more complete) commands
-        },
-    );
-
-    let (suggestion, (freq, is_same_dir, _)) = ranked_matches.first()?;
-
-    // 3. Disk Validation - Disabled for history matches to trust user's past actions
-    /*
-    if !is_command_still_valid(suggestion) {
-        return None;
-    }
-    */
-
-    Some(CommandPrediction {
-        input: input.to_string(),
-        suggestion: suggestion.clone(),
-        confidence: if *is_same_dir {
-            0.95
-        } else {
-            0.85 + (0.1 * (*freq as f32 / 100.0).min(1.0))
-        },
-        kind: PredictionKind::History,
-    })
+    same_dir_matches.into_iter().chain(other_matches).next()
 }
 
 pub fn get_zero_state_suggestions(cwd: &str) -> Vec<String> {
@@ -208,18 +163,55 @@ pub fn predict_from_sequences(
     })
 }
 
+pub fn git_push_target(git_branch: Option<&str>) -> Option<String> {
+    let branch = normalize_git_branch(git_branch)?;
+    Some(format!("git push -u origin {branch}"))
+}
+
+pub fn is_same_working_directory(current: Option<&str>, candidate: Option<&str>) -> bool {
+    let Some(current) = current.map(str::trim).filter(|value| !value.is_empty()) else {
+        return false;
+    };
+    let Some(candidate) = candidate.map(str::trim).filter(|value| !value.is_empty()) else {
+        return false;
+    };
+
+    current == candidate
+}
+
+fn normalize_git_branch(git_branch: Option<&str>) -> Option<&str> {
+    git_branch.map(str::trim).filter(|value| {
+        !value.is_empty() && *value != "HEAD" && *value != "(no branch)" && *value != "detached"
+    })
+}
+
 pub fn predict_next_command(input: &str, last_command: Option<&str>) -> Option<CommandPrediction> {
+    predict_next_command_with_context(input, last_command, None)
+}
+
+pub fn predict_next_command_with_context(
+    input: &str,
+    last_command: Option<&str>,
+    git_branch: Option<&str>,
+) -> Option<CommandPrediction> {
     let trimmed = input.trim();
     if trimmed.is_empty() {
         return None;
     }
 
+    let git_push_target = git_push_target(git_branch);
     let suggestion = match trimmed {
-        "git" => match last_command {
-            Some(command) if command.starts_with("git add") => "git commit -m \"describe changes\"",
-            Some(command) if command.starts_with("git commit") => "git push",
-            _ => "git status",
-        },
+        "git" => {
+            if let Some(target) = git_push_target.as_deref() {
+                target
+            } else {
+                match last_command {
+                    Some(command) if command.starts_with("git add") => "git commit",
+                    Some(command) if command.starts_with("git commit") => "git push",
+                    _ => "git status",
+                }
+            }
+        }
         "npm" => "npm run dev",
         "cargo" => "cargo test",
         "rg" => "rg --files",
@@ -229,7 +221,7 @@ pub fn predict_next_command(input: &str, last_command: Option<&str>) -> Option<C
         "python" => "python3 ",
         "python3" => "python3 main.py",
         "cd" => "cd ..",
-        _ if trimmed.starts_with("git pu") => "git push -u origin HEAD",
+        _ if trimmed.starts_with("git pu") => git_push_target.as_deref().unwrap_or("git push"),
         _ if trimmed.starts_with("git sta") => "git status",
         _ if trimmed.starts_with("pip i") => "pip install -r requirements.txt",
         _ if trimmed.starts_with("docker r") => "docker run -it ",
@@ -262,4 +254,36 @@ pub fn predict_from_executables(
             confidence: 0.6,
             kind: PredictionKind::Heuristic,
         })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn predicts_branch_push_for_bare_git_when_branch_is_known() {
+        let prediction =
+            predict_next_command_with_context("git", None, Some("feature/new-branch")).unwrap();
+
+        assert_eq!(
+            prediction.suggestion,
+            "git push -u origin feature/new-branch"
+        );
+    }
+
+    #[test]
+    fn falls_back_to_git_status_without_branch_context() {
+        let prediction = predict_next_command("git", None).unwrap();
+
+        assert_eq!(prediction.suggestion, "git status");
+    }
+
+    #[test]
+    fn prefers_exact_working_directory_matches() {
+        assert!(is_same_working_directory(Some("/user"), Some("/user")));
+        assert!(!is_same_working_directory(
+            Some("/user"),
+            Some("/tmp/other")
+        ));
+    }
 }

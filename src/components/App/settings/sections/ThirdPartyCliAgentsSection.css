@@ -1,0 +1,234 @@
+.third-party-cli-panel {
+  max-width: 760px;
+}
+
+.info-icon-hint {
+  color: var(--text-dim);
+  opacity: 0.6;
+  cursor: help;
+  transition: opacity 120ms ease;
+}
+
+.info-icon-hint:hover {
+  opacity: 1;
+}
+
+/* Fields & Regex Inputs */
+.cli-agents-section-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.cli-field-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-main);
+  margin-bottom: 8px;
+}
+
+.cli-field-description {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-dim);
+  opacity: 0.8;
+}
+
+.cli-input-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.cli-text-input {
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  padding: 10px 40px 10px 12px;
+  color: #ffffff;
+  font-size: 13px;
+  outline: none;
+  transition: all 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.cli-text-input:focus {
+  border-color: rgba(0, 163, 255, 0.5);
+  background: rgba(0, 0, 0, 0.35);
+  box-shadow: 0 0 0 2px rgba(0, 163, 255, 0.12);
+}
+
+.cli-text-input::placeholder {
+  color: rgba(255, 255, 255, 0.22);
+}
+
+.cli-input-arrow-btn {
+  position: absolute;
+  right: 12px;
+  background: transparent;
+  border: 0;
+  color: var(--text-dim);
+  opacity: 0.6;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  padding: 4px;
+  border-radius: 4px;
+  transition: all 120ms ease;
+}
+
+.cli-input-arrow-btn:hover {
+  color: var(--text-main);
+  opacity: 1;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.cli-group-subtitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-main);
+  margin: 0 0 12px 0;
+}
+
+/* Toolbar Configurator Box */
+.toolbar-layout-container {
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.15);
+  padding: 16px;
+}
+
+.available-chips-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.available-chips-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+.restore-default-btn {
+  background: transparent;
+  border: 0;
+  color: var(--text-dim);
+  opacity: 0.7;
+  font-size: 11.5px;
+  font-weight: 500;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  transition: all 120ms ease;
+}
+
+.restore-default-btn:hover {
+  color: var(--text-main);
+  opacity: 1;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.available-chips-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+/* Chip Styles */
+.layout-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 0 10px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+  color: var(--text-main);
+  font-size: 11px;
+  font-weight: 500;
+  transition: all 140ms ease;
+  user-select: none;
+}
+
+.layout-chip.available {
+  cursor: pointer;
+}
+
+.layout-chip.available:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.16);
+  transform: translateY(-1px);
+}
+
+.chip-icon {
+  color: var(--text-dim);
+  opacity: 0.8;
+  flex-shrink: 0;
+}
+
+.layout-chip.active-chip {
+  padding-right: 6px;
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.chip-remove-btn {
+  background: transparent;
+  border: 0;
+  color: var(--text-dim);
+  opacity: 0.5;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  padding: 2px;
+  border-radius: 50%;
+  margin-left: 2px;
+  transition: all 120ms ease;
+}
+
+.chip-remove-btn:hover {
+  color: #ff4444;
+  opacity: 1;
+  background: rgba(255, 68, 68, 0.12);
+}
+
+/* Sides Dropzones Column/Row Layout */
+.sides-dropzones-row {
+  display: flex;
+  gap: 16px;
+}
+
+.dropzone-column {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.dropzone-label {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-dim);
+}
+
+.dropzone-box {
+  min-height: 80px;
+  border: 1px dashed rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.08);
+  padding: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-content: flex-start;
+}
+
+/* Utilities */
+.mt-6 { margin-top: 6px; }
+.mt-20 { margin-top: 20px; }
+.mt-24 { margin-top: 24px; }

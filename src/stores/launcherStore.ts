@@ -1,9 +1,11 @@
-import { create } from 'zustand';
+import { createContext, createElement, useContext, type ReactNode } from 'react';
+import { createStore, type StoreApi } from 'zustand/vanilla';
+import { useStore } from 'zustand';
 import type { ComposerMode } from '../types/ui';
 import type { HistoryEntry, HistoryTab } from '../types/history';
 import type { CommandApproval } from '../types/terminal';
 
-interface LauncherState {
+export interface LauncherState {
   composerSurface: 'agent' | 'terminal';
   modeLock: ComposerMode | null;
   autodetectedShellLatch: boolean;
@@ -36,53 +38,76 @@ interface LauncherState {
   reset: (initialComposerSurface: 'agent' | 'terminal') => void;
 }
 
-export const useLauncherStore = create<LauncherState>((set) => ({
-  composerSurface: 'terminal',
-  modeLock: null,
-  autodetectedShellLatch: false,
-  allowSingleCharacterCommandPrediction: false,
-  terminalAutoDetectEnabled: true,
-  historyTab: 'all',
-  selectedHistoryIndex: 0,
-  modelTab: 'all',
-  selectedModelIndex: 0,
-  localConversationId: null,
-  conversationSearchQuery: '',
-  savedPromptEntries: [],
-  localPendingApproval: null,
+export type LauncherStoreApi = StoreApi<LauncherState>;
 
-  setComposerSurface: (surface) => set({ composerSurface: surface }),
-  setModeLock: (mode) => set({ modeLock: mode }),
-  setAutodetectedShellLatch: (latch) => set({ autodetectedShellLatch: latch }),
-  setAllowSingleCharacterCommandPrediction: (allow) => set({ allowSingleCharacterCommandPrediction: allow }),
-  setTerminalAutoDetectEnabled: (enabled) => set({ terminalAutoDetectEnabled: enabled }),
-  setHistoryTab: (tab) => set((state) => ({ 
-    historyTab: typeof tab === 'function' ? tab(state.historyTab) : tab 
-  })),
-  setSelectedHistoryIndex: (index) => set((state) => ({ 
-    selectedHistoryIndex: typeof index === 'function' ? index(state.selectedHistoryIndex) : index 
-  })),
-  setModelTab: (tab) => set((state) => ({ 
-    modelTab: typeof tab === 'function' ? tab(state.modelTab) : tab 
-  })),
-  setSelectedModelIndex: (index) => set((state) => ({ 
-    selectedModelIndex: typeof index === 'function' ? index(state.selectedModelIndex) : index 
-  })),
-  setLocalConversationId: (id) => set({ localConversationId: id }),
-  setConversationSearchQuery: (query) => set({ conversationSearchQuery: query }),
-  setSavedPromptEntries: (entries) => set({ savedPromptEntries: entries }),
-  setLocalPendingApproval: (approval) => set({ localPendingApproval: approval }),
-
-  reset: (initialComposerSurface) => set({
+function buildInitialState(initialComposerSurface: 'agent' | 'terminal' = 'terminal') {
+  return {
     composerSurface: initialComposerSurface,
-    localPendingApproval: null,
     modeLock: null,
     autodetectedShellLatch: false,
     allowSingleCharacterCommandPrediction: false,
     terminalAutoDetectEnabled: true,
-    historyTab: 'all',
+    historyTab: 'all' as const,
     selectedHistoryIndex: 0,
-    modelTab: 'all',
+    modelTab: 'all' as const,
     selectedModelIndex: 0,
-  })
-}));
+    localConversationId: null,
+    conversationSearchQuery: '',
+    savedPromptEntries: [],
+    localPendingApproval: null
+  };
+}
+
+export function createLauncherStore(
+  initialComposerSurface: 'agent' | 'terminal' = 'terminal'
+): LauncherStoreApi {
+  return createStore<LauncherState>((set) => ({
+    ...buildInitialState(initialComposerSurface),
+
+    setComposerSurface: (surface) => set({ composerSurface: surface }),
+    setModeLock: (mode) => set({ modeLock: mode }),
+    setAutodetectedShellLatch: (latch) => set({ autodetectedShellLatch: latch }),
+    setAllowSingleCharacterCommandPrediction: (allow) => set({ allowSingleCharacterCommandPrediction: allow }),
+    setTerminalAutoDetectEnabled: (enabled) => set({ terminalAutoDetectEnabled: enabled }),
+    setHistoryTab: (tab) => set((state) => ({
+      historyTab: typeof tab === 'function' ? tab(state.historyTab) : tab
+    })),
+    setSelectedHistoryIndex: (index) => set((state) => ({
+      selectedHistoryIndex: typeof index === 'function' ? index(state.selectedHistoryIndex) : index
+    })),
+    setModelTab: (tab) => set((state) => ({
+      modelTab: typeof tab === 'function' ? tab(state.modelTab) : tab
+    })),
+    setSelectedModelIndex: (index) => set((state) => ({
+      selectedModelIndex: typeof index === 'function' ? index(state.selectedModelIndex) : index
+    })),
+    setLocalConversationId: (id) => set({ localConversationId: id }),
+    setConversationSearchQuery: (query) => set({ conversationSearchQuery: query }),
+    setSavedPromptEntries: (entries) => set({ savedPromptEntries: entries }),
+    setLocalPendingApproval: (approval) => set({ localPendingApproval: approval }),
+
+    reset: (nextComposerSurface) => set({
+      ...buildInitialState(nextComposerSurface)
+    })
+  }));
+}
+
+const globalLauncherStore = createLauncherStore();
+const LauncherStoreContext = createContext<LauncherStoreApi | null>(null);
+
+export function LauncherStoreProvider(props: {
+  children: ReactNode;
+  store: LauncherStoreApi;
+}) {
+  return createElement(LauncherStoreContext.Provider, { value: props.store }, props.children);
+}
+
+export function useLauncherStore(): LauncherState;
+export function useLauncherStore<T>(selector: (state: LauncherState) => T): T;
+export function useLauncherStore<T>(selector?: (state: LauncherState) => T) {
+  const scopedStore = useContext(LauncherStoreContext);
+  const store = scopedStore ?? globalLauncherStore;
+  return selector
+    ? useStore(store, selector)
+    : useStore(store, ((state: LauncherState) => state) as (state: LauncherState) => T);
+}

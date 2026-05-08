@@ -9,7 +9,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 use crate::terminal::{
-    home_dir, terminal_list_directory_entries, ListDirectoryEntriesRequest, ShellHistoryEntry,
+    home_dir, sort_history_entries_by_recency, terminal_list_directory_entries,
+    ListDirectoryEntriesRequest, ShellHistoryEntry,
 };
 
 #[derive(Debug, Deserialize)]
@@ -308,13 +309,19 @@ async fn build_composer_prediction(
             push_unique_candidate(&mut suggestions, suggestion, "history");
         }
 
-        for suggestion in
+        if let Some(suggestion) =
             collect_history_prefix_matches(trimmed, &prediction_history, request.cwd.as_deref())
+                .into_iter()
+                .find(|candidate| is_command_candidate_valid(candidate, request))
         {
-            push_unique_candidate(&mut suggestions, suggestion, "history");
+            return Some(ComposerPredictionResponse {
+                suggestion: suggestion.clone(),
+                suggestions: vec![suggestion],
+                kind: "history".to_string(),
+            });
         }
 
-        for suggestion in collect_completion_candidates(raw_query, request) {
+        for suggestion in collect_completion_candidates(raw_query, request, &prediction_history) {
             push_unique_candidate(&mut suggestions, suggestion, "completion");
         }
 
@@ -334,7 +341,11 @@ async fn build_composer_prediction(
             push_unique_candidate(&mut suggestions, suggestion.clone(), "history");
         }
 
-        if let Some(prediction) = super::model::predict_next_command(trimmed, last_command) {
+        if let Some(prediction) = super::model::predict_next_command_with_context(
+            trimmed,
+            last_command,
+            request.git_branch.as_deref(),
+        ) {
             push_unique_candidate(&mut suggestions, prediction.suggestion, "heuristic");
         }
 
@@ -364,13 +375,13 @@ async fn build_composer_prediction(
     } else {
         trimmed.to_lowercase()
     };
-    suggestions.retain(|(suggestion, _)| {
+    suggestions.retain(|(suggestion, kind)| {
         let candidate = suggestion.trim();
         !candidate.is_empty()
             && candidate != trimmed
             && !rejected.contains(candidate)
             && (trimmed.is_empty() || candidate.to_lowercase().starts_with(&overlay_prefix))
-            && is_command_candidate_valid(candidate, request)
+            && (*kind == "history" || is_command_candidate_valid(candidate, request))
     });
     rank_shell_candidates(
         &mut suggestions,
@@ -391,8 +402,8 @@ async fn build_composer_prediction(
     })
 }
 
-fn should_use_ai_shell_prediction(request: &ComposerIntelligenceRequest, input: &str) -> bool {
-    request.surface == "terminal" && (input.is_empty() || input.len() >= 3)
+fn should_use_ai_shell_prediction(_request: &ComposerIntelligenceRequest, _input: &str) -> bool {
+    false
 }
 
 async fn build_ai_prediction(
@@ -406,7 +417,9 @@ async fn build_ai_prediction(
         .load_provider_config_from_disk()
         .ok()
         .flatten()
+        .filter(|config| !config.api_key.trim().is_empty())
         .or_else(|| ai_manager.provider_config().ok().flatten())
+        .filter(|config| !config.api_key.trim().is_empty())
         .or_else(crate::ai::agent::openai::OpenAiCompatibleConfig::from_env)?;
     let history_context =
         build_history_context(last_command, history_entries, request.cwd.as_deref());
@@ -494,7 +507,9 @@ async fn build_ai_recommended_action(
         .load_provider_config_from_disk()
         .ok()
         .flatten()
+        .filter(|config| !config.api_key.trim().is_empty())
         .or_else(|| ai_manager.provider_config().ok().flatten())
+        .filter(|config| !config.api_key.trim().is_empty())
         .or_else(crate::ai::agent::openai::OpenAiCompatibleConfig::from_env)?;
 
     let client = reqwest::Client::builder()
@@ -623,8 +638,10 @@ async fn build_recommended_action(
         return Some(cached);
     }
 
-    if let Some(action) = build_ai_recommended_action(request, mode, ai_manager).await {
-        return Some(action);
+    if request.surface != "terminal" {
+        if let Some(action) = build_ai_recommended_action(request, mode, ai_manager).await {
+            return Some(action);
+        }
     }
 
     build_heuristic_recommended_action(request, mode)
@@ -1047,6 +1064,7 @@ fn build_prediction_history(request: &ComposerIntelligenceRequest) -> Vec<ShellH
         .collect::<Vec<_>>();
 
     entries.extend(request.history_entries.iter().cloned());
+    sort_history_entries_by_recency(&mut entries);
     entries
 }
 
@@ -1107,7 +1125,7 @@ fn collect_sequence_candidates(
         }
 
         *counts.entry(candidate.to_string()).or_insert(0) += 1;
-        if cwd.is_some() && newer.pwd.as_deref() == cwd {
+        if super::model::is_same_working_directory(cwd, newer.pwd.as_deref()) {
             *same_dir_counts.entry(candidate.to_string()).or_insert(0) += 1;
         }
 
@@ -1153,8 +1171,8 @@ fn collect_history_prefix_matches(
     let mut same_dir_matches = Vec::new();
     let mut other_matches = Vec::new();
 
-    // Warp scans reverse-chronological history and promotes matches from the
-    // current working directory before falling back to matches from elsewhere.
+    // Warp-like behavior: promote matches from the exact current working
+    // directory before falling back to commands from other directories.
     for entry in history_entries.iter() {
         let value = entry.value.trim();
         if value.is_empty() || !value.to_lowercase().starts_with(&normalized_input) {
@@ -1165,7 +1183,7 @@ fn collect_history_prefix_matches(
             continue;
         }
 
-        if cwd.is_some() && entry.pwd.as_deref() == cwd {
+        if super::model::is_same_working_directory(cwd, entry.pwd.as_deref()) {
             same_dir_matches.push(value.to_string());
         } else {
             other_matches.push(value.to_string());
@@ -1264,7 +1282,10 @@ fn history_candidate_score(
         .filter(|entry| entry.value.trim() == candidate)
     {
         total_count += 1;
-        same_dir_count += i64::from(cwd.is_some() && entry.pwd.as_deref() == cwd);
+        same_dir_count += i64::from(super::model::is_same_working_directory(
+            cwd,
+            entry.pwd.as_deref(),
+        ));
         from_current_session = from_current_session || entry.source == "session";
         if entry.executed_at.as_str() > latest_executed_at {
             latest_executed_at = entry.executed_at.as_str();
@@ -1309,7 +1330,7 @@ fn git_workflow_candidate_score(
         }
     }
 
-    if candidate == "git commit -m \"describe changes\""
+    if candidate == "git commit"
         && (last.starts_with("git add") || last.starts_with("git restore --staged"))
     {
         return 10_000;
@@ -1352,8 +1373,13 @@ fn is_low_information_shell_command(value: &str) -> bool {
 fn collect_completion_candidates(
     input: &str,
     request: &ComposerIntelligenceRequest,
+    history_entries: &[ShellHistoryEntry],
 ) -> Vec<String> {
     let mut candidates = Vec::new();
+
+    for candidate in crate::shell_signatures::collect_signature_candidates(input, history_entries) {
+        candidates.push(candidate);
+    }
 
     if let Some(candidate) = predict_git_branch_completion(input, request.git_branch.as_deref()) {
         candidates.push(candidate);
@@ -1380,25 +1406,15 @@ fn collect_git_command_candidates(
     }
 
     let mut candidates = Vec::new();
-    let branch = request
-        .git_branch
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| {
-            !value.is_empty() && *value != "HEAD" && *value != "(no branch)" && *value != "detached"
-        });
-    let push_target = branch.map(|branch| format!("git push -u origin {branch}"));
+    let push_target = super::model::git_push_target(request.git_branch.as_deref());
     let last = last_command.unwrap_or_default().trim();
 
     if let Some(target) = push_target.as_ref() {
-        if last.starts_with("git commit") || branch.is_some_and(|value| value.starts_with("codex/"))
-        {
-            candidates.push(target.clone());
-        }
+        candidates.push(target.clone());
     }
 
     if last.starts_with("git add") || last.starts_with("git restore --staged") {
-        candidates.push("git commit -m \"describe changes\"".to_string());
+        candidates.push("git commit".to_string());
     }
 
     if last.starts_with("git status") {
@@ -1480,6 +1496,10 @@ fn is_argument_token_valid(token: &str, cwd: Option<&str>, tokens: &[&str], inde
         return true;
     }
 
+    if command_path_arg && !explicit_path {
+        return true;
+    }
+
     let resolved = resolve_candidate_path(normalized, cwd);
     resolved.exists() || resolved.parent().is_some_and(Path::exists)
 }
@@ -1544,52 +1564,7 @@ fn is_shell_builtin(token: &str) -> bool {
 }
 
 fn command_argument_expects_path(tokens: &[&str], index: usize) -> bool {
-    let Some(command) = tokens.first().map(|value| value.to_ascii_lowercase()) else {
-        return false;
-    };
-
-    if command == "git" {
-        let subcommand = tokens.get(1).copied().unwrap_or_default();
-        if matches!(subcommand, "add" | "rm" | "mv" | "restore" | "diff") {
-            return index >= 2;
-        }
-
-        if matches!(subcommand, "checkout" | "switch") {
-            return tokens.iter().take(index).any(|token| *token == "--");
-        }
-
-        return false;
-    }
-
-    if command == "rg" || command == "grep" {
-        return index >= 2;
-    }
-
-    matches!(
-        command.as_str(),
-        "cat"
-            | "less"
-            | "more"
-            | "head"
-            | "tail"
-            | "vim"
-            | "vi"
-            | "nano"
-            | "code"
-            | "open"
-            | "ls"
-            | "du"
-            | "find"
-            | "rm"
-            | "cp"
-            | "mv"
-            | "chmod"
-            | "chown"
-            | "python"
-            | "python3"
-            | "node"
-            | "deno"
-    )
+    crate::shell_signatures::command_argument_expects_path(tokens, index)
 }
 
 fn is_likely_shell_command(
@@ -1760,13 +1735,10 @@ fn levenshtein(left: &str, right: &str) -> usize {
 }
 
 fn predict_git_branch_completion(input: &str, git_branch: Option<&str>) -> Option<String> {
-    let branch = git_branch.map(str::trim).filter(|value| {
-        !value.is_empty() && *value != "HEAD" && *value != "(no branch)" && *value != "detached"
-    })?;
-    let target = format!("git push -u origin {branch}");
+    let target = super::model::git_push_target(git_branch)?;
     let normalized_input = input.trim_end();
 
-    if target.starts_with(input) && input.len() >= "git p".len() {
+    if normalized_input == "git" || (target.starts_with(input) && input.len() >= "git p".len()) {
         return Some(target);
     }
 
@@ -1957,4 +1929,108 @@ fn build_nested_path_request(
     };
 
     Some((directory_path, partial_name.to_string(), replacement_prefix))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_request() -> ComposerIntelligenceRequest {
+        ComposerIntelligenceRequest {
+            context_key: "test".to_string(),
+            query: "git".to_string(),
+            cwd: Some("/tmp".to_string()),
+            git_branch: Some("feature/new-branch".to_string()),
+            available_commands: vec!["git".to_string()],
+            history_entries: vec![],
+            terminal_blocks: vec![],
+            messages: vec![],
+            locked_mode: None,
+            autodetect_enabled: true,
+            allow_single_character_prediction: true,
+            force_shell_mode: true,
+            enable_zero_state_prediction: true,
+            surface: "terminal".to_string(),
+        }
+    }
+
+    #[test]
+    fn git_branch_completion_targets_the_current_branch_on_bare_git() {
+        let candidate = predict_git_branch_completion("git", Some("feature/new-branch")).unwrap();
+
+        assert_eq!(candidate, "git push -u origin feature/new-branch");
+    }
+
+    #[test]
+    fn git_push_target_ranks_above_git_status() {
+        let request = test_request();
+        let history = Vec::<ShellHistoryEntry>::new();
+
+        let push_score = shell_candidate_score(
+            "git push -u origin feature/new-branch",
+            "completion",
+            &request,
+            &history,
+            "git",
+            None,
+        );
+        let status_score =
+            shell_candidate_score("git status", "history", &request, &history, "git", None);
+
+        assert!(push_score > status_score);
+    }
+
+    #[test]
+    fn history_scoring_treats_same_directory_as_related() {
+        let history = vec![ShellHistoryEntry {
+            value: "modal run train".to_string(),
+            executed_at: "2026-05-07T10:00:00Z".to_string(),
+            source: "session".to_string(),
+            pwd: Some("/user".to_string()),
+        }];
+
+        let score = history_candidate_score("modal run train", &history, Some("/user"));
+
+        assert!(score >= 6_500);
+    }
+
+    #[test]
+    fn build_prediction_prefers_full_history_command_for_modal() {
+        let request = ComposerIntelligenceRequest {
+            context_key: "test".to_string(),
+            query: "modal".to_string(),
+            cwd: Some("/user".to_string()),
+            git_branch: None,
+            available_commands: vec!["modal".to_string()],
+            history_entries: vec![ShellHistoryEntry {
+                value: "modal run train".to_string(),
+                executed_at: "2026-05-07T10:00:00Z".to_string(),
+                source: "session".to_string(),
+                pwd: Some("/user".to_string()),
+            }],
+            terminal_blocks: vec![],
+            messages: vec![],
+            locked_mode: None,
+            autodetect_enabled: true,
+            allow_single_character_prediction: true,
+            force_shell_mode: true,
+            enable_zero_state_prediction: true,
+            surface: "terminal".to_string(),
+        };
+
+        let ai_manager = crate::ai::AgentHarnessManager::default();
+        let state = ComposerSessionState::default();
+        let prediction = tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(build_composer_prediction(
+                &request,
+                "shell",
+                &state,
+                &ai_manager,
+            ))
+            .expect("expected a prediction");
+
+        assert_eq!(prediction.suggestion, "modal run train");
+        assert_eq!(prediction.kind, "history");
+    }
 }

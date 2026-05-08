@@ -72,6 +72,11 @@ pub struct MemoryWorkspaceSnapshot {
     pub tabs: Vec<Value>,
     pub selected_tab_id: Option<String>,
     pub launcher_tab_id: Option<String>,
+    #[serde(default = "empty_object")]
+    pub pane_layouts_by_tab_id: Value,
+    #[serde(default)]
+    pub pane_tab_ids: Vec<String>,
+    pub pane_direction: Option<String>,
     #[serde(default)]
     pub conversations: Vec<Value>,
     #[serde(default = "empty_object")]
