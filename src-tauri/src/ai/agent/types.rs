@@ -11,6 +11,7 @@ pub struct AgentRunRequest {
     pub prompt: String,
     pub cwd: Option<String>,
     pub model_id: Option<String>,
+    pub terminal_model_id: Option<String>,
     #[serde(default)]
     pub messages: Vec<AgentInputMessage>,
 }
@@ -23,6 +24,7 @@ pub struct AgentContinueRequest {
     pub assistant_message_id: Option<String>,
     pub cwd: Option<String>,
     pub model_id: Option<String>,
+    pub terminal_model_id: Option<String>,
     #[serde(default)]
     pub messages: Vec<AgentInputMessage>,
 }

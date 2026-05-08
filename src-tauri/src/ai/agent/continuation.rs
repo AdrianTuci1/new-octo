@@ -71,6 +71,7 @@ pub async fn agent_continue(
         prompt: String::new(),
         cwd,
         model_id: model_id.clone(),
+        terminal_model_id: request.terminal_model_id,
         messages: request.messages,
     };
 

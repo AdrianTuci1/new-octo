@@ -48,6 +48,7 @@ pub struct AgentHarnessContext {
     pub messages: Vec<AgentInputMessage>,
     pub cwd: Option<String>,
     pub model_id: String,
+    pub terminal_model_id: Option<String>,
 }
 
 #[derive(Debug, Clone)]
