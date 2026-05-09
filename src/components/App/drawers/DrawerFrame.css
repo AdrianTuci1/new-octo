@@ -70,6 +70,7 @@
 
 .editor-drawer,
 .model-mgmt-drawer,
+.cloud-profile-drawer,
 .keyboard-shortcuts-drawer {
   height: 100%;
   display: flex;
@@ -89,6 +90,11 @@
 .app-window-drawer-wrapper.model-drawer-wrapper {
   box-shadow: -10px 0 30px rgba(0, 0, 0, 0.5);
   border-left: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.app-window-drawer-wrapper.cloud-profile-drawer-wrapper {
+  box-shadow: -10px 0 30px rgba(0, 0, 0, 0.44);
+  border-left: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .app-window-drawer-wrapper.keyboard-shortcuts-drawer-wrapper {

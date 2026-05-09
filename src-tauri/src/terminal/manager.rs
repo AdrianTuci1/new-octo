@@ -2,29 +2,30 @@ use std::{
     collections::HashMap,
     io::Read,
     process::Command,
-    sync::{Arc, Mutex},
+    sync::Mutex,
     thread,
 };
 
-use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, State};
 
 use super::ansi::{clean_terminal_text, HookParser, TerminalStreamEvent};
 use super::block::TerminalBlock;
 use super::completions::{ShellCompletion, ShellCompletionFormat};
-use super::pty::spawn_terminal;
-use super::session::{SharedTerminalSession, TerminalSessionInfo};
-
-const EVENT_DATA: &str = "terminal:data";
-const EVENT_BLOCK: &str = "terminal:block";
-const EVENT_BLOCK_OUTPUT: &str = "terminal:block-output";
-const EVENT_EXIT: &str = "terminal:exit";
-const EVENT_SESSION_CWD: &str = "terminal:session-cwd";
-const EVENT_COMPLETIONS_STARTED: &str = "terminal:completions-started";
-const EVENT_COMPLETIONS_FINISHED: &str = "terminal:completions-finished";
-const EVENT_COMPLETION_RESULT: &str = "terminal:completion-result";
-const EVENT_COMPLETION_UPDATE: &str = "terminal:completion-update";
-const EVENT_COMPLETIONS_PROMPT: &str = "terminal:completions-prompt";
+use super::events::{
+    emit_session_state, TerminalBlockOutputEvent, TerminalCompletionResultEvent,
+    TerminalCompletionUpdateEvent, TerminalCompletionsFinishedEvent,
+    TerminalCompletionsPromptEvent, TerminalCompletionsStartedEvent, TerminalDataEvent,
+    TerminalExitEvent, TerminalSessionCwdEvent, EVENT_BLOCK, EVENT_BLOCK_OUTPUT,
+    EVENT_COMPLETION_RESULT, EVENT_COMPLETION_UPDATE, EVENT_COMPLETIONS_FINISHED,
+    EVENT_COMPLETIONS_PROMPT, EVENT_COMPLETIONS_STARTED, EVENT_DATA, EVENT_EXIT,
+    EVENT_SESSION_CWD,
+};
+use super::requests::{
+    CreateTerminalSessionRequest, RunTerminalCommandRequest, TerminalRunCommandResponse,
+    TerminalSessionRequest, WriteTerminalSessionRequest, ResizeTerminalSessionRequest,
+};
+use super::session::{SharedTerminalSession, TerminalSessionInfo, TerminalSessionKind, TerminalSessionStatus};
+use super::transport;
 
 #[derive(Clone)]
 pub struct ManagedTerminalSession {
@@ -34,114 +35,7 @@ pub struct ManagedTerminalSession {
 
 #[derive(Clone, Default)]
 pub struct TerminalManager {
-    pub sessions: Arc<Mutex<HashMap<String, ManagedTerminalSession>>>,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CreateTerminalSessionRequest {
-    pub session_id: Option<String>,
-    pub rows: Option<u16>,
-    pub cols: Option<u16>,
-    pub cwd: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ResizeTerminalSessionRequest {
-    pub session_id: String,
-    pub rows: u16,
-    pub cols: u16,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct WriteTerminalSessionRequest {
-    pub session_id: String,
-    pub data: String,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RunTerminalCommandRequest {
-    pub session_id: String,
-    pub command: String,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct TerminalSessionRequest {
-    pub session_id: String,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct TerminalDataEvent {
-    pub session_id: String,
-    pub data: Vec<u8>,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct TerminalExitEvent {
-    pub session_id: String,
-    pub exit_code: Option<i32>,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct TerminalSessionCwdEvent {
-    pub session_id: String,
-    pub cwd: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct TerminalBlockOutputEvent {
-    pub session_id: String,
-    pub block_id: String,
-    pub data: String,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct TerminalCompletionsStartedEvent {
-    pub session_id: String,
-    pub format: ShellCompletionFormat,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct TerminalCompletionsFinishedEvent {
-    pub session_id: String,
-    pub data: Vec<ShellCompletion>,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct TerminalCompletionResultEvent {
-    pub session_id: String,
-    pub completion: ShellCompletion,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct TerminalCompletionUpdateEvent {
-    pub session_id: String,
-    pub value: String,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct TerminalCompletionsPromptEvent {
-    pub session_id: String,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct TerminalRunCommandResponse {
-    pub block: TerminalBlock,
-    pub output: String,
+    pub sessions: std::sync::Arc<Mutex<HashMap<String, ManagedTerminalSession>>>,
 }
 
 impl TerminalManager {
@@ -223,12 +117,21 @@ pub fn terminal_create_session(
 
     let rows = request.rows.unwrap_or(24).max(2);
     let cols = request.cols.unwrap_or(80).max(2);
-    let spawned = spawn_terminal(rows, cols, request.cwd)?;
-    let session = Arc::new(spawned.session);
+    let target = request.resolved_target();
+    let cwd = request.cwd.clone();
+    let spawned = match target.resolved_kind() {
+        TerminalSessionKind::Local => transport::local::create_session(rows, cols, cwd)?,
+        TerminalSessionKind::Cloud => {
+            transport::cloud::create_session(rows, cols, cwd, &target)?;
+            unreachable!("cloud transport create_session returns early on success or error")
+        }
+    };
+    let session = spawned.session;
     let info = session.info();
     let manager_handle = manager.inner().clone();
 
     manager.insert(session.clone())?;
+    emit_session_state(&app, &session, info.status.clone());
     if let Some(reader) = spawned.reader {
         spawn_reader_thread(app, manager_handle, session, reader);
     }
@@ -475,6 +378,7 @@ fn spawn_reader_thread(
         }
 
         let exit_code = session.wait();
+        emit_session_state(&app, &session, TerminalSessionStatus::Exited);
         manager.remove(&session.id);
         let _ = app.emit(
             EVENT_EXIT,
@@ -518,13 +422,17 @@ fn run_shell_command(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::terminal::session::TerminalSession;
+    use crate::terminal::session::{
+        TerminalSession, TerminalSessionRuntime, TerminalSessionStatus,
+    };
     use std::sync::Arc;
 
     #[test]
     fn release_detaches_without_removing_session() {
         let manager = TerminalManager::default();
         let session = Arc::new(TerminalSession::new_headless(
+            TerminalSessionRuntime::local(),
+            TerminalSessionStatus::Running,
             "zsh".to_string(),
             Some("/Users/adriantucicovenco".to_string()),
         ));

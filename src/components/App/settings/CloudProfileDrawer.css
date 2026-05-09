@@ -1,0 +1,105 @@
+.cloud-profile-drawer {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--settings-bg-content);
+  color: var(--text-main);
+  font-family: var(--font-ui);
+}
+
+.cloud-profile-drawer-content {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 24px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.cloud-profile-select {
+  width: 100%;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 12px;
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  color: #fff;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.cloud-profile-select-hint {
+  margin-top: 6px;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--text-dim);
+}
+
+.cloud-profile-textarea {
+  width: 100%;
+  min-height: 124px;
+  resize: vertical;
+  padding: 10px 12px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(0, 0, 0, 0.2);
+  color: #fff;
+  font-size: 13px;
+  line-height: 1.45;
+  outline: none;
+  transition: all 0.2s;
+}
+
+.cloud-profile-textarea:focus {
+  border-color: rgba(0, 163, 255, 0.5);
+  background: rgba(0, 0, 0, 0.3);
+  box-shadow: 0 0 0 2px rgba(0, 163, 255, 0.1);
+}
+
+.cloud-profile-toggle-row,
+.cloud-profile-bridge-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.cloud-profile-toggle-copy,
+.cloud-profile-bridge-row > div:first-child {
+  flex: 1;
+}
+
+.cloud-profile-toggle-title,
+.cloud-profile-bridge-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-main);
+}
+
+.cloud-profile-toggle-description,
+.cloud-profile-bridge-description {
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-dim);
+}
+
+.cloud-profile-bridge-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 16px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.cloud-profile-drawer .settings-toggle:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}

@@ -7,6 +7,7 @@ import { KeyboardShortcutsSection } from './sections/KeyboardShortcutsSection';
 import { ProfilesSection } from './sections/ProfilesSection';
 import { MCPServersSection } from './sections/MCPServersSection';
 import { ThirdPartyCliAgentsSection } from './sections/ThirdPartyCliAgentsSection';
+import { CloudTerminalsSection } from './sections/CloudTerminalsSection';
 import { SectionPlaceholder } from './sections/SectionPlaceholder';
 
 type SettingsContentProps = {
@@ -32,6 +33,8 @@ export function SettingsContent({ sectionId }: SettingsContentProps) {
         <MCPServersSection />
       ) : sectionMeta.contentKind === 'third-party-cli-agents' ? (
         <ThirdPartyCliAgentsSection />
+      ) : sectionMeta.contentKind === 'cloud-terminals' ? (
+        <CloudTerminalsSection />
       ) : (
         <SectionPlaceholder title={sectionMeta.title} description={sectionMeta.description} />
       )}

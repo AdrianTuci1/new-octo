@@ -236,7 +236,7 @@ pub(super) fn build_tool_definitions() -> Value {
             "type": "function",
             "function": {
                 "name": "suggest_follow_up",
-                "description": "Attach one natural-language follow-up prompt suggestion for the UI chip. This is metadata only; it is not visible assistant text and it is not a command.",
+                "description": "Attach one natural-language follow-up prompt suggestion for the UI chip. Phrase it as the next message the user would send to continue the conversation, not as a question the assistant asks the user. Prefer user-intent phrasing like 'Vreau să aflu mai multe despre concerte' or 'Caută evenimente de muzică'. This is metadata only; it is not visible assistant text and it is not a command.",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -246,7 +246,7 @@ pub(super) fn build_tool_definitions() -> Value {
                         },
                         "prompt": {
                             "type": "string",
-                            "description": "The exact natural-language user message to insert if the user accepts the suggestion."
+                            "description": "The exact natural-language user message the user would send next if they want to continue the conversation. It should sound like a user request or intention, not a question from the assistant."
                         },
                         "description": {
                             "type": "string",

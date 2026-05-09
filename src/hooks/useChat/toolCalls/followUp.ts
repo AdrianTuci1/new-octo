@@ -15,7 +15,7 @@ export const followUpToolCallHandler: ToolCallHandler = {
       registration.update((message) => ({
         ...message,
         body: stripFollowUpBoilerplate(message.body),
-        followUpSuggestion: isConfidentEnough ? followUpSuggestion : undefined
+        followUpSuggestion: isConfidentEnough && message.body.trim().length > 0 ? followUpSuggestion : undefined
       }));
     });
   }

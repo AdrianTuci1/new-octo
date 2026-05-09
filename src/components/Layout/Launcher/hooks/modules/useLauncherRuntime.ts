@@ -108,6 +108,10 @@ export function useLauncherRuntime(props: LauncherProps, store: any, tray: any) 
     terminalRaw.blocks,
     terminalRaw.error,
     terminalRaw.sessionId,
+    terminalRaw.sessionInfo,
+    terminalRaw.sessionStatus,
+    terminalRaw.sessionKind,
+    terminalRaw.sessionProvider,
     terminalRaw.cwd,
     terminalRaw.completionState,
     terminalRaw.selectedBlockId,
@@ -131,6 +135,10 @@ export function useLauncherRuntime(props: LauncherProps, store: any, tray: any) 
     agentTerminalRaw.blocks,
     agentTerminalRaw.error,
     agentTerminalRaw.sessionId,
+    agentTerminalRaw.sessionInfo,
+    agentTerminalRaw.sessionStatus,
+    agentTerminalRaw.sessionKind,
+    agentTerminalRaw.sessionProvider,
     agentTerminalRaw.cwd,
     agentTerminalRaw.completionState,
     agentTerminalRaw.selectedBlockId,
@@ -144,15 +152,6 @@ export function useLauncherRuntime(props: LauncherProps, store: any, tray: any) 
 
   const requestWebSearch = useCallback(async (request: WebSearchRequest) => {
     try {
-      void chatApiRef.current?.submitToolResult(
-        request.toolCallId,
-        '',
-        'web-search',
-        request.query,
-        [],
-        { deferFollowUp: true, webSearchStatus: 'searching' }
-      );
-
       const response = await invoke<WebSearchResponse>('web_search', {
         request: {
           query: request.query,
@@ -186,7 +185,7 @@ export function useLauncherRuntime(props: LauncherProps, store: any, tray: any) 
         'web-search',
         request.query,
         [],
-        { deferFollowUp: true, webSearchStatus: 'error' }
+        { webSearchStatus: 'error' }
       );
     }
   }, []);

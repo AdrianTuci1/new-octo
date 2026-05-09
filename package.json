@@ -9,6 +9,11 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "tauri": "sh ./scripts/tauri-cli.sh",
+    "release:cli": "sh ./scripts/release-cli.sh",
+    "release:desktop": "sh ./scripts/release-desktop.sh",
+    "release:dmg": "sh ./scripts/release-dmg.sh",
+    "release:exe": "sh ./scripts/release-exe.sh",
+    "release:all": "sh ./scripts/release-all.sh",
     "start": "sh ./scripts/dev-start.sh",
     "stop": "sh ./scripts/dev-stop.sh",
     "logs": "tail -f .dev.log"

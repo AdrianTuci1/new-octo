@@ -1,10 +1,68 @@
 import './WorkspaceTopbar.css';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { ChevronDown, Inbox, LayoutGrid, PanelLeftOpen, Plus, X, GitBranch, ChevronRight, Rocket } from 'lucide-react';
+import { Bot, ChevronDown, ChevronRight, Cloud, GitBranch, Inbox, LayoutGrid, PanelLeftOpen, Plus, Rocket, Search, Server, Sparkles, TerminalSquare, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import type { WorkspaceChromeTab } from './workspaceChromeTypes';
 
 const TAB_TINTS = ['#334155', '#134e4a', '#365314', '#7c2d12', '#6b21a8', '#1d4ed8'];
+
+type PlusMenuItem = {
+  id: 'agent' | 'terminal' | 'cloud-term' | 'my-tab-config' | 'named-tab-config' | 'worktree-config' | 'tab-config';
+  label: string;
+  action: 'new-terminal' | 'open-cloud-settings' | 'none';
+  shortcut?: string;
+  icon: typeof Bot;
+  hasChevron?: boolean;
+};
+
+const PLUS_MENU_ITEMS: PlusMenuItem[] = [
+  {
+    id: 'agent',
+    label: 'Agent',
+    action: 'new-terminal',
+    icon: Sparkles
+  },
+  {
+    id: 'terminal',
+    label: 'Terminal',
+    action: 'new-terminal',
+    shortcut: '⌘T',
+    icon: TerminalSquare
+  },
+  {
+    id: 'cloud-term',
+    label: 'Cloud term',
+    action: 'open-cloud-settings',
+    icon: Cloud
+  },
+  {
+    id: 'my-tab-config',
+    label: 'My tab config',
+    action: 'none',
+    icon: Server
+  },
+  {
+    id: 'named-tab-config',
+    label: 'New tab: adriantucicovenco',
+    action: 'none',
+    icon: Server
+  },
+  {
+    id: 'worktree-config',
+    label: 'New worktree config',
+    action: 'none',
+    icon: GitBranch,
+    hasChevron: true
+  },
+  {
+    id: 'tab-config',
+    label: 'New tab config',
+    action: 'none',
+    icon: Plus
+  }
+];
+
+const DEFAULT_PLUS_ITEM_ID: PlusMenuItem['id'] = 'terminal';
 
 type WorkspaceTopbarProps = {
   activeTabId: string;
@@ -140,6 +198,8 @@ export function WorkspaceTopbar({
   };
 
   const [plusMenuState, setPlusMenuState] = useState<{ left: number; top: number } | null>(null);
+  const [selectedPlusItemId, setSelectedPlusItemId] = useState<PlusMenuItem['id']>('agent');
+  const [defaultPlusItemId, setDefaultPlusItemId] = useState<PlusMenuItem['id']>(DEFAULT_PLUS_ITEM_ID);
 
   useEffect(() => {
     if (!plusMenuState) {
@@ -162,11 +222,85 @@ export function WorkspaceTopbar({
   const openPlusMenu = (element: HTMLElement) => {
     const headerRect = headerRef.current?.getBoundingClientRect();
     const triggerRect = element.getBoundingClientRect();
+    setSelectedPlusItemId(defaultPlusItemId);
     setPlusMenuState({
       left: triggerRect.left - (headerRect?.left ?? 0),
       top: triggerRect.bottom - (headerRect?.top ?? 0) + 6
     });
   };
+
+  const defaultPlusItem = useMemo(
+    () => PLUS_MENU_ITEMS.find((item) => item.id === defaultPlusItemId) ?? PLUS_MENU_ITEMS[0],
+    [defaultPlusItemId]
+  );
+  const isWorktreeSubmenuOpen = plusMenuState && selectedPlusItemId === 'worktree-config';
+  const selectedPlusItem = useMemo(
+    () => PLUS_MENU_ITEMS.find((item) => item.id === selectedPlusItemId) ?? PLUS_MENU_ITEMS[0],
+    [selectedPlusItemId]
+  );
+
+  const handlePlusItemAction = (item: PlusMenuItem) => {
+    if (item.action === 'new-terminal') {
+      setPlusMenuState(null);
+      onNewTerminalTab();
+      return;
+    }
+
+    if (item.action === 'open-cloud-settings') {
+      setPlusMenuState(null);
+      onOpenSettingsSection('cloud-platform/cloud');
+      return;
+    }
+
+    setSelectedPlusItemId(item.id);
+    if (item.id !== 'worktree-config') {
+      setPlusMenuState(null);
+    }
+  };
+
+  const handleMakeDefault = () => {
+    if (selectedPlusItem.id === 'worktree-config' || selectedPlusItem.id === defaultPlusItemId) {
+      return;
+    }
+
+    setDefaultPlusItemId(selectedPlusItem.id);
+  };
+
+  const handlePrimaryPlusAction = () => {
+    handlePlusItemAction(defaultPlusItem);
+  };
+
+  const renderPlusMenuItem = (item: PlusMenuItem) => {
+    const Icon = item.icon;
+    const isSelected = item.id === selectedPlusItemId;
+
+    return (
+      <button
+        key={item.id}
+        type="button"
+        className={isSelected ? 'active' : ''}
+        onMouseEnter={() => setSelectedPlusItemId(item.id)}
+        onFocus={() => setSelectedPlusItemId(item.id)}
+        onClick={() => handlePlusItemAction(item)}
+      >
+        <span className="plus-menu-icon">
+          <Icon size={14} />
+        </span>
+        <span className="plus-menu-label">{item.label}</span>
+        {item.shortcut ? <span className="plus-menu-shortcut">{item.shortcut}</span> : null}
+        {item.hasChevron ? (
+          <span className="plus-menu-chevron">
+            <ChevronRight size={12} />
+          </span>
+        ) : null}
+      </button>
+    );
+  };
+
+  const primaryPlusItems = useMemo(
+    () => PLUS_MENU_ITEMS.filter((item) => item.id !== 'worktree-config' && item.id !== 'tab-config'),
+    []
+  );
 
   return (
     <header ref={headerRef} className="workspace-topbar" aria-label="Workspace tabs">
@@ -308,8 +442,8 @@ export function WorkspaceTopbar({
         <button
           className="workspace-topbar-plus-action"
           type="button"
-          onClick={onNewTerminalTab}
-          title="New terminal workspace"
+          onClick={handlePrimaryPlusAction}
+          title={`New ${defaultPlusItem.label.toLowerCase()} workspace`}
         >
           <Plus size={18} strokeWidth={2.2} />
         </button>
@@ -332,76 +466,39 @@ export function WorkspaceTopbar({
           }}
         >
           <div className="plus-context-menu-main">
-            <button type="button" className="active" onClick={() => setPlusMenuState(null)}>
-              <span className="plus-menu-icon">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <rect width="18" height="18" x="3" y="3" rx="2" />
-                  <path d="M12 3v18" />
-                </svg>
-              </span>
-              <span className="plus-menu-label">Agent</span>
-            </button>
-            <button type="button" onClick={() => { setPlusMenuState(null); onNewTerminalTab(); }}>
-              <span className="plus-menu-icon">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <rect width="18" height="18" x="3" y="3" rx="2" />
-                  <path d="M12 3v18" />
-                </svg>
-              </span>
-              <span className="plus-menu-label">Terminal</span>
-              <span className="plus-menu-shortcut">⌘T</span>
-            </button>
-            <button type="button" onClick={() => setPlusMenuState(null)}>
-              <span className="plus-menu-icon">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <rect width="18" height="18" x="3" y="3" rx="2" />
-                  <path d="M12 3v18" />
-                </svg>
-              </span>
-              <span className="plus-menu-label">Cloud Oz</span>
-            </button>
-            <button type="button" onClick={() => setPlusMenuState(null)}>
-              <span className="plus-menu-icon">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <rect width="18" height="18" x="3" y="3" rx="2" />
-                  <path d="M12 3v18" />
-                </svg>
-              </span>
-              <span className="plus-menu-label">My Tab Config</span>
-            </button>
-            <button type="button" onClick={() => setPlusMenuState(null)}>
-              <span className="plus-menu-icon">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <rect width="18" height="18" x="3" y="3" rx="2" />
-                  <path d="M12 3v18" />
-                </svg>
-              </span>
-              <span className="plus-menu-label">New tab: adriantucicovenco</span>
-            </button>
+            {primaryPlusItems.map((item) => renderPlusMenuItem(item))}
             <div className="plus-context-menu-divider" />
-            <button type="button" onClick={() => setPlusMenuState(null)}>
-              <span className="plus-menu-icon">
-                <GitBranch size={14} />
-              </span>
-              <span className="plus-menu-label">New worktree config</span>
-              <span className="plus-menu-chevron">
-                <ChevronRight size={12} />
-              </span>
-            </button>
-            <button type="button" onClick={() => setPlusMenuState(null)}>
-              <span className="plus-menu-icon">
+            {renderPlusMenuItem(PLUS_MENU_ITEMS.find((item) => item.id === 'worktree-config') ?? PLUS_MENU_ITEMS[0])}
+            {renderPlusMenuItem(PLUS_MENU_ITEMS.find((item) => item.id === 'tab-config') ?? PLUS_MENU_ITEMS[0])}
+          </div>
+
+          {isWorktreeSubmenuOpen ? (
+            <div
+              className="plus-context-menu-submenu"
+              onMouseEnter={() => setSelectedPlusItemId('worktree-config')}
+            >
+              <label className="plus-submenu-search">
+                <Search size={15} className="plus-submenu-search-icon" />
+                <input type="text" placeholder="Search repos" />
+              </label>
+              <button type="button" className="plus-submenu-action" onClick={() => setPlusMenuState(null)}>
                 <Plus size={14} />
-              </span>
-              <span className="plus-menu-label">New tab config</span>
-            </button>
-          </div>
-          
-          <div className="plus-context-menu-sidebar">
-            <div className="plus-sidebar-title">Agent</div>
-            <button type="button" className="make-default-btn" onClick={() => setPlusMenuState(null)}>
-              Make default
-            </button>
-          </div>
+                <span>Add new repo</span>
+              </button>
+            </div>
+          ) : (
+            <div className="plus-context-menu-sidebar">
+              <div className="plus-sidebar-title">{selectedPlusItem.label}</div>
+              <button
+                type="button"
+                className="make-default-btn"
+                onClick={handleMakeDefault}
+                disabled={selectedPlusItem.id === defaultPlusItemId}
+              >
+                {selectedPlusItem.id === defaultPlusItemId ? 'Default' : 'Make default'}
+              </button>
+            </div>
+          )}
         </div>
       )}
 

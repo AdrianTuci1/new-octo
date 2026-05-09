@@ -58,6 +58,8 @@ async fn stream_chat_completion(
 ) -> Result<AgentHarnessOutcome, AgentHarnessError> {
     let mut negotiation_messages = context.messages.clone();
     let mut attempt = 0;
+    let mut forced_final_answer_retry_used = false;
+    let mut forced_follow_up_retry_used = false;
 
     while attempt < 3 {
         sink.status(
@@ -138,6 +140,7 @@ async fn stream_chat_completion(
         let mut current_tool_call_id: Option<String> = None;
         let mut current_tool_name = String::new();
         let mut current_tool_args = String::new();
+        let mut emitted_follow_up_tool_call = false;
         let mut usage = None;
         let mut sse_buffer = String::new();
         let mut byte_stream = response.bytes_stream();
@@ -209,6 +212,17 @@ async fn stream_chat_completion(
 
             if current_tool_call_id.is_some() && !current_tool_args.is_empty() {
                 if let Ok(args_value) = serde_json::from_str::<Value>(&current_tool_args) {
+                    if current_tool_name == "propose_plan" && !prompt_supports_plan(&context.prompt) {
+                        println!(
+                            "[AI] Ignoring propose_plan for non-plan prompt: '{}'",
+                            context.prompt
+                        );
+                        current_tool_call_id = None;
+                        current_tool_name.clear();
+                        current_tool_args.clear();
+                        continue;
+                    }
+
                     if current_tool_name == "propose_terminal_command" {
                         if let Some(cmd) = args_value.get("command").and_then(Value::as_str) {
                             if !prompt_supports_terminal_command(&context.prompt) {
@@ -245,6 +259,10 @@ async fn stream_chat_completion(
                     }
 
                     if guardian_rejection_reason.is_none() {
+                        if current_tool_name == "suggest_follow_up" {
+                            emitted_follow_up_tool_call = true;
+                        }
+
                         sink.tool_call(AgentToolCall {
                             id: current_tool_call_id.take().expect("tool id should exist"),
                             name: current_tool_name.clone(),
@@ -304,6 +322,37 @@ async fn stream_chat_completion(
         }
 
         thinking_state.finish(&sink, &mut streamed, &mut streamed_reasoning);
+
+        let visible_response = streamed.trim();
+        let reasoning_response = streamed_reasoning.trim();
+        if should_retry_follow_up_only(visible_response, emitted_follow_up_tool_call, forced_follow_up_retry_used) {
+            negotiation_messages.push(AgentInputMessage {
+                role: "system".to_string(),
+                content: format!(
+                    "Ai făcut deja o căutare și ai emis doar o sugestie de follow-up fără răspuns vizibil. \
+                    Acum trebuie să răspunzi direct utilizatorului cu un rezumat clar și util al rezultatelor găsite pentru: {}. \
+                    Nu emite `suggest_follow_up` în această încercare. Nu cere clarificări dacă cererea este deja suficient de specifică.",
+                    context.prompt
+                ),
+                tool_call_id: None,
+                tool_calls: None,
+            });
+            forced_follow_up_retry_used = true;
+            attempt += 1;
+            continue;
+        }
+
+        if visible_response.is_empty() && !reasoning_response.is_empty() && !forced_final_answer_retry_used {
+            negotiation_messages.push(AgentInputMessage {
+                role: "system".to_string(),
+                content: "Răspunsul anterior a fost doar reasoning. Oferă acum numai răspunsul final către utilizator, fără `<thinking>`, fără explicații despre pași și fără să repeți analiza internă.".to_string(),
+                tool_call_id: None,
+                tool_calls: None,
+            });
+            forced_final_answer_retry_used = true;
+            attempt += 1;
+            continue;
+        }
 
         return Ok(done_outcome(&context.prompt, &streamed, usage));
     }
@@ -415,11 +464,11 @@ impl ThinkingStreamState {
 
 fn longest_tag_suffix_len(text: &str, tag: &str) -> usize {
     let mut boundaries = text.char_indices().map(|(idx, _)| idx).collect::<Vec<_>>();
-    boundaries.push(text.len());
+    boundaries.retain(|idx| *idx < text.len());
 
     for start in boundaries.into_iter().rev() {
         let suffix = &text[start..];
-        if tag.starts_with(suffix) {
+        if !suffix.is_empty() && tag.starts_with(suffix) {
             return suffix.len();
         }
     }
@@ -468,6 +517,50 @@ fn prompt_supports_terminal_command(prompt: &str) -> bool {
     ];
 
     terminal_keywords.iter().any(|keyword| prompt.contains(keyword))
+}
+
+fn prompt_supports_plan(prompt: &str) -> bool {
+    let prompt = prompt.to_lowercase();
+    let plan_keywords = [
+        "implement",
+        "implementation",
+        "debug",
+        "debugging",
+        "fix",
+        "bug",
+        "refactor",
+        "migrate",
+        "migration",
+        "architecture",
+        "architectură",
+        "arhitectură",
+        "research",
+        "investigate",
+        "investiga",
+        "task",
+        "project",
+        "feature",
+        "roadmap",
+        "plan",
+        "workstream",
+        "steps",
+        "paș",
+        "pas",
+        "cerinț",
+        "cerint",
+        "specifica",
+        "specification",
+    ];
+
+    plan_keywords.iter().any(|keyword| prompt.contains(keyword))
+}
+
+fn should_retry_follow_up_only(
+    visible_response: &str,
+    emitted_follow_up_tool_call: bool,
+    forced_follow_up_retry_used: bool,
+) -> bool {
+    visible_response.is_empty() && emitted_follow_up_tool_call && !forced_follow_up_retry_used
 }
 
 fn handle_stream_payload(
@@ -621,5 +714,25 @@ fn cancelled_outcome(prompt: &str, streamed: &str) -> AgentHarnessOutcome {
     AgentHarnessOutcome {
         status: AgentRunStatus::Cancelled,
         usage: AgentUsage::approximate(prompt, streamed),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{longest_tag_suffix_len, should_retry_follow_up_only};
+
+    #[test]
+    fn longest_tag_suffix_does_not_accept_empty_suffix() {
+        assert_eq!(longest_tag_suffix_len("<th", "<thinking>"), 3);
+        assert_eq!(longest_tag_suffix_len("inking", "<thinking>"), 0);
+        assert_eq!(longest_tag_suffix_len("</think", "</thinking>"), 7);
+    }
+
+    #[test]
+    fn follow_up_retry_depends_on_emitted_follow_up_tool_call() {
+        assert!(should_retry_follow_up_only("", true, false));
+        assert!(!should_retry_follow_up_only("Rezumat util", true, false));
+        assert!(!should_retry_follow_up_only("", false, false));
+        assert!(!should_retry_follow_up_only("", true, true));
     }
 }

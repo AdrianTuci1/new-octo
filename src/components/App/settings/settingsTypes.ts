@@ -30,6 +30,7 @@ export type SettingsSectionContentKind =
   | 'mcp-servers'
   | 'keyboard-shortcuts'
   | 'third-party-cli-agents'
+  | 'cloud-terminals'
   | 'placeholder';
 
 export type SettingsSectionMeta = {

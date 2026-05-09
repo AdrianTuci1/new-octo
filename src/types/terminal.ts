@@ -1,11 +1,25 @@
 import type { FileDiff } from './diff';
 
-export type TerminalStatus = 'starting' | 'running' | 'exited' | 'error';
+export type TerminalStatus =
+  | 'starting'
+  | 'connecting'
+  | 'running'
+  | 'connected'
+  | 'exited'
+  | 'error'
+  | 'disconnected';
+
+export type TerminalSessionKind = 'local' | 'cloud';
+export type TerminalSessionProvider = 'local' | 'custom-vm' | 'modal';
 
 export type TerminalSessionInfo = {
   id: string;
   shell: string;
+  kind: TerminalSessionKind;
+  provider: TerminalSessionProvider;
+  status: TerminalStatus;
   cwd?: string | null;
+  profileId?: string | null;
 };
 
 export type TerminalDataEvent = {
@@ -21,6 +35,15 @@ export type TerminalExitEvent = {
 export type TerminalSessionCwdEvent = {
   sessionId: string;
   cwd?: string | null;
+};
+
+export type TerminalSessionStateEvent = {
+  sessionId: string;
+  kind: TerminalSessionKind;
+  provider: TerminalSessionProvider;
+  status: TerminalStatus;
+  cwd?: string | null;
+  profileId?: string | null;
 };
 
 export type TerminalCompletionsFormat = 'raw' | 'incrementally_typed';

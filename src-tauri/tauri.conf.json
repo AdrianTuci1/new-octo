@@ -3,11 +3,18 @@
   "productName": "Octomus Launcher Prototype",
   "version": "0.1.0",
   "identifier": "com.octomus.launcher.prototype",
+  "mainBinaryName": "octomus_launcher_prototype",
   "build": {
     "beforeDevCommand": "npm run dev",
     "beforeBuildCommand": "npm run build",
-    "devUrl": "http://localhost:1420",
+    "devUrl": "http://127.0.0.1:1420",
     "frontendDist": "../dist"
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "",
+      "endpoints": []
+    }
   },
   "app": {
     "macOSPrivateApi": true,

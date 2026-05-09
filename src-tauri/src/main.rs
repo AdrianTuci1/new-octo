@@ -19,13 +19,7 @@ use tauri::{
     tray::TrayIconBuilder,
     AppHandle, Manager, PhysicalPosition, Position, Runtime, WebviewWindowBuilder,
 };
-
-mod ai;
-mod keybindings;
-mod memory;
-mod secure_store;
-mod shell_signatures;
-mod terminal;
+use octomus_launcher_prototype::{ai, app_updates, keybindings, memory, shell_signatures, terminal};
 
 #[cfg(target_os = "macos")]
 use tauri::ActivationPolicy;
@@ -260,11 +254,16 @@ fn main() {
     shell_signatures::warm_up();
 
     tauri::Builder::default()
+        .manage(app_updates::AppUpdateManager::default())
         .manage(terminal::TerminalManager::default())
         .manage(ai::AgentHarnessManager::default())
         .manage(ai::predict::composer::ComposerIntelligenceManager::default())
         .manage(memory::OctomusMemoryManager::default())
         .invoke_handler(tauri::generate_handler![
+            app_updates::app_updates_get_state,
+            app_updates::app_updates_check,
+            app_updates::app_updates_install,
+            app_updates::app_updates_restart,
             ai::agent_start,
             ai::agent_continue,
             ai::agent_cancel,
@@ -311,6 +310,8 @@ fn main() {
             show_app_window,
         ])
         .setup(|app| {
+            app_updates::init(&app.handle())?;
+
             #[cfg(target_os = "macos")]
             {
                 let _ = app.set_activation_policy(ActivationPolicy::Accessory);
