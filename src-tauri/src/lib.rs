@@ -3,6 +3,7 @@ pub mod app_updates;
 pub mod cli;
 pub mod keybindings;
 pub mod memory;
+pub mod octomus_paths;
 pub mod secure_store;
 pub mod shell_signatures;
 pub mod terminal;

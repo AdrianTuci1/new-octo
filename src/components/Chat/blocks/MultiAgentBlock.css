@@ -1,0 +1,358 @@
+.multi-agent-block {
+  position: relative;
+  margin: 12px 0;
+  flex: 1;
+  width: 100%;
+  min-width: 0;
+  font-family: var(--font-sans, system-ui, sans-serif);
+}
+
+/* EXPANDED HEADER FLATTENING MATCHING SYSTEM */
+.multi-agent-parent-summary {
+  position: relative;
+  z-index: 3;
+  gap: 12px !important;
+}
+
+.multi-agent-block.expanded .multi-agent-parent-summary {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+  border-bottom-color: rgba(255, 255, 255, 0.02);
+}
+
+/* NEW BODY CONTAINER SYSTEM:
+   This sits FLUSH with the pill, applies the subtle background, 
+   and acts as the host for internal indent calculations.
+*/
+.sub-agents-list {
+  /* NOT INDENTED ANYMORE - FLUSH WITH THE PARENT PILL */
+  margin-left: 0;
+  margin-top: 0;
+  /* sits directly flush beneath the flat header edge */
+
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  position: relative;
+
+  /* UNIFIED SUBTLE BACKGROUND & BORDERS */
+  background: rgba(255, 255, 255, 0.015);
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  border-top: none;
+  /* merge into pill bottom */
+  border-bottom-left-radius: 10px;
+  border-bottom-right-radius: 10px;
+
+  /* INTERNAL SPACING
+     Top padding offsets content from the ceiling.
+     Left padding exactly positions the start of children at the TRUNK PLANE!
+     Parent avatar center = 23.5px from edge. 
+     Since this container is flush, child content starting at 23.5px aligns perfectly!
+  */
+  padding: 12px 12px 14px 23.5px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.015);
+}
+
+/* Row Layouts */
+.sub-agent-row {
+  display: flex;
+  align-items: center;
+  position: relative;
+  gap: 12px;
+}
+
+/* AVATAR SLOT ON THE TREE
+   Anchored directly inside the 23.5px padded zone.
+*/
+.sub-agent-avatar-slot {
+  position: relative;
+  z-index: 2;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* Distance of avatar center away from Trunk Plane */
+  margin-left: 14px;
+}
+
+/* THE L-SHAPE BRIDGE:
+   Reaching back from the Avatar Slot to the Trunk origin.
+   Pierces directly through to the dead center of the 24px avatar slot (12px).
+   26px outside + 12px inside = 38px width.
+*/
+.sub-agent-avatar-slot::before {
+  content: '';
+  position: absolute;
+  left: -14px;
+  top: -26px;
+  width: 12px;
+  /* Length increased to hit the exact center axis */
+  height: 38px;
+
+  border-left: 1.5px solid rgba(255, 255, 255, 0.07);
+  border-bottom: 1.5px solid rgba(255, 255, 255, 0.07);
+
+  border-bottom-left-radius: 6px;
+  z-index: 1;
+  pointer-events: none;
+}
+
+/* SPECIAL FIRST ITEM: Reach up 12px to span container margin */
+.sub-agent-row:first-child .sub-agent-avatar-slot::before {
+  top: -12px;
+  height: 24px;
+}
+
+/* VERTICAL BRIDGING: Starts exactly at the center point and continues down */
+.sub-agent-row:not(:last-child) .sub-agent-avatar-slot::after {
+  content: '';
+  position: absolute;
+  left: -22px;
+  top: 10px;
+  width: 1.5px;
+  background: rgba(255, 255, 255, 0.07);
+  z-index: 1;
+  pointer-events: none;
+}
+
+/* Sub-Agent Card Body Inside the Container */
+.sub-agent-card {
+  flex: 1;
+  min-width: 0;
+  z-index: 3;
+}
+
+.card-style {
+  background: rgba(255, 255, 255, 0.03);
+  border: none;
+  /* STRIP THE BORDERS AS REQUESTED */
+  border-radius: 6px;
+  overflow: hidden;
+  transition: all 0.15s ease;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+
+.sub-agent-row.expanded .sub-agent-card {
+  background: rgba(255, 255, 255, 0.05);
+  border: none;
+}
+
+.sub-agent-card:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border: none;
+}
+
+/* Avatars & Halos */
+.agent-avatar-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.agent-avatar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  color: rgba(255, 255, 255, 0.9);
+  z-index: 5;
+  border: none;
+  /* Remove default border */
+}
+
+.agent-avatar.parent {
+  width: 24px;
+  height: 24px;
+  color: #30b86f;
+  background: transparent;
+  /* Remove background entirely for parent */
+  border: none;
+}
+
+.agent-avatar.sub {
+  width: 22px;
+  height: 22px;
+  background: #1a1a1a;
+  /* keeps background to correctly layer on top of branch lines */
+  border: none;
+  /* Clean strip the border outline */
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+}
+
+/* MASK SYSTEM FOR COLORING CUSTOM SVGs */
+.custom-agent-svg-mask {
+  width: 14px;
+  height: 14px;
+  /* Colors the masked SVG green per request */
+  background-color: #30b86f;
+
+  -webkit-mask-size: contain;
+  mask-size: contain;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-position: center;
+
+  transition: background-color 0.2s ease, opacity 0.2s;
+}
+
+/* Optional: Dim down the color if the sub-agent isn't running/active */
+.sub-agent-row.idle .custom-agent-svg-mask {
+  background-color: rgba(255, 255, 255, 0.3);
+}
+
+.sub-agent-row.completed .custom-agent-svg-mask {
+  background-color: #60a5fa;
+  /* use matching status blue? Or stay green? User said loop colored green. Let's keep standard status colors maybe or user explicitly said "colorat verde". Let's enforce green but add opacity? Let's stick to #30b86f strictly as requested unless idle. */
+  background-color: #30b86f;
+}
+
+/* Headers */
+.agent-card-header {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  padding: 7px 10px;
+  background: transparent;
+  border: none;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+}
+
+.agent-header-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.agent-header-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.agent-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(244, 247, 246, 0.92);
+  letter-spacing: -0.01em;
+}
+
+.status-label {
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: #30b86f;
+  margin-left: 6px;
+  opacity: 0.7;
+}
+
+.header-meta-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  /* Space between toolbar, badge, and chevron */
+}
+
+.agent-card-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-right: 4px;
+  /* extra spacing before status badge */
+}
+
+.agent-action-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  color: rgba(255, 255, 255, 0.4);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.agent-action-btn:hover {
+  color: rgba(255, 255, 255, 0.9);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.agent-action-btn:active {
+  transform: scale(0.93);
+}
+
+.card-chevron {
+  color: rgba(255, 255, 255, 0.3);
+  transition: transform 0.2s ease;
+}
+
+.card-chevron.active {
+  transform: rotate(180deg);
+}
+
+/* Body with inline context */
+.agent-card-body {
+  padding: 2px 10px 8px 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.02);
+  background: rgba(0, 0, 0, 0.05);
+}
+
+.agent-result-block {
+  margin-top: 4px;
+  font-size: 10.5px;
+  color: #30b86f;
+  font-family: var(--font-mono, monospace);
+  padding: 5px 8px;
+  background: rgba(48, 184, 111, 0.04);
+  border-radius: 4px;
+  border-left: 2px solid rgba(48, 184, 111, 0.8);
+}
+
+.agent-result-block .label {
+  font-weight: 600;
+  text-transform: uppercase;
+  margin-right: 4px;
+}
+
+/* Badge Clean Styles */
+.agent-status-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: transparent;
+}
+
+.agent-status-badge.running {
+  color: #30b86f;
+  opacity: 0.9;
+}
+
+.agent-status-badge.completed {
+  color: #60a5fa;
+  opacity: 0.85;
+}
+
+.agent-status-badge.failed {
+  color: #f87171;
+  opacity: 0.9;
+}
+
+.agent-status-badge.idle {
+  color: rgba(255, 255, 255, 0.35);
+}
+
+.spin-icon {
+  animation: halo-spin 1.5s linear infinite;
+}

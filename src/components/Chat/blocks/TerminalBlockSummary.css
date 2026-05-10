@@ -1,0 +1,81 @@
+.terminal-block-summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-height: 36px;
+  padding: 0 9px 0 12px;
+  border-radius: 10px;
+  color: rgba(244, 247, 246, 0.92);
+  background: rgba(45, 47, 47, 0.96);
+  border: 1px solid rgba(255, 255, 255, 0.045);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.025) inset;
+  cursor: pointer;
+  text-align: left;
+  user-select: none;
+  transition: background 0.1s, border-color 0.1s;
+}
+
+.terminal-block-summary:hover {
+  background: rgba(50, 52, 52, 0.98);
+  border-color: rgba(255, 255, 255, 0.07);
+}
+
+.terminal-block-summary.inline-link {
+  max-width: none;
+  min-height: 0;
+  padding: 12px 18px;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+}
+
+.terminal-block-summary.inline-link:hover {
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text-main);
+}
+
+.terminal-block-summary.inline-link:active {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.terminal-block-summary.inline-link .terminal-summary-icon {
+  color: rgba(244, 247, 246, 0.84);
+}
+
+.terminal-block-summary.inline-link .terminal-summary-command {
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--accent-main, #30b86f);
+  text-decoration: none;
+}
+
+.terminal-block-summary.inline-link:hover .terminal-summary-command {
+  text-decoration: underline;
+}
+
+.terminal-summary-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  color: #30b86f;
+}
+
+.terminal-summary-command {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.2;
+  letter-spacing: 0.01em;
+}
+
+.terminal-summary-chevron {
+  flex: 0 0 auto;
+  margin-left: auto;
+  color: rgba(244, 247, 246, 0.86);
+}

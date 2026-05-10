@@ -294,6 +294,13 @@ export function useTerminalCommandBlocks(options: UseTerminalCommandBlocksOption
       return;
     }
 
+    // IDEMPOTENCY GUARD:
+    // If the session object currently stored matches the requested ID and the current path,
+    // we shouldn't clear and re-bootstrap anything as it would overwrite active component state (like expandedBlockIds).
+    if (sessionRef.current?.id === requestedSessionId && sessionOriginCwdRef.current === cwd) {
+      return;
+    }
+
     let cancelled = false;
     sessionRef.current = {
       id: requestedSessionId,

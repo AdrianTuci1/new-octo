@@ -5,10 +5,14 @@ import { useChatPanelScroll } from './hooks/useChatPanelScroll';
 import { buildTimelineItems, shouldRenderCollapsedBlock } from './utils/timeline';
 import { MessageBubble } from './MessageBubble';
 import { TerminalBlockCard } from './blocks/TerminalBlockCard';
+import { MultiAgentBlock } from './blocks/MultiAgentBlock';
 import { CommandApprovalComposer } from '../Composer';
+import { MOCK_TIMELINE_ITEMS } from './MockTimelineItems';
 import type { ChatMessage } from '../../types/chat';
 import type { CommandApproval, TerminalCommandBlock } from '../../types/terminal';
 import './ChatPanel.css';
+
+const USE_MOCK = false; // <-- Set to false to revert to real data
 
 function performHighlight(
   container: HTMLElement,
@@ -165,8 +169,9 @@ export function ChatPanel({
   onOpenConversationBlock,
   title = 'New agent conversation'
 }: ChatPanelProps) {
-  const hasContent = messages.length > 0 || terminalBlocks.length > 0 || Boolean(terminalError) || Boolean(pendingApproval);
-  const timelineItems = buildTimelineItems(messages, terminalBlocks, terminalError);
+  const baseTimelineItems = buildTimelineItems(messages, terminalBlocks, terminalError);
+  const timelineItems = USE_MOCK ? MOCK_TIMELINE_ITEMS : baseTimelineItems;
+  const hasContent = USE_MOCK || messages.length > 0 || terminalBlocks.length > 0 || Boolean(terminalError) || Boolean(pendingApproval);
 
   const { scrollRef, handleScroll } = useChatPanelScroll({
     messages,
@@ -199,7 +204,7 @@ export function ChatPanel({
     );
 
     setMatches(foundSpans);
-    
+
     if (foundSpans.length > 0) {
       setActiveIndex(0);
     } else {
@@ -387,6 +392,34 @@ export function ChatPanel({
                     onExpand={(blockId) => onExpandTerminalBlock?.(blockId)}
                     onOpenConversation={onOpenConversationBlock}
                     onSelect={(blockId) => onSelectTerminalBlock?.(blockId)}
+                  />
+                </div>
+              );
+            }
+
+            if (item.kind === 'multi-agent-block') {
+              const isExpanded = expandedTerminalBlockIds.includes(item.id);
+              return (
+                <div
+                  key={item.id}
+                  className={[
+                    'terminal-block-row assistant-command',
+                    isExpanded ? 'full-bleed' : ''
+                  ].filter(Boolean).join(' ')}
+                >
+                  <div className="role-avatar-container" />
+                  <MultiAgentBlock
+                    parentAgentName={item.block.parentName}
+                    status={item.block.status}
+                    subAgents={item.block.subAgents}
+                    isExpanded={isExpanded}
+                    onToggleExpanded={() => {
+                      if (isExpanded) {
+                        onCollapseTerminalBlock?.(item.id);
+                      } else {
+                        onExpandTerminalBlock?.(item.id);
+                      }
+                    }}
                   />
                 </div>
               );

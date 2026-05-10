@@ -30,11 +30,12 @@ export function TerminalBlockCard({
   const shouldCollapse = succeeded && block.source !== 'user' && !isExpanded && !isSelected;
 
   if (shouldCollapse) {
-    return <TerminalBlockSummary block={block} onOpen={() => onExpand(block.id)} />;
+    return <TerminalBlockSummary key={`summary-${block.id}`} block={block} onOpen={() => onExpand(block.id)} />;
   }
 
   return (
     <TerminalBlockDetail
+      key={`detail-${block.id}`}
       block={block}
       failed={failed}
       isSelected={isSelected}

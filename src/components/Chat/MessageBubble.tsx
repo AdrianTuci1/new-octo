@@ -2,10 +2,10 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
-import { Copy, Play, Save, Check } from 'lucide-react';
+import { Copy, Terminal, Save, Check } from 'lucide-react';
 import { useState } from 'react';
 import { CodeDiffView } from './CodeDiffView';
-import { ImplementationPlanBlock, MultiStepPlannerBlock, ThinkingBlock, WebSearchBlock } from './blocks';
+import { ImplementationPlanBlock, ThinkingBlock, WebSearchBlock } from './blocks';
 import { visibleChatMessageBody } from '../../hooks/useChat';
 import type { ChatMessage } from '../../types/chat';
 import type { CommandApproval } from '../../types/terminal';
@@ -35,7 +35,11 @@ export function MessageBubble({ message, onRequestCommandApproval }: MessageBubb
 
       <div className="message-content">
         {message.messageKind === 'reasoning' ? (
-          <ThinkingBlock body={visibleBody} isStreaming={message.isStreaming} />
+          <ThinkingBlock 
+            body={visibleBody} 
+            isStreaming={message.isStreaming} 
+            durationSeconds={message.thinkingDurationSeconds}
+          />
         ) : showStreamingHint ? (
           <div className="message-streaming-hint">
             <span className="thinking-dot-animation">Thinking</span>
@@ -50,6 +54,7 @@ export function MessageBubble({ message, onRequestCommandApproval }: MessageBubb
                   <WebSearchBlock
                     status={message.webSearchStatus}
                     results={message.webSearchResults ?? []}
+                    query={message.webSearchQuery}
                   />
                   {(!message.webSearchResults || message.webSearchResults.length === 0) && message.body.trim().length > 0 && (
                     <div className="tool-output-raw tool-output-web-search-fallback">
@@ -64,12 +69,6 @@ export function MessageBubble({ message, onRequestCommandApproval }: MessageBubb
                     <ImplementationPlanBlock
                       title={message.executionPlan.title}
                       version={message.executionPlan.version ?? 'v1'}
-                    />
-                    <MultiStepPlannerBlock
-                      title="Execution Plan"
-                      summary={message.executionPlan.summary}
-                      steps={message.executionPlan.steps}
-                      workstreams={message.executionPlan.workstreams ?? []}
                     />
                   </div>
                 )
@@ -106,9 +105,7 @@ export function MessageBubble({ message, onRequestCommandApproval }: MessageBubb
 
         {message.fileDiffs && message.fileDiffs.length > 0 && (
           <div className="message-diffs">
-            {message.fileDiffs.map((diff, index) => (
-              <CodeDiffView key={index} diff={diff} />
-            ))}
+            <CodeDiffView diffs={message.fileDiffs} />
           </div>
         )}
       </div>
@@ -137,12 +134,33 @@ function CodeBlock({
 
   return (
     <div className="code-block-container">
-      <div className="code-block-header">
+      <SyntaxHighlighter
+        language={language}
+        style={vscDarkPlus}
+        showLineNumbers={true}
+        lineNumberStyle={{
+          minWidth: '2.5em',
+          paddingRight: '1em',
+          textAlign: 'right',
+          color: 'rgba(255, 255, 255, 0.25)',
+          fontSize: '11px',
+          userSelect: 'none'
+        }}
+        customStyle={{
+          margin: 0,
+          background: 'transparent',
+          fontSize: '12px',
+          padding: '12px 12px 8px 12px',
+          lineHeight: '1.5'
+        }}
+      >
+        {code}
+      </SyntaxHighlighter>
+      <div className="code-block-footer">
         <span className="code-lang">{language}</span>
         <div className="code-actions">
-          <button className="code-action-btn" onClick={handleCopy}>
-            {copied ? <Check size={10} /> : <Copy size={10} />}
-            {copied ? 'Copied' : 'Copy'}
+          <button className="code-action-btn" onClick={handleCopy} title="Copy">
+            {copied ? <Check size={16} /> : <Copy size={16} />}
           </button>
           {isShell && (
             <button
@@ -150,29 +168,11 @@ function CodeBlock({
               title="Run in terminal"
               onClick={() => onRequestCommandApproval?.({ kind: 'command', command: code })}
             >
-              <Play size={10} />
-              Run
+              <Terminal size={16} />
             </button>
           )}
-          <button className="code-action-btn" title="Save as workflow">
-            <Save size={10} />
-            Save
-          </button>
         </div>
       </div>
-      <SyntaxHighlighter
-        language={language}
-        style={vscDarkPlus}
-        customStyle={{
-          margin: 0,
-          background: 'transparent',
-          fontSize: '12px',
-          padding: '16px',
-          lineHeight: '1.5'
-        }}
-      >
-        {code}
-      </SyntaxHighlighter>
     </div>
   );
 }

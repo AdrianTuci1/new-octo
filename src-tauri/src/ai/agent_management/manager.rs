@@ -13,6 +13,7 @@ use crate::ai::agent::{
     openai::OpenAiCompatibleConfig,
     types::{AgentRunSnapshot, AgentRunStatus},
 };
+use crate::octomus_paths::OctomusPaths;
 use crate::secure_store;
 
 #[derive(Clone, Default)]
@@ -216,13 +217,7 @@ pub fn clear_persisted_provider_config() -> Result<(), String> {
 }
 
 fn provider_config_path() -> Result<std::path::PathBuf, String> {
-    let home = std::env::var_os("HOME")
-        .or_else(|| std::env::var_os("USERPROFILE"))
-        .ok_or_else(|| "home directory was not found".to_string())?;
-
-    Ok(std::path::PathBuf::from(home)
-        .join(".octomus")
-        .join("ai-provider.json"))
+    Ok(OctomusPaths::default().ai_provider_config_path())
 }
 
 fn write_persisted_provider_config(config: &OpenAiCompatibleConfig) -> Result<(), String> {

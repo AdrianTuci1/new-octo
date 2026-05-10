@@ -14,12 +14,14 @@
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+use octomus_launcher_prototype::{
+    ai, app_updates, keybindings, memory, octomus_paths, shell_signatures, terminal,
+};
 use tauri::{
     menu::{Menu, MenuItem, PredefinedMenuItem, Submenu},
     tray::TrayIconBuilder,
     AppHandle, Manager, PhysicalPosition, Position, Runtime, WebviewWindowBuilder,
 };
-use octomus_launcher_prototype::{ai, app_updates, keybindings, memory, shell_signatures, terminal};
 
 #[cfg(target_os = "macos")]
 use tauri::ActivationPolicy;
@@ -311,6 +313,9 @@ fn main() {
         ])
         .setup(|app| {
             app_updates::init(&app.handle())?;
+            octomus_paths::OctomusPaths::default()
+                .ensure_layout()
+                .map_err(|error| -> Box<dyn std::error::Error> { error.into() })?;
 
             #[cfg(target_os = "macos")]
             {

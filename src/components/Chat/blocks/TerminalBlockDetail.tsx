@@ -1,4 +1,6 @@
+import { useRef } from 'react';
 import { Check, ChevronDown, Download, Filter, MoreVertical, Paperclip, Terminal } from 'lucide-react';
+import './TerminalBlockDetail.css';
 import type { TerminalCommandBlock } from '../../../types/terminal';
 
 type TerminalBlockDetailProps = {
@@ -31,6 +33,14 @@ export function TerminalBlockDetail({
   onClose,
   onSelect
 }: TerminalBlockDetailProps) {
+  const mountTimeRef = useRef(Date.now());
+
+  const handleSafeClose = () => {
+    // Ignore clicks happening within 300ms of mount to prevent accidental overlap triggering
+    if (Date.now() - mountTimeRef.current < 300) return;
+    onClose();
+  };
+
   if (block.source === 'user') {
     return (
       <article className={`terminal-inline-command ${failed ? 'failed' : ''}`} onClick={onSelect}>
@@ -53,8 +63,9 @@ export function TerminalBlockDetail({
     <article className={className} onClick={onSelect}>
       {!failed && (
         <button className={`terminal-detail-top-bar ${isSelected ? 'selected' : ''}`} type="button" onClick={(event) => {
+            event.preventDefault();
             event.stopPropagation();
-            onClose();
+            handleSafeClose();
           }}>
             <span className="terminal-detail-top-title">
               {isSelected ? <Check size={17} /> : <Terminal size={15} />}
@@ -62,7 +73,7 @@ export function TerminalBlockDetail({
                 {isSelected ? 'Viewing command detail' : block.command}
               </span>
             </span>
-            <ChevronDown size={20} />
+            <ChevronDown size={16} style={{ opacity: 0.7 }} />
           </button>
       )}
 

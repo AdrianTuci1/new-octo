@@ -1,4 +1,5 @@
 import { Check, ChevronRight, Play } from 'lucide-react';
+import './TerminalBlockSummary.css';
 import type { TerminalCommandBlock } from '../../../types/terminal';
 
 type TerminalBlockSummaryProps = {
@@ -16,7 +17,11 @@ export function TerminalBlockSummary({ block, onOpen }: TerminalBlockSummaryProp
     <button
       className={`terminal-block-summary ${isConversationLink ? 'inline-link' : ''}`}
       type="button"
-      onClick={onOpen}
+      onClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        onOpen();
+      }}
     >
       <span className="terminal-summary-icon">
         {isConversationLink ? <Play size={14} /> : <Check size={15} />}

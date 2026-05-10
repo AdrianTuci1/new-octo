@@ -16,6 +16,7 @@ export type ChatMessage = {
   toolCalls?: any[];
   fileDiffs?: FileDiff[];
   messageKind?: 'default' | 'reasoning';
+  thinkingDurationSeconds?: number;
   parentMessageId?: string;
   toolKind?: 'command' | 'web-search' | 'plan';
   webSearchStatus?: 'searching' | 'success' | 'error';
@@ -28,6 +29,16 @@ export type ChatMessage = {
     description?: string;
     confidence?: number;
   };
+  subAgents?: SubAgentCall[];
+};
+
+export type SubAgentCall = {
+  id: string;
+  name: string;
+  task: string;
+  status: 'idle' | 'running' | 'completed' | 'failed';
+  avatarUrl?: string;
+  result?: string;
 };
 
 export type ExecutionPlanStep = {
