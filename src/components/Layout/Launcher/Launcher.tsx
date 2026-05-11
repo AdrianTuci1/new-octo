@@ -68,6 +68,8 @@ export function Launcher(props: LauncherProps) {
               activeConversationId={launcher.ui.resolvedConversationId}
               activeMode={launcher.tray.activeTrayMode}
               commandItems={COMMAND_ITEMS}
+              commandSearchQuery={launcher.chat.query}
+              selectedCommandIndex={launcher.store.selectedCommandIndex}
               conversationSearchQuery={launcher.store.conversationSearchQuery}
               conversations={launcher.ui.visibleTrayConversations}
               helpItems={HELP_ITEMS}
@@ -83,7 +85,10 @@ export function Launcher(props: LauncherProps) {
               onConversationSearchChange={launcher.store.setConversationSearchQuery}
               onExitShellMode={() => launcher.store.setModeLock(launcher.chat.query.trim().length > 0 ? 'chat' : null)}
               onHistoryTabChange={launcher.store.setHistoryTab}
-              onInsertCommand={(command: string) => launcher.chat.setQuery(`${command} `)}
+              onInsertCommand={(command: string) => {
+                launcher.chat.setQuery(`${command} `);
+                launcher.tray.closeTray();
+              }}
               onModelTabChange={launcher.store.setModelTab}
               onNewConversation={launcher.actions.handleNewConversation}
               onSelectConversation={launcher.actions.handleTrayConversationSelect}

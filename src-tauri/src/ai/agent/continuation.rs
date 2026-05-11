@@ -12,8 +12,6 @@ use super::{
 };
 use crate::ai::agent_management::AgentHarnessManager;
 
-const DEFAULT_MODEL_ID: &str = "octomus-scripted-harness";
-
 pub async fn agent_continue(
     app: AppHandle,
     window: tauri::Window,
@@ -46,15 +44,7 @@ pub async fn agent_continue(
         })
         .or_else(OpenAiCompatibleConfig::from_env);
 
-    let model_id = request
-        .model_id
-        .filter(|id| !id.trim().is_empty())
-        .or_else(|| {
-            provider_config
-                .as_ref()
-                .map(|config| config.model_id.clone())
-        })
-        .unwrap_or_else(|| DEFAULT_MODEL_ID.to_string());
+    let model_id = super::commands::resolve_model_id(request.model_id, provider_config.as_ref());
 
     let cwd = request.cwd.or_else(|| {
         std::env::var("HOME").ok().or_else(|| {

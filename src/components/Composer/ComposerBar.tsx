@@ -1,6 +1,7 @@
 import { useState, useEffect, type KeyboardEvent } from 'react';
 import { ArrowRight, Bot, CornerDownLeft, MonitorSmartphone, Plus, Sparkles } from 'lucide-react';
 import { GitBranchPicker } from './GitBranchPicker';
+import { hasCompleteSlashCommand, SlashCommandHighlight } from './SlashCommandHighlight';
 import { useComposerBar } from './useComposerBar';
 import { WorkingDirectoryPicker } from './WorkingDirectoryPicker';
 import type { RecommendedComposerAction, ShellPrediction } from '../../lib/composerIntelligence';
@@ -85,6 +86,7 @@ export function ComposerBar({
   const [isDismissed, setIsDismissed] = useState(false);
   const predictionSuffix = prediction?.completionText ?? '';
   const showShellIndicator = mode === 'shell' && shellSource === 'manual';
+  const showSlashCommandHighlight = hasCompleteSlashCommand(query);
 
   // Reset dismissal when recommendation changes
   useEffect(() => {
@@ -143,9 +145,12 @@ export function ComposerBar({
                   </span>
                 </div>
               )}
+
+              <SlashCommandHighlight query={query} />
+
               <textarea
                 ref={inputRef}
-                className={`chat-input ${showRecommendation ? 'has-recommendation' : ''}`}
+                className={`chat-input ${showRecommendation ? 'has-recommendation' : ''} ${showSlashCommandHighlight ? 'has-slash-command-highlight' : ''}`}
                 value={query}
                 disabled={modelSetupRequired}
                 onChange={(event) => onQueryChange(event.target.value)}

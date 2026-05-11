@@ -52,11 +52,16 @@ export function cleanTitleText(value: string) {
 export function titleFromMessages(messages: ChatMessage[]) {
   const firstAssistant = messages.find((message) => (
     message.role === 'assistant'
+    && message.messageKind !== 'reasoning'
     && !message.isError
     && message.body.trim().length > 0
   ));
   const firstUser = messages.find((message) => message.role === 'user' && message.body.trim().length > 0);
-  const source = cleanTitleText(firstAssistant?.body ?? firstUser?.body ?? '');
+  const source = cleanTitleText(
+    firstAssistant
+      ? visibleChatMessageBody(firstAssistant.body)
+      : firstUser?.body ?? ''
+  );
   if (!source) return 'New agent conversation';
 
   const sentence = source.split(/(?<=[.!?])\s+/)[0] ?? source;

@@ -1,8 +1,20 @@
 import type { ChatMessage } from '../../types/chat';
 import { FOLLOW_UP_START, FOLLOW_UP_END } from './helpers';
 
+export function stripThinkingBlocks(value: string) {
+  if (!value.includes('<thinking>')) {
+    return value;
+  }
+
+  const stripped = value
+    .replace(/<thinking>[\s\S]*?<\/thinking>/gi, ' ')
+    .replace(/<thinking>[\s\S]*$/gi, '');
+
+  return stripped.replace(/[ \t]{2,}/g, ' ').trim();
+}
+
 export function visibleChatMessageBody(value: string) {
-  return extractFollowUpSuggestion(value).visibleBody;
+  return stripThinkingBlocks(extractFollowUpSuggestion(value).visibleBody);
 }
 
 export function followUpSuggestionFromMessageBody(value: string) {

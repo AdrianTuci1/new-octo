@@ -63,18 +63,18 @@ export function TerminalBlockDetail({
     <article className={className} onClick={onSelect}>
       {!failed && (
         <button className={`terminal-detail-top-bar ${isSelected ? 'selected' : ''}`} type="button" onClick={(event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            handleSafeClose();
-          }}>
-            <span className="terminal-detail-top-title">
-              {isSelected ? <Check size={17} /> : <Terminal size={15} />}
-              <span className="terminal-detail-top-title-text">
-                {isSelected ? 'Viewing command detail' : block.command}
-              </span>
+          event.preventDefault();
+          event.stopPropagation();
+          handleSafeClose();
+        }}>
+          <span className="terminal-detail-top-title">
+            {isSelected ? <Check size={17} /> : <Terminal size={15} />}
+            <span className="terminal-detail-top-title-text">
+              {isSelected ? 'Viewing command detail' : block.command}
             </span>
-            <ChevronDown size={16} style={{ opacity: 0.7 }} />
-          </button>
+          </span>
+          <ChevronDown size={16} style={{ opacity: 0.7 }} />
+        </button>
       )}
 
       <div className="terminal-detail-body">

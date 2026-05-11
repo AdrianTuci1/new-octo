@@ -7,6 +7,64 @@ import { artifactsFromMessages, chatHistoryFromMessages, titleFromConversationCo
 import { pendingTokenText, setAssistantRegistration } from '../bridge';
 import type { useChatState } from './useChatState';
 
+const RESERVED_SLASH_COMMANDS = new Set([
+  'agent',
+  'new',
+  'create-environment',
+  'open-file',
+  'conversations',
+  'prompts',
+  'plan'
+]);
+
+const SKILL_SLASH_ALIASES: Record<string, string> = {
+  '/cloud-agent': [
+    '@skills/octo-platform',
+    'Guide me to set up a cloud agent in Octomus.',
+    'Keep the answer short and use bullet points.',
+    'Cover exactly these points:',
+    '- What a cloud agent is here.',
+    '- Two modes: new cloud tab, or agent execution from the current chat session.',
+    '- If Modal is already configured in the local CLI, say that the user can continue from chat directly.',
+    '- Two connection options: Modal and VPS / Custom VM.',
+    '- If the user wants a separate cloud tab rather than chat execution, recommend `/create-environment`.',
+    '- Mention that after setup, the app can link the connection.',
+    '- Give one short example such as migrating MySQL to DynamoDB.',
+    'Include these exact clickable markdown links on separate lines:',
+    '[Configure Modal](octomus://cloud-profile/modal)',
+    '[Configure VPS](octomus://cloud-profile/custom-vm)',
+    'Do not start with a long paragraph. Do not ask more than one next-step question.'
+  ].join('\n'),
+  '/create-environment': [
+    '@skills/create-environment',
+    'Guide me using short bullet points.',
+    'Explain local vs cloud environments, and say that this is the preferred path when the user wants a separate cloud tab instead of a cloud agent inside the current chat.'
+  ].join('\n'),
+  '/create-mcp': [
+    '@skills/add-mcp-server',
+    'Guide me to add an MCP server using this skill.',
+    'If scope is not obvious, ask whether this should be global or project-scoped before proposing configuration changes.'
+  ].join('\n'),
+  '/prompts': [
+    '@skills/prompts',
+    'Guide me using short bullet points and keep it concise.'
+  ].join('\n')
+};
+
+function usesSyntheticThinking(modelId?: string | null) {
+  return typeof modelId === 'string' && modelId.trim().toLowerCase().includes('gemma');
+}
+
+function buildSyntheticThinkingSummary(prompt: string) {
+  const cleaned = prompt.replace(/\s+/g, ' ').trim();
+  if (!cleaned) {
+    return 'The user wants me to respond directly and keep the answer concise.';
+  }
+
+  const shortPrompt = cleaned.length > 140 ? `${cleaned.slice(0, 137).trimEnd()}...` : cleaned;
+  return `The user is asking: "${shortPrompt}". I should keep the response focused and handle the requested skill or tool path if needed.`;
+}
+
 type UseChatActionsProps = {
   options: UseChatOptions;
   state: ReturnType<typeof useChatState>;
@@ -14,6 +72,38 @@ type UseChatActionsProps = {
   onFileChangeApprovalRef: React.MutableRefObject<UseChatOptions['onFileChangeApproval']>;
   onWebSearchRef: React.MutableRefObject<UseChatOptions['onWebSearch']>;
 };
+
+function resolveAgentPrompt(rawPrompt: string) {
+  const trimmed = rawPrompt.trim();
+  if (!trimmed.startsWith('/')) {
+    return trimmed;
+  }
+
+  const aliasedPrompt = SKILL_SLASH_ALIASES[trimmed];
+  if (aliasedPrompt) {
+    return aliasedPrompt;
+  }
+
+  const match = trimmed.match(/^\/([a-z0-9][a-z0-9-]*)(?:\s+([\s\S]+))?$/i);
+  if (!match) {
+    return trimmed;
+  }
+
+  const [, commandName, remainder] = match;
+  if (RESERVED_SLASH_COMMANDS.has(commandName.toLowerCase())) {
+    return trimmed;
+  }
+
+  if (remainder?.trim()) {
+    return trimmed;
+  }
+
+  return [
+    trimmed,
+    'Guide me through this skill.',
+    'Start by briefly explaining what this skill can help with, then ask only for the minimum missing details needed to proceed.'
+  ].join('\n');
+}
 
 export function useChatActions({ options, state, onCommandApprovalRef, onFileChangeApprovalRef, onWebSearchRef }: UseChatActionsProps) {
   const formatPlanBody = useCallback((plan: ExecutionPlanArtifact) => {
@@ -129,6 +219,7 @@ export function useChatActions({ options, state, onCommandApprovalRef, onFileCha
       append: (text) => state.appendToMessage(assistantMessageId, text),
       update: (updater) => state.updateMessage(assistantMessageId, updater),
       upsertReasoning: (payload) => state.upsertReasoningMessage(assistantMessageId, payload),
+      finalizeReasoning: () => state.finalizeReasoningMessage(assistantMessageId),
       showPlan: (plan, toolCallId) => submitPlanProposal(toolCallId, plan),
       applyPlanExecution: (update, toolCallId) => submitPlanExecution(toolCallId, update),
       onCommandApproval: (approval) => onCommandApprovalRef.current?.(approval),
@@ -209,6 +300,7 @@ export function useChatActions({ options, state, onCommandApprovalRef, onFileCha
     const prompt = typeof promptOverride === 'string' ? promptOverride : state.query;
     const trimmed = prompt.trim();
     if (!trimmed) return;
+    const resolvedPrompt = resolveAgentPrompt(trimmed);
 
     if (options.requiresModelSetup) {
       options.onRequireModelSetup?.();
@@ -244,6 +336,8 @@ export function useChatActions({ options, state, onCommandApprovalRef, onFileCha
       createdAt: new Date().toISOString()
     });
 
+    const assistantCreatedAt = new Date().toISOString();
+
     state.addMessage({
       id: assistantMessageId,
       role: 'assistant',
@@ -253,8 +347,26 @@ export function useChatActions({ options, state, onCommandApprovalRef, onFileCha
       runId,
       status: 'queued',
       isStreaming: true,
-      createdAt: new Date().toISOString()
+      hasNativeThinking: usesSyntheticThinking(options.modelId),
+      createdAt: assistantCreatedAt
     });
+
+    if (usesSyntheticThinking(options.modelId)) {
+      state.addMessage({
+        id: `${assistantMessageId}::reasoning`,
+        role: 'assistant',
+        title: 'Thinking',
+        body: buildSyntheticThinkingSummary(trimmed),
+        conversationId,
+        runId,
+        messageKind: 'reasoning',
+        parentMessageId: assistantMessageId,
+        isStreaming: true,
+        status: 'running',
+        hasNativeThinking: false,
+        createdAt: assistantCreatedAt
+      });
+    }
 
     state.setQuery('');
     options.onCloseTray?.();
@@ -265,6 +377,7 @@ export function useChatActions({ options, state, onCommandApprovalRef, onFileCha
       append: (text) => state.appendToMessage(assistantMessageId, text),
       update: (updater) => state.updateMessage(assistantMessageId, updater),
       upsertReasoning: (payload) => state.upsertReasoningMessage(assistantMessageId, payload),
+      finalizeReasoning: () => state.finalizeReasoningMessage(assistantMessageId),
       showPlan: (plan, toolCallId) => submitPlanProposal(toolCallId, plan),
       applyPlanExecution: (update, toolCallId) => submitPlanExecution(toolCallId, update),
       onCommandApproval: (approval) => onCommandApprovalRef.current?.(approval),
@@ -280,7 +393,7 @@ export function useChatActions({ options, state, onCommandApprovalRef, onFileCha
           runId,
           conversationId,
           assistantMessageId,
-          prompt: trimmed,
+          prompt: resolvedPrompt,
           cwd: options.cwd ?? null,
           modelId: options.modelId ?? null,
           messages: requestMessages

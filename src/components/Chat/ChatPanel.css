@@ -240,6 +240,18 @@
   color: var(--text-main);
 }
 
+.message-content .chat-action-link {
+  color: rgba(150, 214, 255, 0.96);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-thickness: 1px;
+  cursor: pointer;
+}
+
+.message-content .chat-action-link:hover {
+  color: rgba(201, 235, 255, 1);
+}
+
 .message-streaming-hint {
   display: inline-flex;
   align-items: center;

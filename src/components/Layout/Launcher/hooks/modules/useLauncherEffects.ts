@@ -6,6 +6,11 @@ import { useEffect, useRef } from 'react';
 import { buildConversationLinkTitle } from '../helpers';
 import type { LauncherProps } from '../types';
 
+function isCommandSearchQuery(value: string) {
+  const trimmed = value.trimStart();
+  return trimmed.startsWith('/') && !trimmed.includes(' ');
+}
+
 export type LauncherEffectsParams = {
   store: any;
   props: LauncherProps;
@@ -101,7 +106,23 @@ export function useLauncherEffects(params: LauncherEffectsParams) {
     }
   }, [terminalAutoDetectSetting, store.terminalAutoDetectEnabled, store.setTerminalAutoDetectEnabled]);
 
-  // 6. Report Surface Change
+  // 6. Command Tray Sync
+  useEffect(() => {
+    const shouldShowCommandTray = isCommandSearchQuery(chat.query);
+
+    if (shouldShowCommandTray) {
+      if (!tray.isTrayOpen || tray.activeTrayMode !== 'commands') {
+        tray.toggleTray('commands');
+      }
+      return;
+    }
+
+    if (tray.isTrayOpen && tray.activeTrayMode === 'commands') {
+      tray.closeTray();
+    }
+  }, [chat.query, tray.activeTrayMode, tray.closeTray, tray.isTrayOpen, tray.toggleTray]);
+
+  // 7. Report Surface Change
   useEffect(() => {
     if (suppressComposerSurfaceReportRef.current) {
       suppressComposerSurfaceReportRef.current = false;
@@ -113,14 +134,14 @@ export function useLauncherEffects(params: LauncherEffectsParams) {
     props.onComposerSurfaceChange?.(store.composerSurface);
   }, [props.onComposerSurfaceChange, store.composerSurface]);
 
-  // 7. Report Working Directory Change
+  // 8. Report Working Directory Change
   useEffect(() => {
     if (lastReportedWorkingDirectoryRef.current === workingDirectory.currentPath) return;
     lastReportedWorkingDirectoryRef.current = workingDirectory.currentPath;
     props.onWorkingDirectoryChange?.(workingDirectory.currentPath);
   }, [props.onWorkingDirectoryChange, workingDirectory.currentPath]);
 
-  // 8. Reset On Mount
+  // 9. Reset On Mount
   useEffect(() => {
     if (!resetOnMount || didResetOnMountRef.current) return;
     didResetOnMountRef.current = true;
@@ -146,7 +167,7 @@ export function useLauncherEffects(params: LauncherEffectsParams) {
     store.setSelectedModelIndex(0);
   }, [resetOnMount]);
 
-  // 9. Model Setup Onboarding
+  // 10. Model Setup Onboarding
   useEffect(() => {
     if (store.composerSurface !== 'agent' || !runtime.modelSelection.requiresModelSetup || didPromptModelSetupRef.current) {
       return;
@@ -157,7 +178,7 @@ export function useLauncherEffects(params: LauncherEffectsParams) {
     actions.openModelDrawer();
   }, [actions, runtime.modelSelection.requiresModelSetup, tray]);
 
-  // 10. Anchor Sync
+  // 11. Anchor Sync
   useEffect(() => {
     const anchor = refs.pendingConversationAnchorRef.current;
     if (!anchor || resolvedConversationId !== anchor.conversationId || chat.messages.length === 0) return;

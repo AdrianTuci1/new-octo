@@ -12,7 +12,7 @@ import type { ChatMessage } from '../../types/chat';
 import type { CommandApproval, TerminalCommandBlock } from '../../types/terminal';
 import './ChatPanel.css';
 
-const USE_MOCK = false; // <-- Set to false to revert to real data
+const USE_MOCK = true; // <-- Set to false to revert to real data
 
 function performHighlight(
   container: HTMLElement,

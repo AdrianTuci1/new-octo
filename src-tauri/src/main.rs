@@ -17,10 +17,12 @@
 use octomus_launcher_prototype::{
     ai, app_updates, keybindings, memory, octomus_paths, shell_signatures, terminal,
 };
+use serde::Serialize;
+use std::sync::Mutex;
 use tauri::{
     menu::{Menu, MenuItem, PredefinedMenuItem, Submenu},
     tray::TrayIconBuilder,
-    AppHandle, Manager, PhysicalPosition, Position, Runtime, WebviewWindowBuilder,
+    AppHandle, Emitter, Manager, PhysicalPosition, Position, Runtime, State, WebviewWindowBuilder,
 };
 
 #[cfg(target_os = "macos")]
@@ -47,6 +49,17 @@ const MORE_SESSION_4_ID: &str = "all-session-4";
 const MORE_SESSION_5_ID: &str = "all-session-5";
 const TOGGLE_SHORTCUT: &str = "alt+space";
 const WINDOW_BOTTOM_MARGIN: i32 = 68;
+const OPEN_CLOUD_PROFILE_DRAWER_EVENT: &str = "octomus:open-cloud-profile-drawer";
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct OpenCloudProfileDrawerPayload {
+    profile_id: String,
+    section_id: String,
+}
+
+#[derive(Default)]
+struct PendingCloudProfileDrawerRequest(Mutex<Option<OpenCloudProfileDrawerPayload>>);
 
 fn anchor_launcher_to_bottom<R: Runtime>(app: &AppHandle<R>) {
     let Some(window) = app.get_webview_window(MAIN_WINDOW_LABEL) else {
@@ -261,6 +274,7 @@ fn main() {
         .manage(ai::AgentHarnessManager::default())
         .manage(ai::predict::composer::ComposerIntelligenceManager::default())
         .manage(memory::OctomusMemoryManager::default())
+        .manage(PendingCloudProfileDrawerRequest::default())
         .invoke_handler(tauri::generate_handler![
             app_updates::app_updates_get_state,
             app_updates::app_updates_check,
@@ -310,6 +324,9 @@ fn main() {
             memory::memory_sync_once,
             complete_onboarding,
             show_app_window,
+            open_cloud_profile_drawer,
+            open_external_url,
+            consume_pending_cloud_profile_drawer_request,
         ])
         .setup(|app| {
             app_updates::init(&app.handle())?;
@@ -430,6 +447,50 @@ fn show_app_window<R: Runtime>(app: AppHandle<R>) {
     show_settings_window(&app);
 }
 
+#[tauri::command]
+fn open_cloud_profile_drawer<R: Runtime>(
+    app: AppHandle<R>,
+    pending_request: State<'_, PendingCloudProfileDrawerRequest>,
+    profile_id: String,
+) -> Result<(), String> {
+    let payload = OpenCloudProfileDrawerPayload {
+        profile_id,
+        section_id: "cloud-platform/cloud".to_string(),
+    };
+
+    if let Ok(mut pending) = pending_request.0.lock() {
+        *pending = Some(payload.clone());
+    }
+
+    show_settings_window(&app);
+
+    let app_handle = app.clone();
+    tauri::async_runtime::spawn(async move {
+        for delay_ms in [50_u64, 200_u64, 600_u64] {
+            tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+            let _ = app_handle.emit(OPEN_CLOUD_PROFILE_DRAWER_EVENT, payload.clone());
+        }
+    });
+
+    Ok(())
+}
+
+#[tauri::command]
+fn open_external_url(url: String) -> Result<(), String> {
+    if url.trim().is_empty() {
+        return Err("URL cannot be empty".to_string());
+    }
+
+    open_url_with_system_handler(&url)
+}
+
+#[tauri::command]
+fn consume_pending_cloud_profile_drawer_request(
+    pending_request: State<'_, PendingCloudProfileDrawerRequest>,
+) -> Option<OpenCloudProfileDrawerPayload> {
+    pending_request.0.lock().ok().and_then(|mut pending| pending.take())
+}
+
 fn parse_env_value(value: &str) -> String {
     let trimmed = value.trim();
     if trimmed.len() >= 2 {
@@ -442,4 +503,37 @@ fn parse_env_value(value: &str) -> String {
     }
 
     trimmed.to_string()
+}
+
+#[cfg(target_os = "macos")]
+fn open_url_with_system_handler(url: &str) -> Result<(), String> {
+    std::process::Command::new("open")
+        .arg(url)
+        .status()
+        .map_err(|error| format!("failed to launch url handler: {error}"))?
+        .success()
+        .then_some(())
+        .ok_or_else(|| "url handler exited unsuccessfully".to_string())
+}
+
+#[cfg(target_os = "windows")]
+fn open_url_with_system_handler(url: &str) -> Result<(), String> {
+    std::process::Command::new("cmd")
+        .args(["/C", "start", "", url])
+        .status()
+        .map_err(|error| format!("failed to launch url handler: {error}"))?
+        .success()
+        .then_some(())
+        .ok_or_else(|| "url handler exited unsuccessfully".to_string())
+}
+
+#[cfg(all(not(target_os = "macos"), not(target_os = "windows")))]
+fn open_url_with_system_handler(url: &str) -> Result<(), String> {
+    std::process::Command::new("xdg-open")
+        .arg(url)
+        .status()
+        .map_err(|error| format!("failed to launch url handler: {error}"))?
+        .success()
+        .then_some(())
+        .ok_or_else(|| "url handler exited unsuccessfully".to_string())
 }

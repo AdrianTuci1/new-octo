@@ -59,6 +59,7 @@ export function useLauncherRuntime(props: LauncherProps, store: any, tray: any) 
   const modelSelectionRaw = Hooks.useModelSelection();
   const modelSelection = useMemo(() => modelSelectionRaw, [
     modelSelectionRaw.selectedModelId,
+    modelSelectionRaw.selectedModelApiId,
     modelSelectionRaw.models,
     modelSelectionRaw.selectedModelLabel,
     modelSelectionRaw.isConfigured,
@@ -210,7 +211,7 @@ export function useLauncherRuntime(props: LauncherProps, store: any, tray: any) 
   const chatRaw = Hooks.useChat({
     conversationId: resolvedConversationId,
     cwd: workingDirectory.currentPath,
-    modelId: modelSelection.selectedModelId,
+    modelId: modelSelection.selectedModelApiId,
     requiresModelSetup: modelSelection.requiresModelSetup,
     onRequireModelSetup: () => {
       tray.closeTray();

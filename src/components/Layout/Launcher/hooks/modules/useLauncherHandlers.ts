@@ -44,6 +44,11 @@ function buildCommandRefinePrompt(command: string) {
   ].filter(Boolean).join('\n\n');
 }
 
+function isCommandSearchQuery(value: string) {
+  const trimmed = value.trimStart();
+  return trimmed.startsWith('/') && !trimmed.includes(' ');
+}
+
 export function useLauncherHandlers({
   store, tray, props, runtime, 
   seededConversationAnchorTimesRef, pendingConversationAnchorRef,
@@ -74,10 +79,11 @@ export function useLauncherHandlers({
 
   const openCommandsTray = useCallback(() => {
     store.setSelectedHistoryIndex(0);
+    store.setSelectedCommandIndex(0);
     if (!tray.isTrayOpen || tray.activeTrayMode !== 'commands') {
       tray.toggleTray('commands');
     }
-  }, [store.setSelectedHistoryIndex, tray.activeTrayMode, tray.isTrayOpen, tray.toggleTray]);
+  }, [store.setSelectedCommandIndex, store.setSelectedHistoryIndex, tray.activeTrayMode, tray.isTrayOpen, tray.toggleTray]);
 
   const closeAgentSurface = useCallback(() => {
     void chat.saveCurrentConversation?.();
@@ -324,19 +330,21 @@ export function useLauncherHandlers({
   const handleTerminalQueryChange = useCallback((value: string) => {
     chat.setQuery(value);
     store.setSelectedHistoryIndex(0);
+    store.setSelectedCommandIndex(0);
 
-    if (value === '/') {
+    if (isCommandSearchQuery(value)) {
       if (!tray.isTrayOpen || tray.activeTrayMode !== 'commands') {
         tray.toggleTray('commands');
       }
       return;
     }
 
-    if ((value === '' || value === '//') && tray.isTrayOpen && tray.activeTrayMode === 'commands') {
+    if (tray.isTrayOpen && tray.activeTrayMode === 'commands') {
       tray.closeTray();
     }
   }, [
     chat.setQuery,
+    store.setSelectedCommandIndex,
     store.setSelectedHistoryIndex,
     tray.activeTrayMode,
     tray.closeTray,
@@ -348,21 +356,25 @@ export function useLauncherHandlers({
     const nextValue = consumeShellModeActivator(rawValue);
     chat.setQuery(nextValue.value);
     store.setSelectedHistoryIndex(0);
+    store.setSelectedCommandIndex(0);
     if (nextValue.consumed) {
       store.setModeLock('shell');
     } else if (rawValue.length === 0 && store.modeLock === 'chat') {
       store.setModeLock(null);
     }
 
-    if (nextValue.value === '/' && !tray.isTrayOpen) {
-      tray.toggleTray('commands');
-    } else if ((nextValue.value === '' || nextValue.value === '//') && tray.isTrayOpen && tray.activeTrayMode === 'commands') {
-      tray.toggleTray('commands');
+    if (isCommandSearchQuery(nextValue.value)) {
+      if (!tray.isTrayOpen || tray.activeTrayMode !== 'commands') {
+        tray.toggleTray('commands');
+      }
+    } else if (tray.isTrayOpen && tray.activeTrayMode === 'commands') {
+      tray.closeTray();
     }
   }, [
     chat.setQuery,
     store.modeLock,
     store.setModeLock,
+    store.setSelectedCommandIndex,
     store.setSelectedHistoryIndex,
     tray.activeTrayMode,
     tray.isTrayOpen,
@@ -403,9 +415,10 @@ export function useLauncherHandlers({
 
   const handleToggleCommands = useCallback(() => {
     const willOpen = !tray.isTrayOpen || tray.activeTrayMode !== 'commands';
+    store.setSelectedCommandIndex(0);
     chat.setQuery(willOpen ? '/' : '');
     tray.toggleTray('commands');
-  }, [chat.setQuery, tray.activeTrayMode, tray.isTrayOpen, tray.toggleTray]);
+  }, [chat.setQuery, store.setSelectedCommandIndex, tray.activeTrayMode, tray.isTrayOpen, tray.toggleTray]);
 
   const handleToggleTerminalAutoDetect = useCallback(() => {
     const nextValue = !store.terminalAutoDetectEnabled;

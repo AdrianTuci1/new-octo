@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::{BTreeMap, BTreeSet, HashSet},
     fs,
     path::PathBuf,
 };
@@ -80,20 +80,14 @@ fn detect_mentioned_skills<'a>(
     messages: &[AgentInputMessage],
 ) -> BTreeSet<String> {
     let mut loaded_skills = BTreeSet::new();
+    let reserved_slash_commands = reserved_slash_commands();
 
     for skill_name in available_skills {
-        let patterns = [
-            format!("@{}", skill_name),
-            format!("@skills/{}", skill_name),
-            format!("/skills/{}", skill_name),
-        ];
-
-        let mentioned = patterns.iter().any(|pattern| {
-            prompt.contains(pattern)
-                || messages
-                    .iter()
-                    .any(|msg| msg.role == "user" && msg.content.contains(pattern))
-        });
+        let mentioned = is_skill_invoked(prompt, skill_name, &reserved_slash_commands)
+            || messages.iter().any(|msg| {
+                msg.role == "user"
+                    && is_skill_invoked(&msg.content, skill_name, &reserved_slash_commands)
+            });
 
         if mentioned {
             loaded_skills.insert(skill_name.clone());
@@ -103,9 +97,43 @@ fn detect_mentioned_skills<'a>(
     loaded_skills
 }
 
+fn is_skill_invoked(prompt: &str, skill_name: &str, reserved_slash_commands: &HashSet<&'static str>) -> bool {
+    let explicit_patterns = [format!("@{}", skill_name), format!("@skills/{}", skill_name)];
+    if explicit_patterns.iter().any(|pattern| prompt.contains(pattern)) {
+        return true;
+    }
+
+    matches_slash_invocation(prompt, &format!("/skills/{}", skill_name))
+        || (!reserved_slash_commands.contains(skill_name)
+            && matches_slash_invocation(prompt, &format!("/{}", skill_name)))
+}
+
+fn matches_slash_invocation(text: &str, command: &str) -> bool {
+    text.split_whitespace().any(|token| {
+        token == command
+            || token
+                .strip_prefix(command)
+                .is_some_and(|remainder| remainder.starts_with([':', ',', '.', ';', '!', '?']))
+    })
+}
+
+fn reserved_slash_commands() -> HashSet<&'static str> {
+    HashSet::from([
+        "agent",
+        "create-environment",
+        "open-file",
+        "cloud-agent",
+        "conversations",
+        "prompts",
+        "plan",
+        "create-mcp",
+        "new",
+    ])
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{detect_mentioned_skills, insert_skill_directories};
+    use super::{detect_mentioned_skills, insert_skill_directories, is_skill_invoked, reserved_slash_commands};
     use crate::ai::agent::types::AgentInputMessage;
     use std::{
         collections::BTreeMap,
@@ -154,5 +182,22 @@ mod tests {
 
         assert!(detected.contains("alpha"));
         assert!(detected.contains("beta"));
+    }
+
+    #[test]
+    fn detects_direct_slash_skill_invocation() {
+        let reserved = reserved_slash_commands();
+
+        assert!(is_skill_invoked("/alpha", "alpha", &reserved));
+        assert!(is_skill_invoked("rulează /alpha pentru mine", "alpha", &reserved));
+        assert!(is_skill_invoked("/skills/alpha", "alpha", &reserved));
+    }
+
+    #[test]
+    fn does_not_treat_reserved_slash_commands_as_skills() {
+        let reserved = reserved_slash_commands();
+
+        assert!(!is_skill_invoked("/cloud-agent", "cloud-agent", &reserved));
+        assert!(!is_skill_invoked("/plan", "plan", &reserved));
     }
 }

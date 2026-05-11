@@ -4,6 +4,7 @@
  */
 import { listen } from '@tauri-apps/api/event';
 import { useEffect, type KeyboardEvent } from 'react';
+import { COMMAND_ITEMS, filterCommandItems } from '../../../../../lib';
 import * as Hooks from '../../../../../hooks';
 import type { BackendShortcutCommandEvent } from '../../../../../types/keybindings';
 import * as Utils from '../../utils';
@@ -28,6 +29,7 @@ export function useLauncherShortcuts({
   const { visibleModels } = ui;
   const { clearTerminalSurface, openAppWindow, launchAgentComposer } = actions;
   const { variant = 'panel' } = props;
+  const visibleCommandItems = filterCommandItems(COMMAND_ITEMS, chat.query);
 
   // 1. Internal Keyboard Logic (Advanced Keyboard Shortcuts)
   const { handleKeyDown } = Hooks.useKeyboardShortcuts({
@@ -116,11 +118,52 @@ export function useLauncherShortcuts({
       return;
     }
 
+    if (tray.isTrayOpen && tray.activeTrayMode === 'commands') {
+      if (event.key === 'ArrowDown') {
+        event.preventDefault();
+        store.setSelectedCommandIndex((index: number) => Math.min(index + 1, Math.max(0, visibleCommandItems.length - 1)));
+        return;
+      }
+
+      if (event.key === 'ArrowUp') {
+        event.preventDefault();
+        store.setSelectedCommandIndex((index: number) => Math.max(index - 1, 0));
+        return;
+      }
+
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        const item = visibleCommandItems[store.selectedCommandIndex] ?? visibleCommandItems[0];
+        if (!item) {
+          return;
+        }
+
+        if (event.metaKey || event.ctrlKey) {
+          tray.closeTray();
+          if (store.composerSurface === 'terminal') {
+            launchAgentComposer(item.label, true);
+          } else {
+            chat.setQuery(item.label);
+            void chat.submitQuery(item.label);
+          }
+          return;
+        }
+
+        chat.setQuery(`${item.label} `);
+        tray.closeTray();
+        return;
+      }
+    }
+
     if (store.composerSurface === 'terminal') {
       if (event.key === 'Enter' && !event.shiftKey) {
         event.preventDefault();
         const command = chat.query.trim();
         if (!command) return;
+        if (command.startsWith('/')) {
+          launchAgentComposer(command, true);
+          return;
+        }
         if (command === 'clear') {
           clearTerminalSurface();
           chat.setQuery('');

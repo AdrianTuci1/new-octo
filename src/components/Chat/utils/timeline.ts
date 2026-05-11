@@ -43,6 +43,8 @@ export function buildTimelineItems(
   terminalBlocks: TerminalCommandBlock[],
   terminalError?: string | null
 ): TimelineItem[] {
+  const messageOrderById = new Map(messages.map((message, index) => [message.id, index]));
+
   const messageItems = messages
     .filter(m => {
       if (m.role === 'tool' && m.toolKind === 'command') {
@@ -62,7 +64,9 @@ export function buildTimelineItems(
       id: message.id,
       kind: 'message' as const,
       at: timeFromMessage(message),
-      order,
+      order: message.messageKind === 'reasoning' && message.parentMessageId
+        ? (messageOrderById.get(message.parentMessageId) ?? order) - 0.5
+        : order,
       message
     }));
 

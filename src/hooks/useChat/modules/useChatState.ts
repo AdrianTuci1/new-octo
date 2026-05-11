@@ -3,6 +3,29 @@ import type { ChatMessage } from '../../../types/chat';
 import { extractFollowUpSuggestion } from '../parsers';
 import { pendingFollowUpPayloads } from '../bridge';
 
+function summarizeReasoningText(text: string) {
+  const normalized = text.replace(/\s+/g, ' ').trim();
+  if (!normalized) {
+    return '';
+  }
+
+  const sentences = normalized
+    .split(/(?<=[.!?])\s+/)
+    .map((sentence) => sentence.trim())
+    .filter(Boolean);
+
+  const summary = sentences.length > 0
+    ? sentences.slice(0, 2).join(' ')
+    : normalized;
+
+  if (summary.length <= 180) {
+    return summary;
+  }
+
+  const clipped = summary.slice(0, 177).replace(/\s+\S*$/, '');
+  return `${clipped}...`;
+}
+
 export function useChatState() {
   const instanceIdRef = useRef(Symbol('useChatInstance'));
   const hydratedConversationRef = useRef<string | null>(null);
@@ -13,6 +36,20 @@ export function useChatState() {
   const [activeRunId, setActiveRunId] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [messages, setMessagesState] = useState<ChatMessage[]>([]);
+
+  const calculateThinkingDurationSeconds = useCallback((startedAt?: string) => {
+    if (!startedAt) {
+      return 1;
+    }
+
+    const startedMs = Date.parse(startedAt);
+    if (Number.isNaN(startedMs)) {
+      return 1;
+    }
+
+    const elapsedSeconds = (Date.now() - startedMs) / 1000;
+    return Math.max(1, Math.round(elapsedSeconds));
+  }, []);
 
   const setMessages = useCallback((nextMessages: ChatMessage[] | ((prev: ChatMessage[]) => ChatMessage[])) => {
     setMessagesState((currentMessages) => {
@@ -84,7 +121,7 @@ export function useChatState() {
     assistantMessageId: string,
     payload: { text: string; isComplete?: boolean }
   ) => {
-    const text = payload.text.trim();
+    const text = summarizeReasoningText(payload.text);
     if (!text) {
       return;
     }
@@ -95,19 +132,30 @@ export function useChatState() {
       ));
 
       if (existingIndex >= 0) {
+        const existingMessage = currentMessages[existingIndex];
         return currentMessages.map((message, index) => (
           index === existingIndex
             ? {
                 ...message,
                 body: text,
                 isStreaming: payload.isComplete !== true,
-                status: payload.isComplete ? 'completed' : 'running'
+                status: payload.isComplete ? 'completed' : 'running',
+                thinkingDurationSeconds: payload.isComplete
+                  ? calculateThinkingDurationSeconds(existingMessage.createdAt)
+                  : message.thinkingDurationSeconds
               }
-            : message
+            : message.id === assistantMessageId
+              ? {
+                  ...message,
+                  hasNativeThinking: true
+                }
+              : message
         ));
       }
 
       const assistantIndex = currentMessages.findIndex((message) => message.id === assistantMessageId);
+      const assistantMessage = assistantIndex >= 0 ? currentMessages[assistantIndex] : null;
+      const createdAt = assistantMessage?.createdAt ?? new Date().toISOString();
       const reasoningMessage = {
         id: `${assistantMessageId}::reasoning`,
         role: 'assistant' as const,
@@ -117,7 +165,10 @@ export function useChatState() {
         parentMessageId: assistantMessageId,
         isStreaming: payload.isComplete !== true,
         status: payload.isComplete ? 'completed' as const : 'running' as const,
-        createdAt: new Date().toISOString()
+        thinkingDurationSeconds: payload.isComplete
+          ? calculateThinkingDurationSeconds(createdAt)
+          : undefined,
+        createdAt
       };
 
       if (assistantIndex < 0) {
@@ -125,10 +176,57 @@ export function useChatState() {
       }
 
       const nextMessages = [...currentMessages];
+      if (assistantIndex >= 0) {
+        nextMessages[assistantIndex] = {
+          ...nextMessages[assistantIndex],
+          hasNativeThinking: true
+        };
+      }
       nextMessages.splice(assistantIndex, 0, reasoningMessage);
       return nextMessages;
     });
-  }, [setMessages]);
+  }, [calculateThinkingDurationSeconds, setMessages]);
+
+  const finalizeReasoningMessage = useCallback((assistantMessageId: string) => {
+    setMessages((currentMessages) => {
+      const reasoningIndex = currentMessages.findIndex((message) => (
+        message.messageKind === 'reasoning' && message.parentMessageId === assistantMessageId
+      ));
+
+      if (reasoningIndex < 0) {
+        return currentMessages.map((message) => (
+          message.id === assistantMessageId
+            ? { ...message, hasNativeThinking: true }
+            : message
+        ));
+      }
+
+      const reasoningMessage = currentMessages[reasoningIndex];
+      const duration = reasoningMessage.thinkingDurationSeconds
+        ?? calculateThinkingDurationSeconds(reasoningMessage.createdAt);
+
+      return currentMessages.map((message, index) => {
+        if (index === reasoningIndex) {
+          return {
+            ...message,
+            isStreaming: false,
+            status: 'completed',
+            body: summarizeReasoningText(message.body),
+            thinkingDurationSeconds: duration
+          };
+        }
+
+        if (message.id === assistantMessageId) {
+          return {
+            ...message,
+            hasNativeThinking: true
+          };
+        }
+
+        return message;
+      });
+    });
+  }, [calculateThinkingDurationSeconds, setMessages]);
 
   const clearMessages = useCallback(() => {
     activeConversationIdRef.current = null;
@@ -156,6 +254,7 @@ export function useChatState() {
     updateMessage,
     appendToMessage,
     upsertReasoningMessage,
+    finalizeReasoningMessage,
     clearMessages
   };
 }

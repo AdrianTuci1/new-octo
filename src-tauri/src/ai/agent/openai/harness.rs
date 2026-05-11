@@ -56,6 +56,7 @@ async fn stream_chat_completion(
     sink: AgentEventSink,
     cancellation: AgentCancellation,
 ) -> Result<AgentHarnessOutcome, AgentHarnessError> {
+    let use_synthetic_thinking = should_use_synthetic_thinking(&context.model_id);
     let mut negotiation_messages = context.messages.clone();
     let mut attempt = 0;
     let mut forced_final_answer_retry_used = false;
@@ -177,12 +178,15 @@ async fn stream_chat_completion(
                         &mut streamed,
                         &mut streamed_reasoning,
                         &mut thinking_state,
+                        use_synthetic_thinking,
                         &mut usage,
                     ) {
                         Ok(Some(delta_payload)) => {
-                            if let Some(reasoning_delta) = delta_payload.reasoning {
-                                streamed_reasoning.push_str(&reasoning_delta);
-                                sink.reasoning(streamed_reasoning.clone(), false);
+                            if !use_synthetic_thinking {
+                                if let Some(reasoning_delta) = delta_payload.reasoning {
+                                    streamed_reasoning.push_str(&reasoning_delta);
+                                    sink.reasoning(streamed_reasoning.clone(), false);
+                                }
                             }
 
                             if let Some(id) = delta_payload.id {
@@ -205,6 +209,7 @@ async fn stream_chat_completion(
                         &mut streamed,
                         &mut streamed_reasoning,
                         &mut thinking_state,
+                        use_synthetic_thinking,
                         &mut usage,
                     );
                 }
@@ -280,16 +285,7 @@ async fn stream_chat_completion(
                 role: "assistant".to_string(),
                 content: String::new(),
                 tool_call_id: None,
-                tool_calls: Some(json!([{
-                    "id": "guardian-intercepted-id",
-                    "type": "function",
-                    "function": {
-                        "name": "propose_terminal_command",
-                        "arguments": {
-                            "command": current_tool_args.clone()
-                        }
-                    }
-                }])),
+                tool_calls: Some(guardian_intercepted_tool_calls(&current_tool_args)),
             });
             negotiation_messages.push(AgentInputMessage {
                 role: "system".to_string(),
@@ -316,12 +312,15 @@ async fn stream_chat_completion(
                     &mut streamed,
                     &mut streamed_reasoning,
                     &mut thinking_state,
+                    use_synthetic_thinking,
                     &mut usage,
                 );
             }
         }
 
-        thinking_state.finish(&sink, &mut streamed, &mut streamed_reasoning);
+        if !use_synthetic_thinking {
+            thinking_state.finish(&sink, &mut streamed, &mut streamed_reasoning);
+        }
 
         let visible_response = streamed.trim();
         let reasoning_response = streamed_reasoning.trim();
@@ -342,7 +341,11 @@ async fn stream_chat_completion(
             continue;
         }
 
-        if visible_response.is_empty() && !reasoning_response.is_empty() && !forced_final_answer_retry_used {
+        if !use_synthetic_thinking
+            && visible_response.is_empty()
+            && !reasoning_response.is_empty()
+            && !forced_final_answer_retry_used
+        {
             negotiation_messages.push(AgentInputMessage {
                 role: "system".to_string(),
                 content: "Răspunsul anterior a fost doar reasoning. Oferă acum numai răspunsul final către utilizator, fără `<thinking>`, fără explicații despre pași și fără să repeți analiza internă.".to_string(),
@@ -418,11 +421,9 @@ impl ThinkingStreamState {
             }
 
             if let Some(start_idx) = self.pending.find(THINKING_START_TAG) {
-                let text_before = self.pending[..start_idx].to_string();
-                if !text_before.is_empty() {
-                    streamed.push_str(&text_before);
-                    sink.token(&text_before);
-                }
+                // Native-thinking models sometimes emit a short preamble before the
+                // first <thinking> tag. Keep the visible response clean and only emit
+                // the reasoning block itself once thinking starts.
                 self.pending.drain(..start_idx + THINKING_START_TAG.len());
                 self.inside_thinking = true;
                 continue;
@@ -483,6 +484,14 @@ fn prompt_supports_terminal_command(prompt: &str) -> bool {
         "shell",
         "command",
         "comand",
+        "modal",
+        "cloud",
+        "container",
+        "volume",
+        "deploy",
+        "agent",
+        "workspace",
+        "script",
         "repo",
         "repository",
         "git",
@@ -569,6 +578,7 @@ fn handle_stream_payload(
     streamed: &mut String,
     streamed_reasoning: &mut String,
     thinking_state: &mut ThinkingStreamState,
+    use_synthetic_thinking: bool,
     usage: &mut Option<AgentUsage>,
 ) -> Result<Option<DeltaToolCall>, AgentHarnessError> {
     let value: Value = serde_json::from_str(payload)
@@ -592,7 +602,12 @@ fn handle_stream_payload(
         .and_then(|item| item.get("content"))
         .and_then(Value::as_str)
     {
-        thinking_state.push_content(content, sink, streamed, streamed_reasoning);
+        if use_synthetic_thinking {
+            streamed.push_str(content);
+            sink.token(content);
+        } else {
+            thinking_state.push_content(content, sink, streamed, streamed_reasoning);
+        }
     }
 
     if let Some(tool_calls) = delta
@@ -624,7 +639,7 @@ fn handle_stream_payload(
     }
 
     let reasoning = utils::extract_reasoning_delta(delta);
-    if reasoning.is_some() {
+    if reasoning.is_some() && !use_synthetic_thinking {
         return Ok(Some(DeltaToolCall {
             id: None,
             name: None,
@@ -634,6 +649,10 @@ fn handle_stream_payload(
     }
 
     Ok(None)
+}
+
+fn should_use_synthetic_thinking(model_id: &str) -> bool {
+    model_id.to_lowercase().contains("gemma")
 }
 
 fn build_chat_messages(context: &AgentHarnessContext) -> Vec<Value> {
@@ -699,8 +718,55 @@ fn sanitize_message(message: &AgentInputMessage) -> Option<AgentInputMessage> {
         role,
         content: message.content.to_string(),
         tool_call_id: message.tool_call_id.clone(),
-        tool_calls: message.tool_calls.clone(),
+        tool_calls: message.tool_calls.as_ref().map(normalize_outbound_tool_calls),
     })
+}
+
+fn guardian_intercepted_tool_calls(command: &str) -> Value {
+    json!([{
+        "id": "guardian-intercepted-id",
+        "type": "function",
+        "function": {
+            "name": "propose_terminal_command",
+            "arguments": serde_json::to_string(&json!({
+                "command": command,
+            }))
+            .expect("guardian intercepted command arguments should serialize"),
+        }
+    }])
+}
+
+fn normalize_outbound_tool_calls(tool_calls: &Value) -> Value {
+    let Some(calls) = tool_calls.as_array() else {
+        return tool_calls.clone();
+    };
+
+    Value::Array(
+        calls
+            .iter()
+            .map(normalize_outbound_tool_call)
+            .collect::<Vec<_>>(),
+    )
+}
+
+fn normalize_outbound_tool_call(tool_call: &Value) -> Value {
+    let Some(object) = tool_call.as_object() else {
+        return tool_call.clone();
+    };
+
+    let mut normalized = object.clone();
+    if let Some(function) = normalized.get_mut("function").and_then(Value::as_object_mut) {
+        if let Some(arguments) = function.get_mut("arguments") {
+            if !arguments.is_string() {
+                *arguments = Value::String(
+                    serde_json::to_string(arguments)
+                        .expect("tool call arguments should serialize to JSON string"),
+                );
+            }
+        }
+    }
+
+    Value::Object(normalized)
 }
 
 fn done_outcome(prompt: &str, streamed: &str, usage: Option<AgentUsage>) -> AgentHarnessOutcome {
@@ -719,7 +785,12 @@ fn cancelled_outcome(prompt: &str, streamed: &str) -> AgentHarnessOutcome {
 
 #[cfg(test)]
 mod tests {
-    use super::{longest_tag_suffix_len, should_retry_follow_up_only};
+    use super::{
+        guardian_intercepted_tool_calls, longest_tag_suffix_len,
+        normalize_outbound_tool_calls, prompt_supports_terminal_command,
+        should_retry_follow_up_only,
+    };
+    use serde_json::json;
 
     #[test]
     fn longest_tag_suffix_does_not_accept_empty_suffix() {
@@ -734,5 +805,44 @@ mod tests {
         assert!(!should_retry_follow_up_only("Rezumat util", true, false));
         assert!(!should_retry_follow_up_only("", false, false));
         assert!(!should_retry_follow_up_only("", true, true));
+    }
+
+    #[test]
+    fn guardian_intercepted_tool_arguments_are_serialized_as_string() {
+        let payload = guardian_intercepted_tool_calls("cd /cloud-agent && ls -la");
+
+        assert_eq!(
+            payload[0]["function"]["arguments"],
+            json!("{\"command\":\"cd /cloud-agent && ls -la\"}")
+        );
+    }
+
+    #[test]
+    fn normalizes_assistant_tool_call_arguments_from_objects_to_strings() {
+        let payload = normalize_outbound_tool_calls(&json!([
+            {
+                "id": "call-1",
+                "type": "function",
+                "function": {
+                    "name": "propose_terminal_command",
+                    "arguments": {
+                        "command": "ls -la",
+                        "reason": "inspect"
+                    }
+                }
+            }
+        ]));
+
+        assert_eq!(
+            payload[0]["function"]["arguments"],
+            json!("{\"command\":\"ls -la\",\"reason\":\"inspect\"}")
+        );
+    }
+
+    #[test]
+    fn terminal_prompt_support_includes_modal_cloud_flows() {
+        assert!(prompt_supports_terminal_command(
+            "modal e deja configurat; creează un container și scrie un fișier în cloud"
+        ));
     }
 }

@@ -1,15 +1,24 @@
 import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
 import { getCurrentWindow, Window } from '@tauri-apps/api/window';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { initialWorkspaceChromeTabs, defaultWorkspaceChromeTabId } from '../chrome';
 import { settingsDefaultExpandedGroupIds, settingsDefaultSectionId } from '../settings/settingsData';
 import { formatCompactPathLabel } from '../../../lib/pathLabels';
+import { useUIStore } from '../../../stores';
 import { useMemoryStore } from '../../../stores/memoryStore';
 import type { FilesystemPathContext } from '../../../types/filesystem';
 import type { CommandApproval, TerminalBlockSharedMeta, TerminalCommandBlock } from '../../../types/terminal';
 import type { WorkspaceChromeTab, WorkspaceConversation, WorkspacePaneLayout } from '../chrome';
 import * as Utils from '../utils';
 import type { TerminalSessionState } from '../utils';
+
+const OPEN_CLOUD_PROFILE_DRAWER_EVENT = 'octomus:open-cloud-profile-drawer';
+
+type OpenCloudProfileDrawerPayload = {
+  profileId: string;
+  sectionId: string;
+};
 
 function buildEmptyWorkspaceSnapshot(options: {
   activeSectionId: string;
@@ -66,6 +75,8 @@ export function useAppWindow() {
   const saveWorkspace = useMemoryStore((state) => state.saveWorkspace);
   const deleteConversation = useMemoryStore((state) => state.deleteConversation);
   const saveSettings = useMemoryStore((state) => state.saveSettings);
+  const setIsCloudProfileDrawerOpen = useUIStore((state) => state.setIsCloudProfileDrawerOpen);
+  const setSelectedCloudProfileIdForEdit = useUIStore((state) => state.setSelectedCloudProfileIdForEdit);
   const memoryConversationsById = useMemo(() => new Map(memoryConversations.map((conversation) => [conversation.id, conversation])), [memoryConversations]);
 
   const selectedTab = tabs.find((tab) => tab.id === selectedTabId) ?? tabs[0] ?? initialWorkspaceChromeTabs[0];
@@ -1050,6 +1061,55 @@ export function useAppWindow() {
 
     setSelectedTabId(SETTINGS_TAB_ID);
   }, []);
+
+  useEffect(() => {
+    if (!(window as any).__TAURI_INTERNALS__) {
+      return;
+    }
+
+    let cancelled = false;
+    let unlistenPromise: Promise<(() => void) | void> | null = null;
+
+    const applyCloudProfileDrawerRequest = (payload: OpenCloudProfileDrawerPayload | null | undefined) => {
+      if (!payload?.profileId) {
+        return;
+      }
+
+      onOpenSettingsSection(payload.sectionId || 'cloud-platform/cloud');
+      setSelectedCloudProfileIdForEdit(payload.profileId);
+      setIsCloudProfileDrawerOpen(true);
+    };
+
+    const setupListener = async () => {
+      const currentWindow = getCurrentWindow();
+      const currentLabel = currentWindow.label;
+      if (currentLabel !== 'settings') {
+        return;
+      }
+
+      const pendingPayload = await invoke<OpenCloudProfileDrawerPayload | null>('consume_pending_cloud_profile_drawer_request');
+      if (!cancelled) {
+        applyCloudProfileDrawerRequest(pendingPayload);
+      }
+
+      unlistenPromise = listen<OpenCloudProfileDrawerPayload>(OPEN_CLOUD_PROFILE_DRAWER_EVENT, (event) => {
+        if (cancelled) {
+          return;
+        }
+
+        applyCloudProfileDrawerRequest(event.payload);
+      });
+    };
+
+    void setupListener().catch((error) => {
+      console.warn('[AppWindow] failed to subscribe to cloud profile drawer event', error);
+    });
+
+    return () => {
+      cancelled = true;
+      void unlistenPromise?.then((unlisten) => unlisten?.());
+    };
+  }, [onOpenSettingsSection, setIsCloudProfileDrawerOpen, setSelectedCloudProfileIdForEdit]);
 
   const getLauncherProps = useCallback((tabId: string, paneId: string) => ({
     active: tabId === selectedTab.id && paneId === activePaneId,

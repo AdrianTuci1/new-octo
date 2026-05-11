@@ -53,16 +53,14 @@ pub fn extract_reasoning_delta(delta: Option<&Value>) -> Option<String> {
     let delta = delta?;
 
     if let Some(reasoning) = delta.get("reasoning").and_then(Value::as_str) {
-        let trimmed = reasoning.trim();
-        if !trimmed.is_empty() {
-            return Some(trimmed.to_string());
+        if !reasoning.is_empty() {
+            return Some(reasoning.to_string());
         }
     }
 
     if let Some(reasoning) = delta.get("reasoning_content").and_then(Value::as_str) {
-        let trimmed = reasoning.trim();
-        if !trimmed.is_empty() {
-            return Some(trimmed.to_string());
+        if !reasoning.is_empty() {
+            return Some(reasoning.to_string());
         }
     }
 
@@ -81,10 +79,9 @@ pub fn extract_reasoning_delta(delta: Option<&Value>) -> Option<String> {
         })
         .collect::<String>();
 
-    let trimmed = merged.trim();
-    if trimmed.is_empty() {
+    if merged.is_empty() {
         return None;
     }
 
-    Some(trimmed.to_string())
+    Some(merged)
 }

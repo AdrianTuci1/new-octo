@@ -4,6 +4,7 @@ import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { Copy, Terminal, Save, Check } from 'lucide-react';
 import { useState } from 'react';
+import { invoke } from '@tauri-apps/api/core';
 import { CodeDiffView } from './CodeDiffView';
 import { ImplementationPlanBlock, ThinkingBlock, WebSearchBlock } from './blocks';
 import { visibleChatMessageBody } from '../../hooks/useChat';
@@ -21,7 +22,34 @@ export function MessageBubble({ message, onRequestCommandApproval }: MessageBubb
   const visibleBody = message.role === 'assistant'
     ? visibleChatMessageBody(message.body)
     : message.body;
-  const showStreamingHint = message.role === 'assistant' && message.isStreaming && !visibleBody.trim();
+  const showStreamingHint = message.role === 'assistant'
+    && message.isStreaming
+    && !visibleBody.trim()
+    && !message.hasNativeThinking;
+
+  const handleMarkdownLinkClick = async (href?: string | null) => {
+    if (!href) return;
+
+    const match = href.match(/^octomus:\/\/cloud-profile\/(modal|custom-vm)$/);
+    if (!match) {
+      try {
+        await invoke('open_external_url', { url: href });
+      } catch (error) {
+        console.warn('[chat] failed to open external chat link', error);
+        window.open(href, '_blank', 'noopener,noreferrer');
+      }
+      return;
+    }
+
+    const provider = match[1];
+    const profileId = provider === 'modal' ? 'modal-sandbox' : 'core-dev-vm';
+
+    try {
+      await invoke('open_cloud_profile_drawer', { profileId });
+    } catch (error) {
+      console.warn('[chat] failed to open cloud profile drawer from chat link', error);
+    }
+  };
 
   return (
     <div className={`message-bubble ${message.role}`}>
@@ -81,6 +109,21 @@ export function MessageBubble({ message, onRequestCommandApproval }: MessageBubb
           <ReactMarkdown
             remarkPlugins={[remarkGfm]}
             components={{
+              a({ href, children, ...props }: any) {
+                return (
+                  <a
+                    {...props}
+                    className="chat-action-link"
+                    href={href}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      void handleMarkdownLinkClick(href);
+                    }}
+                  >
+                    {children}
+                  </a>
+                );
+              },
               code({ node, inline, className, children, ...props }: any) {
                 const match = /language-(\w+)/.exec(className || '');
                 const lang = match ? match[1] : '';

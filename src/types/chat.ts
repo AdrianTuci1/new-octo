@@ -17,6 +17,7 @@ export type ChatMessage = {
   fileDiffs?: FileDiff[];
   messageKind?: 'default' | 'reasoning';
   thinkingDurationSeconds?: number;
+  hasNativeThinking?: boolean;
   parentMessageId?: string;
   toolKind?: 'command' | 'web-search' | 'plan';
   webSearchStatus?: 'searching' | 'success' | 'error';
@@ -217,4 +218,3 @@ export interface ConfiguredModel {
   friendlyName?: string;
   hasApiKey?: boolean;
 }
-

@@ -25,6 +25,8 @@
 }
 
 .tray-body {
+  display: flex;
+  flex-direction: column;
   flex: 1;
   min-height: 0;
   background: transparent;
@@ -33,6 +35,7 @@
   box-shadow: none;
   padding: 0;
   order: 0;
+  overflow: hidden;
 }
 
 .tray-region.closed .tray-body {
