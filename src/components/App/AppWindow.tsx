@@ -13,7 +13,8 @@ import { AppWindowDrawers } from './drawers/AppWindowDrawers';
 import { useBackendShortcutActions } from './hooks/useBackendShortcutActions';
 import type { WorkspacePaneNode } from './chrome';
 import { LauncherStoreProvider, createLauncherStore, type LauncherStoreApi } from '../../stores';
-import { X } from 'lucide-react';
+import { Maximize2, X } from 'lucide-react';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 import * as Utils from './utils';
 
 function WorkspacePaneSlot(props: {
@@ -71,6 +72,27 @@ export function AppWindow() {
 
   const [paneSizes, setPaneSizes] = useState<Record<string, number>>({});
   const [hoveredHandleKey, setHoveredHandleKey] = useState<string | null>(null);
+
+  const toggleFullscreen = useCallback(async () => {
+    if (!(window as any).__TAURI_INTERNALS__) {
+      return;
+    }
+
+    const currentWindow = getCurrentWindow();
+    const isFullscreen = await currentWindow.isFullscreen().catch(() => false);
+
+    if (isFullscreen) {
+      await currentWindow.setSimpleFullscreen(false).catch(() => {});
+      await currentWindow.unmaximize().catch(() => {});
+      return;
+    }
+
+    await currentWindow.setSimpleFullscreen(true).catch(async () => {
+      await currentWindow.setFullscreen(true).catch(async () => {
+        await currentWindow.maximize().catch(() => {});
+      });
+    });
+  }, []);
 
   const handleResizeStart = useCallback((
     event: React.MouseEvent,
@@ -290,6 +312,18 @@ export function AppWindow() {
           {app.workspace.isSettingsView && (
             <div className="app-window-header">
               <span className="app-window-header-title">Settings</span>
+              <div className="app-window-header-actions">
+                <button
+                  className="app-window-header-action"
+                  type="button"
+                  aria-label="Toggle fullscreen"
+                  onClick={() => {
+                    void toggleFullscreen();
+                  }}
+                >
+                  <Maximize2 size={14} />
+                </button>
+              </div>
             </div>
           )}
 

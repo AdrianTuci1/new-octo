@@ -141,6 +141,7 @@ export type FileChangeApproval = {
   kind: 'file-change';
   summary?: string;
   fileDiffs: FileDiff[];
+  toolCallId?: string;
   refineLabel?: string;
   editLabel?: string;
   acceptLabel?: string;

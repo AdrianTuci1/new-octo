@@ -33,6 +33,7 @@ const SKILL_SLASH_ALIASES: Record<string, string> = {
     'Include these exact clickable markdown links on separate lines:',
     '[Configure Modal](octomus://cloud-profile/modal)',
     '[Configure VPS](octomus://cloud-profile/custom-vm)',
+    'If the user wants to create or edit files inside the cloud agent, use propose_file_change with fileDiffs instead of a heredoc or EOF block. Use propose_terminal_command only for infrastructure steps like mkdir -p or running modal commands.',
     'Do not start with a long paragraph. Do not ask more than one next-step question.'
   ].join('\n'),
   '/create-environment': [
@@ -65,6 +66,26 @@ function buildSyntheticThinkingSummary(prompt: string) {
   return `The user is asking: "${shortPrompt}". I should keep the response focused and handle the requested skill or tool path if needed.`;
 }
 
+function shouldForceCloudAgentPrompt(prompt: string) {
+  const normalized = prompt.toLowerCase();
+  const mentionsCloudAgent = normalized.includes('cloud-agent') || normalized.includes('/cloud-agent');
+  const mentionsModal = normalized.includes('modal');
+  const mentionsFileTask = [
+    'create file',
+    'create a file',
+    'creeaza',
+    'creaza',
+    'fișier',
+    'fisier',
+    'file ',
+    'document',
+    'scrie',
+    'write'
+  ].some((needle) => normalized.includes(needle));
+
+  return (mentionsCloudAgent || mentionsModal) && mentionsFileTask;
+}
+
 type UseChatActionsProps = {
   options: UseChatOptions;
   state: ReturnType<typeof useChatState>;
@@ -82,6 +103,18 @@ function resolveAgentPrompt(rawPrompt: string) {
   const aliasedPrompt = SKILL_SLASH_ALIASES[trimmed];
   if (aliasedPrompt) {
     return aliasedPrompt;
+  }
+
+  if (shouldForceCloudAgentPrompt(trimmed)) {
+    return [
+      '@skills/octo-platform',
+      trimmed,
+      'This is a Modal cloud-agent file task.',
+      'If a directory is missing, use propose_terminal_command only for mkdir -p or the minimum infrastructure command.',
+      'If a file must be created or edited, use propose_file_change with fileDiffs so the UI can show a native diff preview.',
+      'Do not emit heredoc, EOF, or raw file content in the visible response.',
+      'Prefer a minimal hello-world style Python file named helloOctomus.py when that is the requested target.'
+    ].join('\n');
   }
 
   const match = trimmed.match(/^\/([a-z0-9][a-z0-9-]*)(?:\s+([\s\S]+))?$/i);

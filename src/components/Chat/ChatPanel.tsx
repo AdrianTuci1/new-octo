@@ -398,28 +398,13 @@ export function ChatPanel({
             }
 
             if (item.kind === 'multi-agent-block') {
-              const isExpanded = expandedTerminalBlockIds.includes(item.id);
               return (
-                <div
-                  key={item.id}
-                  className={[
-                    'terminal-block-row assistant-command',
-                    isExpanded ? 'full-bleed' : ''
-                  ].filter(Boolean).join(' ')}
-                >
-                  <div className="role-avatar-container" />
+                <div key={item.id} className="agent-block-row-standalone">
                   <MultiAgentBlock
-                    parentAgentName={item.block.parentName}
+                    agentName={item.block.agentName}
                     status={item.block.status}
-                    subAgents={item.block.subAgents}
-                    isExpanded={isExpanded}
-                    onToggleExpanded={() => {
-                      if (isExpanded) {
-                        onCollapseTerminalBlock?.(item.id);
-                      } else {
-                        onExpandTerminalBlock?.(item.id);
-                      }
-                    }}
+                    taskSummary={item.block.taskSummary}
+                    colorScheme={item.block.colorScheme}
                   />
                 </div>
               );

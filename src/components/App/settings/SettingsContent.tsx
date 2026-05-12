@@ -2,6 +2,7 @@ import './SettingsContent.css';
 import { getSettingsSectionMeta } from './settingsData';
 import { AccountSection } from './sections/AccountSection';
 import { AgentSection } from './sections/AgentSection';
+import { AppearanceSection } from './sections/AppearanceSection';
 import { KnowledgeSection } from './sections/KnowledgeSection';
 import { KeyboardShortcutsSection } from './sections/KeyboardShortcutsSection';
 import { ProfilesSection } from './sections/ProfilesSection';
@@ -23,6 +24,8 @@ export function SettingsContent({ sectionId }: SettingsContentProps) {
         <AccountSection />
       ) : sectionMeta.contentKind === 'octo-agent' ? (
         <AgentSection />
+      ) : sectionMeta.contentKind === 'appearance' ? (
+        <AppearanceSection />
       ) : sectionMeta.contentKind === 'knowledge' ? (
         <KnowledgeSection />
       ) : sectionMeta.contentKind === 'keyboard-shortcuts' ? (

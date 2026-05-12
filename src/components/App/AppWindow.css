@@ -284,6 +284,36 @@
   opacity: 0.8;
 }
 
+.app-window-header-actions {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.app-window-header-action {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-soft);
+  cursor: pointer;
+  transition: background-color 140ms ease, color 140ms ease;
+  padding: 0;
+}
+
+.app-window-header-action:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-main);
+}
+
 .app-window-settings-body>*,
 .app-window-workspace>*,
 .app-window-panel>* {

@@ -97,20 +97,18 @@
 /* File Tabs */
 .modern-diff-tabs {
   display: flex;
-  background: #121212;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+  background: var(--launcher-bg);
   padding: 0 8px;
 }
 
 .diff-tab-item {
-  background: transparent;
+  background: var(--surface-2);
   border: none;
   color: rgba(255, 255, 255, 0.4);
-  padding: 8px 14px;
+  padding: 12px 14px;
   font-size: 12px;
   font-family: var(--font-mono, monospace);
   cursor: pointer;
-  border-bottom: 2px solid transparent;
   transition: all 0.15s ease;
 }
 
@@ -127,8 +125,8 @@
 
 /* Body Area - Normal dark background */
 .modern-diff-body {
-  background: #0f0f0f; /* Dark neutral */
-  padding: 12px 0;
+  background: #0f0f0f;
+  /* Dark neutral */
   max-height: 400px;
   overflow-y: auto;
 }
@@ -160,8 +158,10 @@
 
 /* Highlight Addition Style (green line marker & bright text) */
 .code-diff-line.addition {
-  border-left: 3px solid #4ade80; /* Bright green left accent */
-  background: rgba(74, 222, 128, 0.1); /* Restore green background to addition lines */
+  border-left: 3px solid #4ade80;
+  /* Bright green left accent */
+  background: rgba(74, 222, 128, 0.1);
+  /* Restore green background to addition lines */
 }
 
 .code-diff-line.addition .code-diff-line-content {
@@ -170,7 +170,7 @@
 
 /* Footer Area */
 .modern-diff-footer {
-  background: #161616;
+  background: var(--launcher-bg);
   border-top: 1px solid rgba(255, 255, 255, 0.03);
   display: flex;
   align-items: center;

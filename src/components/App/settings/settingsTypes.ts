@@ -26,6 +26,7 @@ export type SettingsSectionContentKind =
   | 'account'
   | 'octo-agent'
   | 'knowledge'
+  | 'appearance'
   | 'profiles'
   | 'mcp-servers'
   | 'keyboard-shortcuts'

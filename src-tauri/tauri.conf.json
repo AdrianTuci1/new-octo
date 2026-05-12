@@ -24,7 +24,7 @@
         "title": "Octomus Launcher Prototype",
         "width": 608,
         "height": 560,
-        "resizable": false,
+        "resizable": true,
         "titleBarStyle": "Overlay",
         "decorations": false,
         "transparent": true,
@@ -46,6 +46,7 @@
         "decorations": true,
         "titleBarStyle": "Overlay",
         "hiddenTitle": true,
+        "maximizable": true,
         "trafficLightPosition": {
           "x": 14,
           "y": 22

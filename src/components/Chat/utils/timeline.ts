@@ -5,7 +5,7 @@ import { visibleChatMessageBody } from '../../../hooks/useChat';
 export type TimelineItem =
   | { id: string; kind: 'message'; at: number; order: number; message: ChatMessage }
   | { id: string; kind: 'terminal-block'; at: number; order: number; block: TerminalCommandBlock }
-  | { id: string; kind: 'multi-agent-block'; at: number; order: number; block: { parentName: string; status: 'running'|'completed'|'idle'; subAgents: any[] } }
+  | { id: string; kind: 'multi-agent-block'; at: number; order: number; block: { agentName: string; status: 'running'|'completed'|'idle'; taskSummary: string; colorScheme?: string } }
   | { id: string; kind: 'terminal-error'; at: number; order: number; error: string };
 
 export function timeFromMessage(message: ChatMessage) {

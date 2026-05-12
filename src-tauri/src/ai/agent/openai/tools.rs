@@ -235,6 +235,42 @@ pub(super) fn build_tool_definitions() -> Value {
         {
             "type": "function",
             "function": {
+                "name": "propose_file_change",
+                "description": "Propose file changes when the task creates, edits, or deletes files. Use this instead of a shell heredoc or EOF block so the UI can show a native file diff preview.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "summary": {
+                            "type": "string",
+                            "description": "A short summary of the intended file changes."
+                        },
+                        "fileDiffs": {
+                            "type": "array",
+                            "description": "The files to create, update, or delete, in diff format.",
+                            "items": {
+                                "type": "object"
+                            }
+                        },
+                        "refineLabel": {
+                            "type": "string",
+                            "description": "Optional label for the refine action."
+                        },
+                        "editLabel": {
+                            "type": "string",
+                            "description": "Optional label for the edit action."
+                        },
+                        "acceptLabel": {
+                            "type": "string",
+                            "description": "Optional label for the accept action."
+                        }
+                    },
+                    "required": ["fileDiffs"]
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
                 "name": "suggest_follow_up",
                 "description": "Attach one natural-language follow-up prompt suggestion for the UI chip. Phrase it as the next message the user would send to continue the conversation, not as a question the assistant asks the user. Prefer user-intent phrasing like 'Vreau să aflu mai multe despre concerte' or 'Caută evenimente de muzică'. This is metadata only; it is not visible assistant text and it is not a command.",
                 "parameters": {

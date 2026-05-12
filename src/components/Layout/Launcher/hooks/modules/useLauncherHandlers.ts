@@ -1,5 +1,6 @@
 
 import { useCallback } from 'react';
+import { invoke } from '@tauri-apps/api/core';
 import { useEditorStore } from '../../../../../stores/editorStore';
 import { createConversationId } from '../../utils';
 import { runCommandInSurface } from '../../utils/terminal';
@@ -284,13 +285,41 @@ export function useLauncherHandlers({
   }, [chat.setQuery, setResolvedPendingApproval, store.setComposerSurface, store.setModeLock]);
 
   const handlePendingApprovalAccept = useCallback(async (approval: CommandApproval) => {
-    setResolvedPendingApproval(null);
-    store.setComposerSurface('agent');
-
     if (approval.kind === 'file-change') {
-      store.setModeLock(null);
+      try {
+        for (const diff of approval.fileDiffs) {
+          await invoke('apply_file_diff', {
+            filePath: diff.filePath,
+            diff: diff.diffType
+          });
+        }
+
+        const appliedFiles = approval.fileDiffs.map((diff) => `- ${diff.filePath}`).join('\n');
+        const toolCallId = approval.toolCallId ?? resolvedPendingApproval?.toolCallId;
+
+        setResolvedPendingApproval(null);
+        store.setComposerSurface('agent');
+        store.setModeLock(null);
+
+        if (toolCallId) {
+          void chat.submitToolResult(
+            toolCallId,
+            [
+              'Applied file changes successfully.',
+              appliedFiles ? `Files:\n${appliedFiles}` : ''
+            ].filter(Boolean).join('\n\n'),
+            'command',
+            approval.summary
+          );
+        }
+      } catch (error) {
+        console.error('[Launcher] Failed to apply file changes:', error);
+      }
       return;
     }
+
+    setResolvedPendingApproval(null);
+    store.setComposerSurface('agent');
 
     if ('command' in approval) {
       const toolCallId = approval.toolCallId ?? resolvedPendingApproval?.toolCallId;

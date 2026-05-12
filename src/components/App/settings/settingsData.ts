@@ -6,14 +6,9 @@ import type {
 import { accountSectionMeta, accountSidebarItem } from './menus/account';
 import { agentsSectionMeta, agentsSidebarItem } from './menus/agents';
 import { appearanceSectionMeta, appearanceSidebarItem } from './menus/appearance';
-import { billingSectionMeta, billingSidebarItem } from './menus/billing-and-usage';
 import { cloudPlatformSectionMeta, cloudPlatformSidebarItem } from './menus/cloud-platform';
 import { codeSectionMeta, codeSidebarItem } from './menus/code';
-import { featuresSectionMeta, featuresSidebarItem } from './menus/features';
 import { keyboardShortcutsSectionMeta, keyboardShortcutsSidebarItem } from './menus/keyboard-shortcuts';
-import { referralsSectionMeta, referralsSidebarItem } from './menus/referrals';
-import { teamsSectionMeta, teamsSidebarItem } from './menus/teams';
-import { warpifySectionMeta, warpifySidebarItem } from './menus/warpify';
 
 export type {
   SettingsSectionContentKind,
@@ -27,15 +22,10 @@ export type {
 export const settingsSidebarItems: SettingsSidebarItem[] = [
   accountSidebarItem,
   agentsSidebarItem,
-  billingSidebarItem,
   codeSidebarItem,
   cloudPlatformSidebarItem,
-  teamsSidebarItem,
   appearanceSidebarItem,
-  featuresSidebarItem,
   keyboardShortcutsSidebarItem,
-  warpifySidebarItem,
-  referralsSidebarItem
 ];
 
 export const settingsDefaultExpandedGroupIds = settingsSidebarItems
@@ -47,15 +37,10 @@ export const settingsDefaultSectionId = 'account';
 export const settingsSectionMetaById: Record<string, SettingsSectionMeta> = {
   ...accountSectionMeta,
   ...agentsSectionMeta,
-  ...billingSectionMeta,
   ...codeSectionMeta,
   ...cloudPlatformSectionMeta,
-  ...teamsSectionMeta,
   ...appearanceSectionMeta,
-  ...featuresSectionMeta,
-  ...keyboardShortcutsSectionMeta,
-  ...warpifySectionMeta,
-  ...referralsSectionMeta
+  ...keyboardShortcutsSectionMeta
 };
 
 export function getSettingsSectionMeta(sectionId: string): SettingsSectionMeta {

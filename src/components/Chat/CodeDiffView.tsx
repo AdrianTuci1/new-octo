@@ -8,13 +8,13 @@ type CodeDiffViewProps = {
   onAccept?: () => void;
   onReject?: () => void;
   status?: 'pending' | 'accepted' | 'rejected';
+  showHeader?: boolean;
 };
 
-export function CodeDiffView({ 
-  diffs, 
-  onAccept, 
-  onReject,
-  status = 'pending' 
+export function CodeDiffView({
+  diffs,
+  status = 'pending',
+  showHeader = true
 }: CodeDiffViewProps) {
   const [activeIndex, setActiveIndex] = useState(0);
   const [isExpanded, setIsExpanded] = useState(true);
@@ -44,36 +44,37 @@ export function CodeDiffView({
 
   return (
     <div className={`modern-diff-view ${status}`}>
-      {/* Main Header */}
-      <div className="modern-diff-header">
-        <div className="modern-diff-header-left">
-          <div className={`status-indicator ${status}`}>
-            {status === 'accepted' ? <Check size={14} strokeWidth={3} /> : 
-             status === 'rejected' ? <X size={14} strokeWidth={3} /> : 
-             <Check size={14} strokeWidth={3} className="opacity-50" />}
-          </div>
-          <div className="modern-diff-title">
-            Proposed changes across {diffs.length} {diffs.length === 1 ? 'file' : 'files'}
-          </div>
-          {totalAdditions > 0 && (
-            <div className="modern-diff-badge count-additions">
-              +{totalAdditions}
+      {showHeader && (
+        <div className="modern-diff-header">
+          <div className="modern-diff-header-left">
+            <div className={`status-indicator ${status}`}>
+              {status === 'accepted' ? <Check size={14} strokeWidth={3} /> :
+                status === 'rejected' ? <X size={14} strokeWidth={3} /> :
+                  <Check size={14} strokeWidth={3} className="opacity-50" />}
             </div>
-          )}
-        </div>
+            <div className="modern-diff-title">
+              Proposed changes across {diffs.length} {diffs.length === 1 ? 'file' : 'files'}
+            </div>
+            {totalAdditions > 0 && (
+              <div className="modern-diff-badge count-additions">
+                +{totalAdditions}
+              </div>
+            )}
+          </div>
 
-        <div className="modern-diff-header-right">
-          <button className="header-action-icon">
-            <Plus size={16} />
-          </button>
-          <button 
-            className={`header-action-icon collapse-toggle ${isExpanded ? 'expanded' : ''}`}
-            onClick={() => setIsExpanded(!isExpanded)}
-          >
-            <ChevronDown size={16} />
-          </button>
+          <div className="modern-diff-header-right">
+            <button className="header-action-icon">
+              <Plus size={16} />
+            </button>
+            <button
+              className={`header-action-icon collapse-toggle ${isExpanded ? 'expanded' : ''}`}
+              onClick={() => setIsExpanded(!isExpanded)}
+            >
+              <ChevronDown size={16} />
+            </button>
+          </div>
         </div>
-      </div>
+      )}
 
       {isExpanded && (
         <>
@@ -108,16 +109,16 @@ export function CodeDiffView({
               File: {activeIndex + 1}/{diffs.length}
             </div>
             <div className="footer-nav-actions">
-              <button 
-                className="footer-nav-btn" 
+              <button
+                className="footer-nav-btn"
                 onClick={handlePrev}
                 disabled={activeIndex === 0}
               >
                 <ArrowUp size={14} />
                 <span>Previous</span>
               </button>
-              <button 
-                className="footer-nav-btn" 
+              <button
+                className="footer-nav-btn"
                 onClick={handleNext}
                 disabled={activeIndex === diffs.length - 1}
               >

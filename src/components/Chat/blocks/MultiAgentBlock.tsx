@@ -1,11 +1,8 @@
-import React, { useState } from 'react';
-import { Bot, Loader2, CheckCircle2, XCircle, Circle, Sparkles, ChevronDown, Check, X, Pause, Square, GitCompare, Pencil, Compass } from 'lucide-react';
-import type { SubAgentCall } from '../../../types/chat';
-import './TerminalBlockSummary.css';
+import React from 'react';
+import { Square, CheckCircle2, XCircle } from 'lucide-react';
 import './MultiAgentBlock.css';
 
-// Import dynamic assets
-import octomusSvg from '../../../../assets/svg/octomus.svg';
+// Import dynamic assets for the animated agent indicator
 import agent01 from '../../../../assets/svg/loading-agents-01.svg';
 import agent02 from '../../../../assets/svg/loading-agents-02.svg';
 import agent03 from '../../../../assets/svg/loading-agents-03.svg';
@@ -17,8 +14,8 @@ import agent08 from '../../../../assets/svg/loading-agents-08.svg';
 
 const AGENT_SVGS = [agent01, agent02, agent03, agent04, agent05, agent06, agent07, agent08];
 
-function useAgentFrame(isActive: boolean, offset = 0, intervalMs = 160) {
-  const [frame, setFrame] = React.useState(offset % AGENT_SVGS.length);
+function useAgentFrame(isActive: boolean, intervalMs = 160) {
+  const [frame, setFrame] = React.useState(0);
 
   React.useEffect(() => {
     if (!isActive) {
@@ -29,156 +26,129 @@ function useAgentFrame(isActive: boolean, offset = 0, intervalMs = 160) {
       setFrame((f) => (f + 1) % AGENT_SVGS.length);
     }, intervalMs);
     return () => clearInterval(timer);
-  }, [isActive, intervalMs, offset]);
+  }, [isActive, intervalMs]);
 
   return frame;
 }
 
-type MultiAgentBlockProps = {
-  parentAgentName: string;
-  status: 'running' | 'completed' | 'idle';
-  subAgents: SubAgentCall[];
-  isExpanded: boolean;
-  onToggleExpanded?: () => void;
+type ColorTheme = {
+  border: string;
+  borderHover: string;
+  iconBg: string;
+  iconBorder: string;
+  accent: string;
+  tagBg: string;
 };
 
-export function MultiAgentBlock({ 
-  parentAgentName, 
-  status, 
-  subAgents, 
-  isExpanded, 
-  onToggleExpanded 
-}: MultiAgentBlockProps) {
-  const hasChildren = subAgents.length > 0;
+const COLOR_SCHEMES: Record<string, ColorTheme> = {
+  indigo: {
+    border: 'rgba(129, 140, 248, 0.25)',
+    borderHover: 'rgba(129, 140, 248, 0.48)',
+    iconBg: 'rgba(129, 140, 248, 0.16)',
+    iconBorder: 'rgba(129, 140, 248, 0.3)',
+    accent: '#818cf8',
+    tagBg: 'rgba(129, 140, 248, 0.1)'
+  },
+  pink: {
+    border: 'rgba(244, 114, 182, 0.25)',
+    borderHover: 'rgba(244, 114, 182, 0.48)',
+    iconBg: 'rgba(244, 114, 182, 0.16)',
+    iconBorder: 'rgba(244, 114, 182, 0.3)',
+    accent: '#f472b6',
+    tagBg: 'rgba(244, 114, 182, 0.1)'
+  },
+  teal: {
+    border: 'rgba(45, 212, 191, 0.25)',
+    borderHover: 'rgba(45, 212, 191, 0.48)',
+    iconBg: 'rgba(45, 212, 191, 0.16)',
+    iconBorder: 'rgba(45, 212, 191, 0.3)',
+    accent: '#2dd4bf',
+    tagBg: 'rgba(45, 212, 191, 0.1)'
+  },
+  amber: {
+    border: 'rgba(251, 191, 36, 0.25)',
+    borderHover: 'rgba(251, 191, 36, 0.48)',
+    iconBg: 'rgba(251, 191, 36, 0.16)',
+    iconBorder: 'rgba(251, 191, 36, 0.3)',
+    accent: '#fbbf24',
+    tagBg: 'rgba(251, 191, 36, 0.1)'
+  },
+  sky: {
+    border: 'rgba(56, 189, 248, 0.25)',
+    borderHover: 'rgba(56, 189, 248, 0.48)',
+    iconBg: 'rgba(56, 189, 248, 0.16)',
+    iconBorder: 'rgba(56, 189, 248, 0.3)',
+    accent: '#38bdf8',
+    tagBg: 'rgba(56, 189, 248, 0.1)'
+  },
+  green: {
+    border: 'rgba(48, 184, 111, 0.25)',
+    borderHover: 'rgba(48, 184, 111, 0.48)',
+    iconBg: 'rgba(48, 184, 111, 0.16)',
+    iconBorder: 'rgba(48, 184, 111, 0.3)',
+    accent: '#30b86f',
+    tagBg: 'rgba(48, 184, 111, 0.1)'
+  }
+};
 
-  return (
-    <div className={`multi-agent-block ${isExpanded ? 'expanded' : 'collapsed'}`}>
-      {/* Parent Agent Head utilizing unified system summary styling */}
-      <div 
-        className={`terminal-block-summary multi-agent-parent-summary ${isExpanded ? 'active-header' : ''}`}
-        onClick={() => hasChildren && onToggleExpanded?.()}
-        style={{ cursor: hasChildren ? 'pointer' : 'default' }}
-      >
-        <div className="agent-avatar-wrapper" style={{ marginRight: '4px' }}>
-          <div className={`agent-avatar parent ${status === 'running' ? 'active' : ''}`}>
-            <img src={octomusSvg} width={16} height={14} alt="Octomus" style={{ objectFit: 'contain' }} />
-          </div>
-        </div>
-        
-        <span className="terminal-summary-command agent-name">
-          {parentAgentName}
-        </span>
+type MultiAgentBlockProps = {
+  agentName: string;
+  taskSummary: string;
+  status: 'running' | 'completed' | 'idle';
+  colorScheme?: string;
+};
 
-        <div className="terminal-summary-chevron" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-          <button 
-            className="agent-action-btn parent-action" 
-            title="Stop All Agents"
-            onClick={(e) => { e.stopPropagation(); /* Add Stop overarching logic */ }}
-          >
-            <Square size={13} fill="currentColor" />
-          </button>
-
-          <button 
-            className="agent-action-btn parent-action" 
-            title="View Plan"
-            onClick={(e) => { e.stopPropagation(); /* Add Compass plan logic */ }}
-          >
-            <Compass size={14} />
-          </button>
-          
-          {hasChildren && (
-            <ChevronDown 
-              size={16} 
-              className={`card-chevron parent-chevron ${isExpanded ? 'active' : ''}`} 
-            />
-          )}
-        </div>
-      </div>
-
-      {/* Conditionally show children tree */}
-      {isExpanded && hasChildren && (
-        <div className="sub-agents-list">
-          {subAgents.map((subAgent, idx) => (
-            <SubAgentItem key={subAgent.id} subAgent={subAgent} index={idx} />
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function SubAgentItem({ subAgent, index }: { subAgent: SubAgentCall; index: number }) {
-  // Drives dynamic frames slowly when running
-  const currentFrame = useAgentFrame(subAgent.status === 'running', index, 160);
+export function MultiAgentBlock({ agentName, taskSummary, status, colorScheme = 'green' }: MultiAgentBlockProps) {
+  const currentFrame = useAgentFrame(status === 'running', 160);
   const agentSvgUrl = AGENT_SVGS[currentFrame];
 
-  const renderAvatarIcon = () => {
-    switch (subAgent.status) {
-      case 'running':
-        return (
-          <div 
+  // Fallback if dynamic color scheme is not defined
+  const theme = COLOR_SCHEMES[colorScheme] || COLOR_SCHEMES.green;
+
+  // Build custom property style bag
+  const dynamicStyle = {
+    '--agent-border': theme.border,
+    '--agent-border-hover': theme.borderHover,
+    '--agent-icon-bg': theme.iconBg,
+    '--agent-icon-border': theme.iconBorder,
+    '--agent-accent-color': theme.accent,
+    '--agent-tag-bg': theme.tagBg,
+  } as React.CSSProperties;
+
+  return (
+    <div
+      className={`agent-running-card ${status}`}
+      style={dynamicStyle}
+    >
+      <div className="agent-square-icon-wrapper">
+        {status === 'running' ? (
+          <div
             className="custom-agent-svg-mask"
             style={{
               WebkitMaskImage: `url(${agentSvgUrl})`,
               maskImage: `url(${agentSvgUrl})`,
             }}
           />
-        );
-      case 'completed':
-        return <Check size={12} className="state-icon-color" style={{ color: '#30b86f' }} />;
-      case 'failed':
-        return <X size={12} className="state-icon-color" style={{ color: '#f87171' }} />;
-      default: // idle
-        return <Pause size={10} className="state-icon-color" style={{ opacity: 0.5, color: 'white' }} fill="currentColor" />;
-    }
-  };
-
-  return (
-    <div className={`sub-agent-row ${subAgent.status}`}>
-      {/* AVATAR FLOATING OUTSIDE THE CARD */}
-      <div className="sub-agent-avatar-slot">
-        <div className="agent-avatar-wrapper">
-          <div className={`agent-avatar sub ${subAgent.status}`}>
-            {renderAvatarIcon()}
-          </div>
-        </div>
+        ) : status === 'completed' ? (
+          <CheckCircle2 size={14} style={{ color: 'var(--agent-accent-color)' }} />
+        ) : (
+          <XCircle size={14} style={{ color: '#f87171' }} />
+        )}
       </div>
 
-      {/* THE CARD ITSELF - PURELY STATIC NOW */}
-      <div className="sub-agent-card card-style static">
-        <div className="agent-card-header" style={{ cursor: 'default' }}>
-          <div className="agent-header-content">
-            <div className="agent-header-top">
-              <span className="agent-name">{subAgent.name}</span>
-              <div className="header-meta-right">
-                {/* INLINE TOOLBAR ACTIONS */}
-                <div className="agent-card-toolbar">
-                  <button 
-                    className="agent-action-btn" 
-                    title="Stop Agent"
-                    onClick={(e) => { e.stopPropagation(); /* Add Stop logic */ }}
-                  >
-                    <Square size={11} fill="currentColor" />
-                  </button>
-                  <button 
-                    className="agent-action-btn" 
-                    title="View Diff"
-                    onClick={(e) => { e.stopPropagation(); /* Add Diff logic */ }}
-                  >
-                    <GitCompare size={11} />
-                  </button>
-                  <button 
-                    className="agent-action-btn" 
-                    title="Edit"
-                    onClick={(e) => { e.stopPropagation(); /* Add Edit logic */ }}
-                  >
-                    <Pencil size={11} />
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
+      <div className="agent-running-info">
+        <div className="agent-running-header">
+          <span className="agent-running-name">{agentName}</span>
         </div>
+        <span className="agent-running-summary">{taskSummary}</span>
+      </div>
+
+      <div className="agent-running-card-actions">
+        {status === 'running' && (
+          <button className="agent-action-btn" title="Stop Agent" onClick={(e) => e.stopPropagation()}>
+            <Square size={11} fill="currentColor" />
+          </button>
+        )}
       </div>
     </div>
   );

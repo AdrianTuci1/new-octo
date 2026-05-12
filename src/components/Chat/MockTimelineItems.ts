@@ -214,29 +214,34 @@ npm install react-syntax-highlighter
     at: 11,
     order: 11,
     block: {
-      parentName: 'Architect Prime',
+      agentName: 'Architect Prime',
       status: 'running',
-      subAgents: [
-        {
-          id: 'sub1',
-          name: 'Refactoring Agent',
-          task: 'Analyzing component architecture for redundancies...',
-          status: 'running',
-        },
-        {
-          id: 'sub2',
-          name: 'Styling Specialist',
-          task: 'Preparing dynamic theme configuration generators.',
-          status: 'completed',
-          result: 'Theme configs generated.'
-        },
-        {
-          id: 'sub3',
-          name: 'Test Writer',
-          task: 'Generating unit tests for core engine logic.',
-          status: 'idle',
-        }
-      ]
+      taskSummary: 'Analyzing component architecture and preparing dynamic theme configuration generators.',
+      colorScheme: 'indigo'
+    }
+  },
+  {
+    id: 'msg-multi-agent-2',
+    kind: 'multi-agent-block',
+    at: 12,
+    order: 12,
+    block: {
+      agentName: 'Code Evaluator',
+      status: 'running',
+      taskSummary: 'Auditing generated layout files for strict accessibility compliance (WCAG).',
+      colorScheme: 'pink'
+    }
+  },
+  {
+    id: 'msg-multi-agent-3',
+    kind: 'multi-agent-block',
+    at: 13,
+    order: 13,
+    block: {
+      agentName: 'Test Verifier',
+      status: 'completed',
+      taskSummary: 'All 24 unit and integration test suites passed successfully.',
+      colorScheme: 'teal'
     }
   }
 ];
