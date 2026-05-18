@@ -7,12 +7,12 @@ import { MessageBubble } from './MessageBubble';
 import { TerminalBlockCard } from './blocks/TerminalBlockCard';
 import { MultiAgentBlock } from './blocks/MultiAgentBlock';
 import { CommandApprovalComposer } from '../Composer';
-import { MOCK_TIMELINE_ITEMS } from './MockTimelineItems';
+import { MOCK_PENDING_APPROVAL, MOCK_TIMELINE_ITEMS } from './MockTimelineItems';
 import type { ChatMessage } from '../../types/chat';
 import type { CommandApproval, TerminalCommandBlock } from '../../types/terminal';
 import './ChatPanel.css';
 
-const USE_MOCK = true; // <-- Set to false to revert to real data
+const USE_MOCK = false; // Set to true only while tuning the mocked chat timeline
 
 function performHighlight(
   container: HTMLElement,
@@ -171,13 +171,14 @@ export function ChatPanel({
 }: ChatPanelProps) {
   const baseTimelineItems = buildTimelineItems(messages, terminalBlocks, terminalError);
   const timelineItems = USE_MOCK ? MOCK_TIMELINE_ITEMS : baseTimelineItems;
-  const hasContent = USE_MOCK || messages.length > 0 || terminalBlocks.length > 0 || Boolean(terminalError) || Boolean(pendingApproval);
+  const activePendingApproval = USE_MOCK ? MOCK_PENDING_APPROVAL : pendingApproval;
+  const hasContent = USE_MOCK || messages.length > 0 || terminalBlocks.length > 0 || Boolean(terminalError) || Boolean(activePendingApproval);
 
   const { scrollRef, handleScroll } = useChatPanelScroll({
     messages,
     terminalBlocks,
     terminalError,
-    pendingApproval,
+    pendingApproval: activePendingApproval,
     isOpen,
     expandedTerminalBlockIds,
     selectedTerminalBlockId
@@ -210,7 +211,7 @@ export function ChatPanel({
     } else {
       setActiveIndex(-1);
     }
-  }, [searchQuery, caseSensitive, useRegex, wholeWord, messages, terminalBlocks, pendingApproval]);
+  }, [searchQuery, caseSensitive, useRegex, wholeWord, messages, terminalBlocks, activePendingApproval]);
 
   // Handle active match changes (scrolling and active class highlight)
   useEffect(() => {
@@ -417,16 +418,16 @@ export function ChatPanel({
               </div>
             );
           })}
-          {pendingApproval && (
+          {activePendingApproval && (
             <div className="command-approval-row">
               <CommandApprovalComposer
-                approval={pendingApproval}
-                onRefine={() => onRefinePendingApproval?.(pendingApproval)}
-                onEdit={() => onEditPendingApproval?.(pendingApproval)}
-                onAccept={() => onAcceptPendingApproval?.(pendingApproval)}
-                onAutoApprove={() => onAutoApprovePendingApproval?.(pendingApproval)}
-                onStartNewConversation={pendingApproval.kind === 'topic-change' ? onStartNewConversationPendingApproval : undefined}
-                onContinueCurrentConversation={pendingApproval.kind === 'topic-change' ? onContinueCurrentConversationPendingApproval : undefined}
+                approval={activePendingApproval}
+                onRefine={() => onRefinePendingApproval?.(activePendingApproval)}
+                onEdit={() => onEditPendingApproval?.(activePendingApproval)}
+                onAccept={() => onAcceptPendingApproval?.(activePendingApproval)}
+                onAutoApprove={() => onAutoApprovePendingApproval?.(activePendingApproval)}
+                onStartNewConversation={activePendingApproval.kind === 'topic-change' ? onStartNewConversationPendingApproval : undefined}
+                onContinueCurrentConversation={activePendingApproval.kind === 'topic-change' ? onContinueCurrentConversationPendingApproval : undefined}
               />
             </div>
           )}

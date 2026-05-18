@@ -35,7 +35,7 @@ export const COMMAND_ITEMS: CommandItem[] = [
   { label: '/open-settings-file', detail: 'Open a local Octomus settings file', icon: Settings },
   { label: '/profile', detail: 'Inspect or update an agent profile', icon: User },
   { label: '/plan', detail: 'Prompt the agent to research and create a plan', icon: Code2 },
-  { label: '/create-mcp', detail: 'Placeholder for MCP creation flow', icon: Code2 },
+  { label: '/create-mcp', detail: 'Create or configure an MCP server', icon: Code2 },
   { label: '/new', detail: 'Reset the current conversation shell', icon: Sparkles }
 ];
 
@@ -56,3 +56,18 @@ export function filterCommandItems(items: CommandItem[], query: string) {
     return label.includes(searchToken) || detail.includes(searchToken.slice(1));
   });
 }
+
+export const COMPOSER_PLACEHOLDERS = [
+  "Octomus anything e.g. Find and fix race conditions in my Python application",
+  "Octomus anything e.g. Migrate MySQL database to Postgres",
+  "Octomus anything e.g. Optimize the performance of my database queries",
+  "Octomus anything e.g. Refactor this legacy class component to functional",
+  "Octomus anything e.g. Rewrite this component using React Hooks",
+  "Octomus anything e.g. Set up a Dockerfile for my Node.js application",
+  "Octomus anything e.g. Help me write a custom hook for API polling",
+  "Octomus anything e.g. Add TypeScript types to this JavaScript object",
+  "Octomus anything e.g. Setup a GitHub Actions CI/CD pipeline",
+  "Octomus anything e.g. Debug the memory leak in my Go worker",
+  "Octomus anything e.g. Create a bash script to backup logs to AWS S3"
+];
+

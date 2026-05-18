@@ -380,7 +380,14 @@ export function AppWindow() {
           {app.chrome.isAgentsActive && (
             <div className="app-window-overlay" role="presentation">
               <div className="app-window-overlay-panel">
-                <AgentsView />
+                <AgentsView
+                  conversations={app.sidebar.workspaceConversations}
+                  openConversationIds={app.sidebar.openConversationIds}
+                  selectedConversationId={app.sidebar.selectedOpenConversationId}
+                  onNewConversation={app.actions.onNewConversationInNewTab}
+                  onSelectConversation={app.actions.onSelectConversation}
+                  onClose={app.actions.onToggleAgents}
+                />
               </div>
             </div>
           )}

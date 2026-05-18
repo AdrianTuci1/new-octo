@@ -133,6 +133,7 @@ export type AgentRunRequest = {
   cwd?: string | null;
   modelId?: string | null;
   messages?: AgentInputMessage[];
+  terminalBlocks?: import('./terminal').TerminalCommandBlock[];
 };
 
 export type AgentContinueRequest = {
@@ -142,6 +143,7 @@ export type AgentContinueRequest = {
   cwd?: string | null;
   modelId?: string | null;
   messages?: AgentInputMessage[];
+  terminalBlocks?: import('./terminal').TerminalCommandBlock[];
 };
 
 export type AgentInputMessage = {

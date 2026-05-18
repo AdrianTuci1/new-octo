@@ -1,17 +1,18 @@
 import './WorkspaceTopbar.css';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { Bot, ChevronDown, ChevronRight, Cloud, GitBranch, Inbox, LayoutGrid, PanelLeftOpen, Plus, Rocket, Search, Server, Sparkles, TerminalSquare, X } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { ChevronDown, ChevronRight, Cloud, GitBranch, Inbox, LayoutGrid, PanelLeftOpen, Plus, Search, Server, Sparkles, TerminalSquare } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { WorkspaceChromeTab } from './workspaceChromeTypes';
-
-const TAB_TINTS = ['#334155', '#134e4a', '#365314', '#7c2d12', '#6b21a8', '#1d4ed8'];
+import { WorkspaceTopbarTab } from './WorkspaceTopbarTab';
+import { WorkspaceTopbarTabMenu } from './WorkspaceTopbarTabMenu';
+import type { LucideIcon } from 'lucide-react';
 
 type PlusMenuItem = {
   id: 'agent' | 'terminal' | 'cloud-term' | 'my-tab-config' | 'named-tab-config' | 'worktree-config' | 'tab-config';
   label: string;
   action: 'new-terminal' | 'open-cloud-settings' | 'none';
   shortcut?: string;
-  icon: typeof Bot;
+  icon: LucideIcon;
   hasChevron?: boolean;
 };
 
@@ -325,118 +326,36 @@ export function WorkspaceTopbar({
       </div>
 
       <div className="workspace-topbar-tabs">
-        {tabs.map((tab) => {
-          const isActive = tab.id === activeTabId;
-          const isInLauncher = tab.id === launcherTabId;
-          return (
-            <div
-              key={tab.id}
-              className={`workspace-tab ${isActive ? 'active' : ''} ${isInLauncher ? 'launcher-bound' : ''}`}
-              style={{
-                '--tab-tint': tab.tintColor ?? 'transparent'
-              } as CSSProperties}
-              role="button"
-              tabIndex={0}
-              onClick={() => onSelectTab(tab.id)}
-              onContextMenu={(event) => {
-                event.preventDefault();
-                openMenu(tab.id, event.currentTarget);
-              }}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter' || event.key === ' ') {
-                  event.preventDefault();
-                  onSelectTab(tab.id);
-                }
-              }}
-            >
-              {isInLauncher && <Rocket size={10} className="workspace-tab-rocket-icon" />}
-              <span className="workspace-tab-label">{tab.label}</span>
-              <button
-                className="workspace-tab-close"
-                type="button"
-                aria-label={`Close ${tab.label}`}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  onCloseTab(tab.id);
-                }}
-              >
-                <X size={16} strokeWidth={2.4} />
-              </button>
-            </div>
-          );
-        })}
+        {tabs.map((tab) => (
+          <WorkspaceTopbarTab
+            key={tab.id}
+            tab={tab}
+            isActive={tab.id === activeTabId}
+            isInLauncher={tab.id === launcherTabId}
+            onSelect={onSelectTab}
+            onClose={onCloseTab}
+            onOpenContextMenu={openMenu}
+          />
+        ))}
       </div>
 
-      {menuState && menuTab && (
-        <div
-          className="workspace-topbar-tab-menu"
-          style={{
-            left: `${menuState.left}px`,
-            top: `${menuState.top}px`
-          }}
-        >
-          <button
-            type="button"
-            onClick={() => {
-              setMenuState(null);
-              if (launcherTabId === menuTab.id) {
-                onRemoveTabFromLauncher(menuTab.id);
-              } else {
-                onBringTabInLauncher(menuTab.id);
-              }
-            }}
-          >
-            {launcherTabId === menuTab.id ? 'Remove from launcher' : 'Bring in launcher'}
-          </button>
-          <button type="button" onClick={() => { setMenuState(null); onRenameTab(menuTab.id); }}>
-            Rename tab
-          </button>
-          {menuIndex > 0 && (
-            <button type="button" onClick={() => { setMenuState(null); onMoveTab(menuTab.id, 'left'); }}>
-              Move tab left
-            </button>
-          )}
-          {menuIndex >= 0 && menuIndex < tabs.length - 1 && (
-            <button type="button" onClick={() => { setMenuState(null); onMoveTab(menuTab.id, 'right'); }}>
-              Move tab right
-            </button>
-          )}
-          <button type="button" onClick={() => { setMenuState(null); onCloseTab(menuTab.id); }}>
-            Close tab
-          </button>
-          {tabs.length > 1 && (
-            <button type="button" onClick={() => { setMenuState(null); onCloseOtherTabs(menuTab.id); }}>
-              Close other tabs
-            </button>
-          )}
-          {menuIndex >= 0 && menuIndex < tabs.length - 1 && (
-            <button type="button" onClick={() => { setMenuState(null); onCloseTabsToRight(menuTab.id); }}>
-              Close tabs to the right
-            </button>
-          )}
-          <button type="button" onClick={() => { setMenuState(null); onSaveTabAsConfig(menuTab.id); }}>
-            Save as new config
-          </button>
-          <div className="workspace-topbar-tab-menu-swatches">
-            <button
-              className={`workspace-topbar-swatch workspace-topbar-swatch-clear ${menuTab.tintColor ? '' : 'selected'}`}
-              type="button"
-              onClick={() => onSetTabTint(menuTab.id, null)}
-              aria-label="Disable tab color"
-            />
-            {TAB_TINTS.map((color) => (
-              <button
-                key={color}
-                className={`workspace-topbar-swatch ${menuTab.tintColor === color ? 'selected' : ''}`}
-                type="button"
-                style={{ '--swatch-color': color } as CSSProperties}
-                onClick={() => onSetTabTint(menuTab.id, color)}
-                aria-label={`Set tab color ${color}`}
-              />
-            ))}
-          </div>
-        </div>
-      )}
+      <WorkspaceTopbarTabMenu
+        tab={menuTab}
+        tabIndex={menuIndex}
+        tabsLength={tabs.length}
+        launcherTabId={launcherTabId}
+        position={menuState}
+        onClose={() => setMenuState(null)}
+        onBringTabInLauncher={onBringTabInLauncher}
+        onCloseOtherTabs={onCloseOtherTabs}
+        onCloseTabsToRight={onCloseTabsToRight}
+        onMoveTab={onMoveTab}
+        onCloseTab={onCloseTab}
+        onRemoveTabFromLauncher={onRemoveTabFromLauncher}
+        onRenameTab={onRenameTab}
+        onSaveTabAsConfig={onSaveTabAsConfig}
+        onSetTabTint={onSetTabTint}
+      />
 
       <div className="workspace-topbar-plus-group">
         <button

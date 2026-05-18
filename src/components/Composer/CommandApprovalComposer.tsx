@@ -93,6 +93,7 @@ export function CommandApprovalComposer({
           <div className="command-approval-question">
             <span className="command-approval-marker" />
             <span className="command-approval-question-text">{summary}</span>
+            <span className="command-approval-file-count">{fileCountLabel}</span>
           </div>
 
           <div className="command-approval-actions">
@@ -154,7 +155,7 @@ export function CommandApprovalComposer({
 
         <div className="command-approval-preview">
           <div className="command-approval-diffs">
-            <CodeDiffView diffs={approval.fileDiffs} showHeader={false} />
+            <CodeDiffView diffs={approval.fileDiffs} showHeader />
           </div>
         </div>
       </section>

@@ -178,7 +178,8 @@ export function useAppWindow() {
 
     return {
       ...tab,
-      label: tab.customLabel?.trim() || activeConversation?.title || (session?.activeConversationId ? 'New agent conversation' : pathLabel)
+      label: tab.customLabel?.trim() || activeConversation?.title || (session?.activeConversationId ? 'New agent conversation' : pathLabel),
+      lastExecutionStatus: session?.activeConversationId ? activeConversation?.status ?? 'idle' : null
     };
   }), [tabs, terminalSessions, memoryConversationsById, paneLayoutsByTabId, pathContext]);
 

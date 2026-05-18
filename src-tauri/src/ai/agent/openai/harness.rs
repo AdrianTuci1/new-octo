@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::{fs, time::Duration};
 use futures_util::StreamExt;
 use reqwest::header::{HeaderMap, HeaderValue, CONTENT_TYPE};
 use serde_json::{json, Value};
@@ -673,6 +673,20 @@ fn build_chat_messages(context: &AgentHarnessContext) -> Vec<Value> {
         "content": system_prompt
     }));
 
+    if let Some(terminal_context) = build_terminal_context_message(context) {
+        messages.push(json!({
+            "role": "system",
+            "content": terminal_context
+        }));
+    }
+
+    if let Some(workspace_context) = build_workspace_context_message(cwd) {
+        messages.push(json!({
+            "role": "system",
+            "content": workspace_context
+        }));
+    }
+
     for message in context.messages.iter().filter_map(sanitize_message) {
         let mut api_message = json!({
             "role": message.role,
@@ -702,6 +716,118 @@ fn build_chat_messages(context: &AgentHarnessContext) -> Vec<Value> {
     }
 
     messages
+}
+
+fn build_workspace_context_message(cwd: &str) -> Option<String> {
+    if cwd.trim().is_empty() || cwd == "unknown" {
+        return None;
+    }
+
+    let entries = fs::read_dir(cwd).ok()?;
+    let mut names = entries
+        .filter_map(Result::ok)
+        .filter_map(|entry| {
+            let file_name = entry.file_name().to_string_lossy().to_string();
+            if file_name.trim().is_empty() {
+                return None;
+            }
+
+            let suffix = entry
+                .file_type()
+                .ok()
+                .filter(|file_type| file_type.is_dir())
+                .map(|_| "/")
+                .unwrap_or("");
+            Some(format!("{file_name}{suffix}"))
+        })
+        .collect::<Vec<_>>();
+
+    if names.is_empty() {
+        return None;
+    }
+
+    names.sort_unstable();
+    if names.len() > 80 {
+        names.truncate(80);
+        names.push("...".to_string());
+    }
+
+    Some(format!(
+        "CONTEXT WORKSPACE:\n- cwd: {cwd}\n- entries:\n{}\
+        \nREGULĂ PATH: tratează cwd ca rădăcina operațiunilor locale. În `propose_file_change`, folosește path-uri relative la cwd pentru fișiere de proiect. Dacă nu ești sigur de structură, cere mai întâi o comandă read-only precum `rg --files` sau `ls`.",
+        indent_block(&names.join("\n"), 2)
+    ))
+}
+
+fn build_terminal_context_message(context: &AgentHarnessContext) -> Option<String> {
+    let finished_blocks = context
+        .terminal_blocks
+        .iter()
+        .rev()
+        .filter(|block| block.status.as_deref() == Some("finished") || block.finished_at.is_some())
+        .take(6)
+        .collect::<Vec<_>>();
+
+    if finished_blocks.is_empty() {
+        return None;
+    }
+
+    let mut lines = vec![
+        "CONTEXT TERMINAL RECENT:".to_string(),
+        "Utilizatorul vede deja output-ul brut în UI, dar aici ai o versiune compactă ca să poți înțelege exact ce s-a întâmplat.".to_string(),
+    ];
+
+    for block in finished_blocks.into_iter().rev() {
+        let status = block
+            .status
+            .as_deref()
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or("finished");
+        let exit_code = block
+            .exit_code
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| "unknown".to_string());
+        let output = summarize_output(&block.output);
+        lines.push(format!(
+            "- command: {}\n  status: {}\n  exit_code: {}\n  output:\n{}",
+            block.command,
+            status,
+            exit_code,
+            indent_block(&output, 4)
+        ));
+    }
+
+    Some(lines.join("\n"))
+}
+
+fn indent_block(text: &str, spaces: usize) -> String {
+    let prefix = " ".repeat(spaces);
+    text.lines()
+        .map(|line| format!("{prefix}{line}"))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn summarize_output(output: &str) -> String {
+    let lines = output.lines().collect::<Vec<_>>();
+    if lines.len() <= 10 {
+        return output.to_string();
+    }
+
+    let omitted = lines.len().saturating_sub(10);
+    let mut summary = lines
+        .iter()
+        .take(5)
+        .map(|line| (*line).to_string())
+        .collect::<Vec<_>>();
+    summary.push(format!("... ({omitted} lines omitted) ..."));
+    summary.extend(
+        lines
+            .iter()
+            .skip(lines.len().saturating_sub(5))
+            .map(|line| (*line).to_string()),
+    );
+    summary.join("\n")
 }
 
 fn sanitize_message(message: &AgentInputMessage) -> Option<AgentInputMessage> {

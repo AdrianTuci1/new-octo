@@ -236,7 +236,7 @@ pub(super) fn build_tool_definitions() -> Value {
             "type": "function",
             "function": {
                 "name": "propose_file_change",
-                "description": "Propose file changes when the task creates, edits, or deletes files. Use this instead of a shell heredoc or EOF block so the UI can show a native file diff preview.",
+                "description": "Propose file changes when the task creates, edits, or deletes files. Use this instead of shell heredocs, EOF blocks, or full-file markdown fences so the UI can show a native retractable file diff preview. Paths should be relative to the current CWD unless the user explicitly requested an absolute path.",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -246,9 +246,24 @@ pub(super) fn build_tool_definitions() -> Value {
                         },
                         "fileDiffs": {
                             "type": "array",
-                            "description": "The files to create, update, or delete, in diff format.",
+                            "description": "The files to create, update, or delete. Each item must include filePath and diffType.",
                             "items": {
-                                "type": "object"
+                                "type": "object",
+                                "properties": {
+                                    "filePath": {
+                                        "type": "string",
+                                        "description": "Project-relative path from the current CWD, for example src/components/Foo.tsx."
+                                    },
+                                    "diffType": {
+                                        "type": "object",
+                                        "description": "Diff object. For new files use { kind: 'create', delta: { replacement_line_range: { start: 1, end: 1 }, insertion: 'full file content' } }. For edits use kind 'update' with deltas."
+                                    },
+                                    "originalContent": {
+                                        "type": "string",
+                                        "description": "Optional original file content when known."
+                                    }
+                                },
+                                "required": ["filePath", "diffType"]
                             }
                         },
                         "refineLabel": {

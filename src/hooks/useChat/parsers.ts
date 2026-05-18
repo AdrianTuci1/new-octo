@@ -1,4 +1,4 @@
-import type { ChatMessage } from '../../types/chat';
+import type { ChatMessage, ExecutionPlanArtifact, ExecutionPlanStep, ExecutionPlanWorkstream } from '../../types/chat';
 import { FOLLOW_UP_START, FOLLOW_UP_END } from './helpers';
 
 export function stripThinkingBlocks(value: string) {
@@ -14,7 +14,9 @@ export function stripThinkingBlocks(value: string) {
 }
 
 export function visibleChatMessageBody(value: string) {
-  return stripThinkingBlocks(extractFollowUpSuggestion(value).visibleBody);
+  const withoutFollowUp = extractFollowUpSuggestion(value).visibleBody;
+  const withoutInlinePlan = extractInlinePlanArtifact(withoutFollowUp).visibleBody;
+  return stripThinkingBlocks(withoutInlinePlan);
 }
 
 export function followUpSuggestionFromMessageBody(value: string) {
@@ -203,5 +205,178 @@ export function extractFollowUpSuggestion(raw: string) {
     visibleBody: stripFollowUpBoilerplate(`${visibleBody}${trailing}`.trimEnd()),
     pendingPayload: '',
     suggestion
+  };
+}
+
+function normalizePlanStep(step: any, index: number): ExecutionPlanStep | null {
+  const label = typeof step?.label === 'string'
+    ? step.label.trim()
+    : typeof step?.title === 'string'
+      ? step.title.trim()
+      : '';
+
+  if (!label) {
+    return null;
+  }
+
+  return {
+    id: typeof step?.id === 'string' && step.id.trim().length > 0
+      ? step.id.trim()
+      : `step-${index + 1}`,
+    label,
+    status: step?.status === 'inProgress'
+      ? 'inProgress'
+      : step?.status === 'failed'
+        ? 'failed'
+        : step?.completed === true || step?.status === 'completed'
+          ? 'completed'
+          : 'pending'
+  };
+}
+
+function normalizePlanWorkstream(workstream: any, index: number): ExecutionPlanWorkstream | null {
+  const title = typeof workstream?.title === 'string'
+    ? workstream.title.trim()
+    : typeof workstream?.label === 'string'
+      ? workstream.label.trim()
+      : '';
+
+  if (!title) {
+    return null;
+  }
+
+  return {
+    id: typeof workstream?.id === 'string' && workstream.id.trim().length > 0
+      ? workstream.id.trim()
+      : `workstream-${index + 1}`,
+    title,
+    status: workstream?.status === 'inProgress'
+      ? 'inProgress'
+      : workstream?.status === 'failed'
+        ? 'failed'
+        : workstream?.status === 'completed'
+          ? 'completed'
+          : 'pending',
+    stepIds: Array.isArray(workstream?.stepIds)
+      ? workstream.stepIds.filter((stepId: unknown): stepId is string => (
+          typeof stepId === 'string' && stepId.trim().length > 0
+        )).map((stepId: string) => stepId.trim())
+      : []
+  };
+}
+
+function normalizeInlinePlan(parsed: any): ExecutionPlanArtifact | undefined {
+  const title = typeof parsed?.title === 'string' ? parsed.title.trim() : '';
+  const steps = Array.isArray(parsed?.steps)
+    ? parsed.steps.map(normalizePlanStep).filter(Boolean) as ExecutionPlanStep[]
+    : [];
+  const workstreams = Array.isArray(parsed?.workstreams)
+    ? parsed.workstreams.map(normalizePlanWorkstream).filter(Boolean) as ExecutionPlanWorkstream[]
+    : [];
+
+  if (!title || steps.length === 0) {
+    return undefined;
+  }
+
+  return {
+    id: typeof parsed?.id === 'string' && parsed.id.trim().length > 0
+      ? parsed.id.trim()
+      : `plan-${Date.now()}`,
+    title,
+    summary: typeof parsed?.summary === 'string' ? parsed.summary.trim() : undefined,
+    version: typeof parsed?.version === 'string' ? parsed.version.trim() : undefined,
+    steps,
+    workstreams
+  };
+}
+
+function findInlinePlanMarker(raw: string) {
+  const channelMarker = raw.indexOf('<|channel>thoughtplan');
+  if (channelMarker >= 0) {
+    return {
+      startIndex: channelMarker,
+      braceIndex: raw.indexOf('{', channelMarker),
+      markerLength: '<|channel>thoughtplan'.length
+    };
+  }
+
+  const plainMarker = raw.indexOf('thoughtplan{');
+  if (plainMarker >= 0) {
+    return {
+      startIndex: plainMarker,
+      braceIndex: raw.indexOf('{', plainMarker),
+      markerLength: 'thoughtplan'.length
+    };
+  }
+
+  return null;
+}
+
+function findBalancedObjectEnd(raw: string, braceIndex: number) {
+  let depth = 0;
+
+  for (let index = braceIndex; index < raw.length; index += 1) {
+    const character = raw[index];
+    if (character === '{') {
+      depth += 1;
+      continue;
+    }
+
+    if (character === '}') {
+      depth -= 1;
+      if (depth === 0) {
+        return index;
+      }
+    }
+  }
+
+  return -1;
+}
+
+function pseudoPlanPayloadToJson(rawPayload: string) {
+  return rawPayload
+    .replace(/<\|"\|>/g, '"')
+    .replace(/([{,]\s*)([A-Za-z_][A-Za-z0-9_]*)(\s*:)/g, '$1"$2"$3');
+}
+
+export function extractInlinePlanArtifact(raw: string) {
+  const marker = findInlinePlanMarker(raw);
+  if (!marker || marker.braceIndex < 0) {
+    return {
+      visibleBody: raw,
+      pendingPayload: '',
+      plan: undefined as ExecutionPlanArtifact | undefined
+    };
+  }
+
+  const objectEnd = findBalancedObjectEnd(raw, marker.braceIndex);
+  if (objectEnd < 0) {
+    return {
+      visibleBody: raw.slice(0, marker.startIndex).trimEnd(),
+      pendingPayload: raw.slice(marker.startIndex),
+      plan: undefined as ExecutionPlanArtifact | undefined
+    };
+  }
+
+  const rawPayload = raw.slice(marker.braceIndex, objectEnd + 1);
+  let trailing = raw.slice(objectEnd + 1);
+  trailing = trailing.replace(/^\s*<tool_call\|>\s*/i, '');
+
+  let plan: ExecutionPlanArtifact | undefined;
+  try {
+    const parsed = JSON.parse(pseudoPlanPayloadToJson(rawPayload));
+    plan = normalizeInlinePlan(parsed);
+  } catch {
+    plan = undefined;
+  }
+
+  const beforePlan = raw.slice(0, marker.startIndex).trimEnd();
+  const afterPlan = trailing.trimStart();
+  const visibleBody = [beforePlan, afterPlan].filter(Boolean).join('\n\n').trimEnd();
+
+  return {
+    visibleBody,
+    pendingPayload: '',
+    plan
   };
 }

@@ -8,12 +8,14 @@ export type WebSearchBlockProps = {
   status?: 'searching' | 'success' | 'error';
   results?: WebSearchResult[];
   query?: string;
+  onOpenResult?: (url: string) => void;
 };
 
 export function WebSearchBlock({
   status = 'success',
   results = [],
   query = 'search',
+  onOpenResult,
 }: WebSearchBlockProps) {
   const [isExpanded, setIsExpanded] = useState(false);
 
@@ -53,7 +55,17 @@ export function WebSearchBlock({
         <div className="web-search-results-body">
           {results.map((r, i) => (
             <div key={i} className="web-search-result-item">
-              <a href={r.url} target="_blank" rel="noreferrer" className="web-result-link">
+              <a
+                href={r.url}
+                target="_blank"
+                rel="noreferrer"
+                className="web-result-link"
+                onClick={(event) => {
+                  if (!onOpenResult) return;
+                  event.preventDefault();
+                  onOpenResult(r.url);
+                }}
+              >
                 <span className="web-result-title">{r.title}</span>
                 <span className="web-result-url">({r.url})</span>
               </a>

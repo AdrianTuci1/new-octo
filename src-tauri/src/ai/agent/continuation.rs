@@ -59,10 +59,11 @@ pub async fn agent_continue(
         conversation_id: conversation_id.clone(),
         assistant_message_id: assistant_message_id.clone(),
         prompt: String::new(),
+        messages: request.messages,
+        terminal_blocks: request.terminal_blocks,
         cwd,
         model_id: model_id.clone(),
         terminal_model_id: request.terminal_model_id,
-        messages: request.messages,
     };
 
     let cancel_flag = Arc::new(AtomicBool::new(false));

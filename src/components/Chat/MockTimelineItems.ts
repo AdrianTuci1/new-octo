@@ -1,35 +1,138 @@
 import type { TimelineItem } from './utils/timeline';
+import type { CommandApproval } from '../../types/terminal';
 
 export const MOCK_TIMELINE_ITEMS: TimelineItem[] = [
   {
-    id: 'msg-user-1',
+    id: 'mock-k8s-user-1',
     kind: 'message',
     at: 1,
     order: 1,
     message: {
-      id: 'msg-user-1',
+      id: 'mock-k8s-user-1',
       role: 'user',
-      title: 'User question',
-      body: 'Please show me examples of all blocks so I can style them.',
+      title: 'Production incident',
+      body: 'We have intermittent 502s on checkout-api after the last deploy. Kubernetes shows a few pods in CrashLoopBackOff and latency spikes every time traffic shifts. Can you help me triage this without making changes yet?',
       createdAt: new Date().toISOString()
     }
   },
   {
-    id: 'msg-thinking-1',
+    id: 'mock-k8s-thinking-1',
     kind: 'message',
     at: 2,
     order: 2,
     message: {
-      id: 'msg-thinking-1',
+      id: 'mock-k8s-thinking-1',
       role: 'assistant',
       title: 'Thinking',
-      body: 'Thinking about how to display all blocks in a coherent UI layout...\nAnalyzing requirements for spacing and consistency.\nPreparing the presentation layers.',
+      body: 'I will treat this as a production triage and avoid mutating commands.\nFirst I want to correlate rollout state, pod restarts, readiness failures, and recent events in the checkout namespace.\nThe safest first command should only read cluster state.',
       messageKind: 'reasoning',
-      thinkingDurationSeconds: 7,
+      thinkingDurationSeconds: 9,
       isStreaming: false,
       createdAt: new Date().toISOString()
     }
   },
+  {
+    id: 'mock-k8s-assistant-1',
+    kind: 'message',
+    at: 3,
+    order: 3,
+    message: {
+      id: 'mock-k8s-assistant-1',
+      role: 'assistant',
+      title: 'Triage plan',
+      body: `I would start by checking the deployment, current ReplicaSet split, pod readiness, restart counts, and recent warning events in one pass.
+
+The symptoms point to one of these:
+- a new image failing startup probes under production config
+- a readiness probe mismatch causing traffic to reach pods too early
+- resource pressure causing OOMKilled restarts
+- a downstream dependency timeout that only appears under load
+
+I can run a read-only diagnostic command first, then summarize what changed between the stable and unstable pods before suggesting any rollback or patch.`,
+      createdAt: new Date().toISOString()
+    }
+  },
+  {
+    id: 'mock-k8s-agent-1',
+    kind: 'multi-agent-block',
+    at: 4,
+    order: 4,
+    block: {
+      agentName: 'Cluster Inspector',
+      status: 'running',
+      taskSummary: 'Preparing a read-only Kubernetes diagnostic across deployment, pods, restart reasons, and warning events.',
+      colorScheme: 'indigo'
+    }
+  },
+  {
+    id: 'mock-k8s-agent-2',
+    kind: 'multi-agent-block',
+    at: 5,
+    order: 5,
+    block: {
+      agentName: 'Incident Analyst',
+      status: 'running',
+      taskSummary: 'Mapping CrashLoopBackOff timing against rollout and readiness behavior for checkout-api.',
+      colorScheme: 'teal'
+    }
+  },
+  {
+    id: 'mock-k8s-assistant-2',
+    kind: 'message',
+    at: 6,
+    order: 6,
+    message: {
+      id: 'mock-k8s-assistant-2',
+      role: 'assistant',
+      title: 'Command suggestion',
+      body: `I suggest starting with a single read-only command. It will not restart pods, change traffic, or edit cluster resources.
+
+The output should tell us whether the crash is tied to image startup, readiness probes, memory limits, or node-level pressure.`,
+      createdAt: new Date().toISOString()
+    }
+  },
+  {
+    id: 'mock-k8s-terminal-preview',
+    kind: 'terminal-block',
+    at: 7,
+    order: 7,
+    block: {
+      id: 'mock-k8s-terminal-preview',
+      command: 'kubectl -n production get deploy checkout-api -o wide && kubectl -n production get pods -l app=checkout-api -o wide',
+      status: 'finished',
+      exitCode: 0,
+      output: 'NAME           READY   UP-TO-DATE   AVAILABLE   AGE   CONTAINERS     IMAGES\\ncheckout-api   3/5     2            3           42d   checkout-api   registry.example.com/checkout-api:2026.05.18-rc.4\\n\\nNAME                            READY   STATUS             RESTARTS   AGE   IP\\ncheckout-api-7df9c8d9b8-4xz2k   1/1     Running            0          41m   10.42.8.31\\ncheckout-api-7df9c8d9b8-bm6vj   0/1     CrashLoopBackOff   6          39m   10.42.8.44',
+      startedAt: new Date().toISOString(),
+      finishedAt: new Date().toISOString(),
+      source: 'assistant'
+    }
+  },
+  {
+    id: 'mock-k8s-assistant-3',
+    kind: 'message',
+    at: 8,
+    order: 8,
+    message: {
+      id: 'mock-k8s-assistant-3',
+      role: 'assistant',
+      title: 'Next step',
+      body: `The rollout is partially available and at least one new pod is restarting. I need the previous container termination reason and warning events next.
+
+Please approve the diagnostic command below. It is still read-only and scoped to \`production\` / \`checkout-api\`.`,
+      createdAt: new Date().toISOString()
+    }
+  }
+];
+
+export const MOCK_PENDING_APPROVAL: CommandApproval = {
+  kind: 'command',
+  command:
+    'kubectl -n production describe pods -l app=checkout-api && kubectl -n production get events --sort-by=.lastTimestamp --field-selector type=Warning | tail -40',
+  reason:
+    'Run a read-only Kubernetes diagnostic to inspect restart reasons, probe failures, OOMKilled signals, and recent warning events for checkout-api.'
+};
+
+export const LEGACY_MOCK_TIMELINE_ITEMS: TimelineItem[] = [
   {
     id: 'msg-websearch-1',
     kind: 'message',

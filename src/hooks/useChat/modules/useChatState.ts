@@ -1,7 +1,9 @@
 import { useCallback, useRef, useState } from 'react';
 import type { ChatMessage } from '../../../types/chat';
-import { extractFollowUpSuggestion } from '../parsers';
+import { extractFollowUpSuggestion, extractInlinePlanArtifact } from '../parsers';
 import { pendingFollowUpPayloads } from '../bridge';
+
+const pendingInlinePlanPayloads: Record<string, string> = {};
 
 function summarizeReasoningText(text: string) {
   const normalized = text.replace(/\s+/g, ' ').trim();
@@ -24,6 +26,24 @@ function summarizeReasoningText(text: string) {
 
   const clipped = summary.slice(0, 177).replace(/\s+\S*$/, '');
   return `${clipped}...`;
+}
+
+function formatPlanBody(message: ChatMessage) {
+  const plan = message.executionPlan;
+  if (!plan) {
+    return message.body;
+  }
+
+  return [
+    plan.summary?.trim() || 'Execution plan proposed.',
+    ...plan.steps.map((step, index) => `${index + 1}. [${step.status}] ${step.label}`),
+    ...(plan.workstreams?.length
+      ? [
+          '',
+          ...plan.workstreams.map((workstream) => `WS [${workstream.status}] ${workstream.title}`)
+        ]
+      : [])
+  ].filter(Boolean).join('\n');
 }
 
 export function useChatState() {
@@ -81,38 +101,69 @@ export function useChatState() {
   const appendToMessage = useCallback((messageId: string, text: string) => {
     let didAppend = false;
 
-    setMessages((currentMessages) => currentMessages.map((message) => {
-      if (message.id !== messageId) {
-        return message;
+    setMessages((currentMessages) => {
+      const messageIndex = currentMessages.findIndex((message) => message.id === messageId);
+      if (messageIndex < 0) {
+        return currentMessages;
       }
 
       didAppend = true;
-      const bufferedFollowUp = pendingFollowUpPayloads[messageId] ?? '';
-      const combinedRaw = bufferedFollowUp
-        ? `${bufferedFollowUp}${text}`
-        : `${message.body}${text}`;
-      const extracted = extractFollowUpSuggestion(combinedRaw);
-      if (!extracted) {
-        return {
-          ...message,
-          body: `${message.body}${text}`
-        };
-      }
 
-      if (extracted.pendingPayload) {
-        pendingFollowUpPayloads[messageId] = extracted.pendingPayload;
+      const nextMessages = [...currentMessages];
+      const currentMessage = nextMessages[messageIndex];
+      const bufferedPlan = pendingInlinePlanPayloads[messageId] ?? '';
+      const bufferedFollowUp = pendingFollowUpPayloads[messageId] ?? '';
+      const combinedRaw = `${currentMessage.body}${bufferedPlan}${bufferedFollowUp}${text}`;
+
+      const extractedFollowUp = extractFollowUpSuggestion(combinedRaw);
+      if (extractedFollowUp.pendingPayload) {
+        pendingFollowUpPayloads[messageId] = extractedFollowUp.pendingPayload;
       } else {
         delete pendingFollowUpPayloads[messageId];
       }
 
-      return {
-        ...message,
-        body: bufferedFollowUp
-          ? `${message.body}${extracted.visibleBody}`
-          : extracted.visibleBody,
-        followUpSuggestion: extracted.suggestion ?? message.followUpSuggestion
+      const extractedPlan = extractInlinePlanArtifact(extractedFollowUp.visibleBody);
+      if (extractedPlan.pendingPayload) {
+        pendingInlinePlanPayloads[messageId] = extractedPlan.pendingPayload;
+      } else {
+        delete pendingInlinePlanPayloads[messageId];
+      }
+
+      nextMessages[messageIndex] = {
+        ...currentMessage,
+        body: extractedPlan.visibleBody,
+        followUpSuggestion: extractedFollowUp.suggestion ?? currentMessage.followUpSuggestion
       };
-    }));
+
+      if (!extractedPlan.plan) {
+        return nextMessages;
+      }
+
+      const syntheticPlanMessageId = `${messageId}::inline-plan`;
+      const syntheticPlanMessage: ChatMessage = {
+        id: syntheticPlanMessageId,
+        role: 'tool',
+        title: 'Execution Plan',
+        body: formatPlanBody({
+          ...currentMessage,
+          executionPlan: extractedPlan.plan
+        }),
+        conversationId: currentMessage.conversationId,
+        createdAt: currentMessage.createdAt ?? new Date().toISOString(),
+        toolCallId: syntheticPlanMessageId,
+        toolKind: 'plan',
+        executionPlan: extractedPlan.plan
+      };
+
+      const existingPlanIndex = nextMessages.findIndex((message) => message.id === syntheticPlanMessageId);
+      if (existingPlanIndex >= 0) {
+        nextMessages[existingPlanIndex] = syntheticPlanMessage;
+      } else {
+        nextMessages.splice(messageIndex + 1, 0, syntheticPlanMessage);
+      }
+
+      return nextMessages;
+    });
 
     return didAppend;
   }, [setMessages]);

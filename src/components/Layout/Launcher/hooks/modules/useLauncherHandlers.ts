@@ -21,11 +21,49 @@ function getFileContentForDiff(diff: FileDiff) {
   return diff.originalContent ?? '';
 }
 
-function openFileDiffsInEditor(diffs: FileDiff[]) {
+function isAbsolutePath(path: string) {
+  return path.startsWith('/') || /^[A-Za-z]:[\\/]/.test(path);
+}
+
+function normalizePathSegments(path: string) {
+  const isAbsolute = path.startsWith('/');
+  const parts = path.split('/').filter(Boolean);
+  const stack: string[] = [];
+
+  parts.forEach((part) => {
+    if (part === '.') return;
+    if (part === '..') {
+      if (stack.length > 0) stack.pop();
+      return;
+    }
+    stack.push(part);
+  });
+
+  return `${isAbsolute ? '/' : ''}${stack.join('/')}`;
+}
+
+function resolveWorkspaceFilePath(filePath: string, cwd?: string | null) {
+  const trimmedPath = filePath.trim();
+  if (!trimmedPath || isAbsolutePath(trimmedPath) || !cwd?.trim()) {
+    return trimmedPath;
+  }
+
+  return normalizePathSegments(`${cwd.replace(/\/+$/, '')}/${trimmedPath.replace(/^\.\/+/, '')}`);
+}
+
+function withResolvedDiffPath(diff: FileDiff, cwd?: string | null): FileDiff {
+  return {
+    ...diff,
+    filePath: resolveWorkspaceFilePath(diff.filePath, cwd)
+  };
+}
+
+function openFileDiffsInEditor(diffs: FileDiff[], cwd?: string | null) {
   const { openFile } = useEditorStore.getState();
   diffs.forEach((diff) => {
-    const fileName = diff.filePath.split('/').pop() || diff.filePath;
-    openFile(diff.filePath, fileName, getFileContentForDiff(diff));
+    const resolvedPath = resolveWorkspaceFilePath(diff.filePath, cwd);
+    const fileName = resolvedPath.split('/').pop() || resolvedPath;
+    openFile(resolvedPath, fileName, getFileContentForDiff(diff));
   });
 }
 
@@ -274,7 +312,7 @@ export function useLauncherHandlers({
 
     if (approval.kind === 'file-change') {
       store.setModeLock(null);
-      openFileDiffsInEditor(approval.fileDiffs);
+      openFileDiffsInEditor(approval.fileDiffs, runtime.workingDirectory.currentPath);
       return;
     }
 
@@ -282,15 +320,22 @@ export function useLauncherHandlers({
       store.setModeLock('shell');
       chat.setQuery(approval.command);
     }
-  }, [chat.setQuery, setResolvedPendingApproval, store.setComposerSurface, store.setModeLock]);
+  }, [
+    chat.setQuery,
+    runtime.workingDirectory.currentPath,
+    setResolvedPendingApproval,
+    store.setComposerSurface,
+    store.setModeLock
+  ]);
 
   const handlePendingApprovalAccept = useCallback(async (approval: CommandApproval) => {
     if (approval.kind === 'file-change') {
       try {
         for (const diff of approval.fileDiffs) {
+          const resolvedDiff = withResolvedDiffPath(diff, runtime.workingDirectory.currentPath);
           await invoke('apply_file_diff', {
-            filePath: diff.filePath,
-            diff: diff.diffType
+            filePath: resolvedDiff.filePath,
+            diff: resolvedDiff.diffType
           });
         }
 
@@ -346,6 +391,7 @@ export function useLauncherHandlers({
     chat.submitToolResult,
     clearTerminalSurface,
     resolvedPendingApproval?.toolCallId,
+    runtime.workingDirectory.currentPath,
     setResolvedPendingApproval,
     store.setComposerSurface,
     store.setModeLock,

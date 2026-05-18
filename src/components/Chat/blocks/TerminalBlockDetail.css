@@ -1,40 +1,14 @@
 .terminal-block-detail {
   position: relative;
   width: 100%;
-  margin: 8px 0;
-  border-radius: 10px;
-  overflow: hidden;
-}
-
-.terminal-inline-command {
-  flex: 1;
-  max-width: none;
-  padding: 12px 18px;
-  color: rgba(244, 247, 246, 0.92);
-}
-
-.terminal-inline-command.failed {
-  color: #ffb8b8;
-  background: rgba(170, 48, 48, 0.12);
-  border-left: 2px solid rgba(255, 90, 90, 0.4);
-}
-
-.terminal-inline-command-output {
   margin: 0;
-  white-space: pre-wrap;
-  word-break: break-word;
-  color: rgba(244, 247, 246, 0.92);
-  font-family: var(--font-mono);
-  font-size: 13px;
-  line-height: 1.48;
+  /* Set to 0 to eliminate gaps between blocks */
+  border-radius: 0;
+  /* Set to 0 for professional full-bleed presentation */
+  /* overflow: visible by default to allow position: sticky for header */
 }
 
-.terminal-inline-command-output strong {
-  display: inline-block;
-  margin-bottom: 8px;
-  color: rgba(244, 247, 246, 0.98);
-  font-weight: 760;
-}
+
 
 .terminal-detail-top-bar {
   display: flex;
@@ -45,12 +19,12 @@
   padding: 0 9px 0 12px;
   color: rgba(244, 247, 246, 0.92);
   background: rgba(45, 47, 47, 0.96);
-  border: 1px solid rgba(255, 255, 255, 0.045);
-  border-bottom-color: rgba(255, 255, 255, 0.02); /* Flat/seamless boundary */
-  border-top-left-radius: 10px;
-  border-top-right-radius: 10px;
-  border-bottom-left-radius: 0;
-  border-bottom-right-radius: 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.045);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.02);
+  /* Flat/seamless boundary */
+  border-left: none;
+  border-right: none;
+  border-radius: 0;
   box-shadow: 0 1px 0 rgba(255, 255, 255, 0.025) inset;
   cursor: pointer;
   transition: background 0.15s ease;
@@ -100,26 +74,31 @@
 .terminal-detail-body {
   position: relative;
   min-height: auto;
-  padding: 14px 16px 16px;
-  overflow: hidden;
-  background: rgba(255, 255, 255, 0.015); /* Super subtle background */
-  border: 1px solid rgba(255, 255, 255, 0.04);
+  padding: 14px 16px 0;
+  /* Bottom padding moved to child element to allow sticky header to reach the absolute bottom edge */
+  /* overflow: visible by default to allow position: sticky for header */
+  background: transparent;
+  /* Completely transparent to avoid 2-tone background */
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  /* Only a line at the bottom for expanded agents */
   border-top: none;
-  border-bottom-left-radius: 10px;
-  border-bottom-right-radius: 10px;
+  border-left: none;
+  border-right: none;
+  border-radius: 0;
 }
 
-.terminal-block-detail.failed {
+/* Seamless edge-to-edge rendering for user submitted commands relying purely on ChatPanel row borders */
+.terminal-block-detail.is-user .terminal-detail-body {
+  border: none;
   border-radius: 0;
-  margin: 0;
 }
+
 
 .terminal-block-detail.failed .terminal-detail-body {
   min-height: 112px;
-  padding: 17px 17px 18px;
-  background:
-    radial-gradient(circle at 55% 0%, rgba(255, 95, 87, 0.045), transparent 28%),
-    rgba(50, 25, 24, 0.8);
+  padding: 10px 16px 0;
+  /* Bottom padding moved to child element to prevent early scroll push-up */
+  background: rgba(255, 95, 87, 0.03); /* Flat subtle red overlay, unified across whole block */
   border: none;
   border-radius: 0;
 }
@@ -142,10 +121,73 @@
 
 .terminal-detail-header {
   display: flex;
-  align-items: flex-start;
+  flex-direction: column;
+  gap: 8px;
+  /* Elegant separation between meta row and command row */
+
+  /* Premium sticky header layout */
+  position: sticky;
+  top: 0;
+  z-index: 10;
+
+  /* Mask text scrolling underneath by filling to container edge */
+  margin-top: -14px;
+  margin-left: -16px;
+  margin-right: -16px;
+  padding-top: 14px;
+  padding-bottom: 12px;
+  padding-left: 16px;
+  padding-right: 16px;
+  margin-bottom: 12px;
+
+  /* Rich glassmorphism layering */
+  background: rgba(12, 12, 12, 0.88);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+
+}
+
+.terminal-detail-header-top-row {
+  display: flex;
+  align-items: center;
   justify-content: space-between;
   gap: 16px;
   min-height: 27px;
+  width: 100%;
+}
+
+.terminal-detail-command-row {
+  display: block;
+  width: 100%;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.terminal-detail-command-row strong {
+  display: inline-block;
+  color: rgba(244, 247, 246, 0.98);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 760;
+  line-height: 1.48;
+}
+
+
+
+/* Coordinate specific colors for failed and selected sticky context */
+/* Set a matching solid dark red background for the header to keep the block unified "in one piece" while masking text */
+.terminal-block-detail.failed .terminal-detail-header {
+  background: rgba(20, 15, 15, 0.95);
+}
+
+/* Replicate the vertical red failure rail seamlessly on the sticky header to keep it locked at top */
+.terminal-block-detail.failed:not(.selected) .terminal-detail-header {
+  border-left: 4px solid #d94939;
+  padding-left: 12px; /* Shrink padding by the 4px border width to perfectly align text elements */
+}
+
+.terminal-block-detail.selected .terminal-detail-header {
+  background: rgba(43, 34, 20, 0.92);
 }
 
 .terminal-detail-title {
@@ -185,7 +227,8 @@
 
 .terminal-block-output {
   margin: 0;
-  padding: 0;
+  padding: 0 0 16px;
+  /* Standard block bottom padding hosted here to support full-bleed sticky containers */
   white-space: pre-wrap;
   word-break: break-word;
   color: rgba(244, 247, 246, 0.92);
@@ -194,9 +237,130 @@
   line-height: 1.48;
 }
 
-.terminal-block-output strong {
-  display: inline-block;
-  margin-bottom: 8px;
-  color: rgba(244, 247, 246, 0.98);
-  font-weight: 760;
+/* Command has been promoted to the sticky header row */
+
+/* High-fidelity desktop-grade dropdown context menu */
+.terminal-detail-context-menu {
+  position: fixed;
+  z-index: 99999;
+  background: rgba(26, 26, 26, 0.97);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.52), 0 0 0 1px rgba(0, 0, 0, 0.15);
+  min-width: 238px;
+  padding: 4px 0;
+  user-select: none;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  animation: contextMenuFadeIn 0.08s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes contextMenuFadeIn {
+  from { opacity: 0; transform: scale(0.97) translateY(-4px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.context-menu-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 5px 12px 5px 14px;
+  cursor: default;
+}
+
+.context-menu-item:hover {
+  background: #1ba3d9; /* High-fidelity cyan-blue desktop highlight color from screenshot */
+}
+
+.context-menu-item .item-label {
+  color: rgba(255, 255, 255, 0.94);
+  font-size: 12.5px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  letter-spacing: -0.05px;
+  font-weight: 400;
+}
+
+.context-menu-item .item-shortcut {
+  color: rgba(255, 255, 255, 0.38);
+  font-size: 11.5px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  letter-spacing: 0.2px;
+  text-align: right;
+  margin-left: 24px;
+}
+
+.context-menu-item:hover .item-label,
+.context-menu-item:hover .item-shortcut {
+  color: #ffffff !important;
+}
+
+.context-menu-separator {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.07);
+  margin: 4px 0;
+}
+
+/* Replicated floating 'chat-finder-overlay' adapted for terminal blocks */
+.terminal-finder-overlay {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 16px;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 4px 8px 4px 10px;
+  background: rgba(30, 30, 30, 0.94);
+  backdrop-filter: blur(16px) saturate(180%);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 8px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45), 0 0 1px rgba(255, 255, 255, 0.2) inset;
+  animation: terminalFinderSlide 0.12s cubic-bezier(0.16, 1, 0.3, 1);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+}
+
+@keyframes terminalFinderSlide {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.terminal-find-input {
+  width: 200px;
+  height: 28px;
+  background: #151515;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 6px;
+  color: #fff;
+  font-size: 13px;
+  padding: 0 74px 0 10px;
+  outline: none;
+  transition: border-color 0.12s, box-shadow 0.12s;
+}
+
+.terminal-find-input:focus {
+  border-color: rgba(64, 198, 255, 0.45);
+  box-shadow: 0 0 0 2px rgba(64, 198, 255, 0.12);
+}
+
+.terminal-finder-count {
+  font-family: var(--font-mono, monospace);
+  font-size: 11.5px;
+  color: rgba(255, 255, 255, 0.5);
+  min-width: 32px;
+  text-align: center;
+  user-select: none;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Active toggle indicator on header action buttons */
+.terminal-block-actions button.active {
+  background: rgba(255, 255, 255, 0.09) !important;
+  color: #1ba3d9 !important;
 }

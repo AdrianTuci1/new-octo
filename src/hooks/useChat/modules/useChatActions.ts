@@ -261,16 +261,17 @@ export function useChatActions({ options, state, onCommandApprovalRef, onFileCha
     });
 
     const requestMessages = chatHistoryFromMessages(state.messagesRef.current);
-    const response = await invoke<AgentStartResponse>('agent_continue', {
-      request: {
-        runId,
-        conversationId,
-        assistantMessageId,
-        cwd: options.cwd ?? null,
-        modelId: options.modelId ?? null,
-        messages: requestMessages
-      } satisfies AgentContinueRequest
-    });
+      const response = await invoke<AgentStartResponse>('agent_continue', {
+        request: {
+          runId,
+          conversationId,
+          assistantMessageId,
+          cwd: options.cwd ?? null,
+          modelId: options.modelId ?? null,
+          messages: requestMessages,
+          terminalBlocks: options.terminalBlocks ?? []
+        } satisfies AgentContinueRequest
+      });
 
     const remainingTokens = pendingTokenText[response.assistantMessageId];
     if (remainingTokens) {
@@ -429,7 +430,8 @@ export function useChatActions({ options, state, onCommandApprovalRef, onFileCha
           prompt: resolvedPrompt,
           cwd: options.cwd ?? null,
           modelId: options.modelId ?? null,
-          messages: requestMessages
+          messages: requestMessages,
+          terminalBlocks: options.terminalBlocks ?? []
         }
       });
 

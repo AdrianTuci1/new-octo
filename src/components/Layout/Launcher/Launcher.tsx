@@ -13,15 +13,20 @@
 ** Staticlabs
 */
 
+import { useMemo } from 'react';
 import { ChatPanel } from '../../Chat';
 import { ComposerBar, ModelSetupOverlay, TerminalComposer } from '../../Composer';
 import { TrayPanel } from '../../Tray';
 import { useLauncher, type LauncherProps } from './hooks';
-import { COMMAND_ITEMS, HELP_ITEMS } from '../../../lib';
+import { COMMAND_ITEMS, HELP_ITEMS, COMPOSER_PLACEHOLDERS } from '../../../lib';
 
 export function Launcher(props: LauncherProps) {
   const launcher = useLauncher(props);
   const modelSetupRequired = launcher.ui.modelSelection.requiresModelSetup;
+  const placeholder = useMemo(() => {
+    const randomIndex = Math.floor(Math.random() * COMPOSER_PLACEHOLDERS.length);
+    return COMPOSER_PLACEHOLDERS[randomIndex];
+  }, [launcher.ui.resolvedConversationId]);
   const handleOpenModelSettings = () => {
     launcher.actions.openAppWindow();
     launcher.actions.openModelDrawer();
@@ -162,7 +167,7 @@ export function Launcher(props: LauncherProps) {
               onNavigateToParentDirectory={launcher.ui.workingDirectory.navigateToParent}
               onToggleGitBranchMenu={launcher.ui.gitContext.toggleBranchMenu}
               onToggleModelTray={() => (modelSetupRequired ? launcher.actions.openModelDrawer() : launcher.tray.toggleTray('models'))}
-              placeholder="Octomus anything e.g. Find and fix race conditions in my Python application"
+              placeholder={placeholder}
               prediction={launcher.ui.activeShellPrediction}
               query={launcher.chat.query}
               recommendedAction={launcher.ui.recommendedAction}
