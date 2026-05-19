@@ -167,12 +167,12 @@ export function Launcher(props: LauncherProps) {
               onNavigateToParentDirectory={launcher.ui.workingDirectory.navigateToParent}
               onToggleGitBranchMenu={launcher.ui.gitContext.toggleBranchMenu}
               onToggleModelTray={() => (modelSetupRequired ? launcher.actions.openModelDrawer() : launcher.tray.toggleTray('models'))}
-              placeholder={placeholder}
+              placeholder={launcher.ui.agentSettings?.input?.showInputHintText === false ? '' : placeholder}
               prediction={launcher.ui.activeShellPrediction}
               query={launcher.chat.query}
               recommendedAction={launcher.ui.recommendedAction}
               selectedModelLabel={launcher.ui.modelSelection.selectedModelLabel}
-              terminalAutoDetectEnabled={launcher.store.terminalAutoDetectEnabled}
+              terminalAutoDetectEnabled={launcher.store.terminalAutoDetectEnabled && launcher.ui.agentSettings?.enabled !== false && launcher.ui.agentSettings?.input?.autodetectTerminalCommandsInAgent !== false}
               workingDirectory={launcher.ui.workingDirectory.currentPath}
               workingDirectoryLabel={launcher.ui.workingDirectory.buttonLabel}
               workingDirectoryListing={launcher.ui.workingDirectory.listing}

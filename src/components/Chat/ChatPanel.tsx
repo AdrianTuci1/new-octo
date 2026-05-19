@@ -7,6 +7,8 @@ import { MessageBubble } from './MessageBubble';
 import { TerminalBlockCard } from './blocks/TerminalBlockCard';
 import { MultiAgentBlock } from './blocks/MultiAgentBlock';
 import { CommandApprovalComposer } from '../Composer';
+import { ProfileAvatar } from '../App/profile/ProfileAvatar';
+import { useProfileSettings } from '../App/settings/useProfileSettings';
 import { MOCK_PENDING_APPROVAL, MOCK_TIMELINE_ITEMS } from './MockTimelineItems';
 import type { ChatMessage } from '../../types/chat';
 import type { CommandApproval, TerminalCommandBlock } from '../../types/terminal';
@@ -169,6 +171,7 @@ export function ChatPanel({
   onOpenConversationBlock,
   title = 'New agent conversation'
 }: ChatPanelProps) {
+  const { profile } = useProfileSettings();
   const baseTimelineItems = buildTimelineItems(messages, terminalBlocks, terminalError);
   const timelineItems = USE_MOCK ? MOCK_TIMELINE_ITEMS : baseTimelineItems;
   const activePendingApproval = USE_MOCK ? MOCK_PENDING_APPROVAL : pendingApproval;
@@ -384,7 +387,9 @@ export function ChatPanel({
                     hasBottomDivider ? 'has-bottom-divider' : ''
                   ].filter(Boolean).join(' ')}
                 >
-                  <div className="role-avatar-container" />
+                  <div className="role-avatar-container">
+                    {item.block.source === 'user' ? <ProfileAvatar profile={profile} size={24} showInitials={Boolean(profile.avatarDataUrl)} /> : null}
+                  </div>
                   <TerminalBlockCard
                     block={item.block}
                     isExpanded={isExpanded}

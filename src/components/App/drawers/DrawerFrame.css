@@ -64,6 +64,27 @@
   color: var(--text-main);
 }
 
+.drawer-header-action-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.drawer-header-save-button {
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border-strong);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-main);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.drawer-header-save-button:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
 .drawer-handle {
   left: -2px;
 }

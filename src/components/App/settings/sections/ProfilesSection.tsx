@@ -15,6 +15,7 @@ import {
   Terminal 
 } from 'lucide-react';
 import { useMemoryStore, useUIStore } from '../../../../stores';
+import { buildAgentSettingsValues, createNewAgentProfile, normalizeAgentSettings, type AgentSettings, type AgentProfileSettings } from '../agentSettings';
 
 function ProfileItem({ 
   icon: Icon, 
@@ -42,10 +43,16 @@ export function ProfilesSection() {
   const setIsProfileDrawerOpen = useUIStore((state) => state.setIsProfileDrawerOpen);
   const setActiveProfileName = useUIStore((state) => state.setActiveProfileName);
   const settings = useMemoryStore((state) => state.settings);
-  const webSearchEnabled = settings?.values.webSearchEnabled !== false;
+  const saveSettings = useMemoryStore((state) => state.saveSettings);
+  const agentSettings = normalizeAgentSettings(settings?.values);
 
   const handleAddProfile = () => {
-    setActiveProfileName('New Profile');
+    const nextProfile = createNewAgentProfile(uniqueProfileName(agentSettings.profiles, 'New Profile'));
+    void saveSettings(buildAgentSettingsValues({
+      ...agentSettings,
+      profiles: [...agentSettings.profiles, nextProfile]
+    }), true);
+    setActiveProfileName(nextProfile.name);
     setIsProfileDrawerOpen(true);
   };
 
@@ -74,41 +81,59 @@ export function ProfilesSection() {
         them to individual projects.
       </p>
 
-      <div className="profile-card">
-        <div className="profile-card-header">
-          <h2 className="profile-card-title">Default</h2>
-          <button 
-            className="profile-card-edit" 
-            type="button"
-            onClick={() => handleEditProfile('Default')}
-          >
-            <Pencil size={14} />
-            Edit
-          </button>
-        </div>
+      {agentSettings.profiles.map((profile) => (
+        <div key={profile.id} className="profile-card">
+          <div className="profile-card-header">
+            <h2 className="profile-card-title">{profile.name}</h2>
+            <button
+              className="profile-card-edit"
+              type="button"
+              onClick={() => handleEditProfile(profile.name)}
+            >
+              <Pencil size={14} />
+              Edit
+            </button>
+          </div>
 
-        <div className="profile-card-section">
-          <h3 className="profile-card-section-title">MODELS</h3>
-          <ProfileItem icon={Bolt} label="Base model" value="minimax 2.7" />
-          <ProfileItem icon={Terminal} label="Full terminal use" value="Auto" />
-        </div>
+          <div className="profile-card-section">
+            <h3 className="profile-card-section-title">MODELS</h3>
+            <ProfileItem icon={Bolt} label="Base model" value={profile.baseModel} />
+            <ProfileItem icon={Terminal} label="Full terminal use" value={profile.terminalModel} />
+          </div>
 
-        <div className="profile-card-section">
-          <h3 className="profile-card-section-title">PERMISSIONS</h3>
-          <ProfileItem icon={Code} label="Apply code diffs" value="Agent decides" />
-          <ProfileItem icon={FileText} label="Read files" value="Agent decides" />
-          <ProfileItem icon={Check} label="Directory allowlist" value="None" isIndented={true} />
-          <ProfileItem icon={Terminal} label="Execute commands" value="Always ask" />
-          <ProfileItem icon={Check} label="Command allowlist" value="None" isIndented={true} />
-          <ProfileItem icon={DollarSign} label="Interact with running commands" value="Always ask" />
-          <ProfileItem icon={MessageSquare} label="Ask questions" value="Ask unless auto-approve" />
-          <ProfileItem icon={Network} label="Call MCP servers" value="Agent decides" />
-          <ProfileItem icon={Check} label="MCP allowlist" value="None" isIndented={true} />
-          <ProfileItem icon={Ban} label="MCP denylist" value="None" isIndented={true} />
-          <ProfileItem icon={Globe} label="Call web tools" value={webSearchEnabled ? 'On' : 'Off'} />
-          <ProfileItem icon={Compass} label="Auto-sync plans to Octo Drive" value="On" />
+          <div className="profile-card-section">
+            <h3 className="profile-card-section-title">PERMISSIONS</h3>
+            <ProfileItem icon={Code} label="Apply code diffs" value={profile.applyDiffs} />
+            <ProfileItem icon={FileText} label="Read files" value={profile.readFiles} />
+            <ProfileItem icon={Check} label="Directory allowlist" value={listLabel(profile.directoryAllowlist)} isIndented={true} />
+            <ProfileItem icon={Terminal} label="Execute commands" value={profile.executeCommands} />
+            <ProfileItem icon={Check} label="Command allowlist" value={listLabel(profile.commandAllowlist)} isIndented={true} />
+            <ProfileItem icon={DollarSign} label="Interact with running commands" value={profile.interactWithRunningCommands} />
+            <ProfileItem icon={MessageSquare} label="Ask questions" value={profile.askQuestions} />
+            <ProfileItem icon={Network} label="Call MCP servers" value={profile.callMcpServers} />
+            <ProfileItem icon={Check} label="MCP allowlist" value={listLabel(profile.mcpAllowlist)} isIndented={true} />
+            <ProfileItem icon={Ban} label="MCP denylist" value={listLabel(profile.mcpDenylist)} isIndented={true} />
+            <ProfileItem icon={Globe} label="Call web tools" value={profile.callWebTools && agentSettings.permissions.webSearch ? 'On' : 'Off'} />
+            <ProfileItem icon={Compass} label="Auto-sync plans to Octo Drive" value={profile.planAutoSync ? 'On' : 'Off'} />
+          </div>
         </div>
-      </div>
+      ))}
     </section>
   );
+}
+
+function listLabel(values: string[]) {
+  return values.length > 0 ? values.join(', ') : 'None';
+}
+
+function uniqueProfileName(profiles: AgentProfileSettings[], baseName: string) {
+  if (!profiles.some((profile) => profile.name === baseName)) {
+    return baseName;
+  }
+
+  let index = 2;
+  while (profiles.some((profile) => profile.name === `${baseName} ${index}`)) {
+    index += 1;
+  }
+  return `${baseName} ${index}`;
 }

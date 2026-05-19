@@ -28,6 +28,12 @@
   cursor: pointer;
 }
 
+.appearance-inline-link:disabled {
+  color: var(--text-dim);
+  cursor: default;
+  opacity: 0.7;
+}
+
 .appearance-section-title {
   margin: 0;
   font-size: 13px;
@@ -336,6 +342,47 @@
   margin-bottom: 18px;
 }
 
+.appearance-toolbar-available {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.appearance-toolbar-available-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.18);
+  color: var(--text-main);
+  font-size: 12px;
+}
+
+.appearance-toolbar-available-item span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.appearance-toolbar-available-item button {
+  padding: 5px 8px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-main);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.appearance-toolbar-available-item button:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
 .appearance-toolbar-title {
   color: var(--text-main);
   font-size: 14px;
@@ -497,4 +544,119 @@
   .appearance-slider-shell {
     min-width: 0;
   }
+}
+
+body {
+  transition: opacity 120ms ease;
+}
+
+body.appearance-compact-mode .message-bubble,
+body.appearance-compact-mode .terminal-block-row,
+body.appearance-compact-mode .terminal-error-row {
+  padding-top: 4px;
+  padding-bottom: 4px;
+}
+
+body.appearance-hide-block-dividers .terminal-block-row.full-bleed.user-command,
+body.appearance-hide-block-dividers .terminal-block-row.full-bleed.user-command.has-bottom-divider,
+body.appearance-hide-block-dividers .terminal-block-row.full-bleed.conversation-link-row,
+body.appearance-hide-block-dividers .terminal-detail-top-bar,
+body.appearance-hide-block-dividers .terminal-detail-body {
+  border-top-color: transparent !important;
+  border-bottom-color: transparent !important;
+}
+
+body.appearance-dim-inactive-panes .app-window-launcher-slot:not(.active) {
+  opacity: 0.58;
+  filter: saturate(0.78);
+}
+
+body.appearance-hide-tab-indicators .workspace-tab-icons-container {
+  display: none;
+}
+
+body.appearance-hide-tab-bar .workspace-topbar-tabs {
+  display: none;
+}
+
+body.appearance-tab-close-left .workspace-tab {
+  padding-left: 30px;
+  padding-right: 12px;
+}
+
+body.appearance-tab-close-left .workspace-tab-close {
+  left: 7px;
+  right: auto;
+}
+
+body.appearance-vertical-tabs .workspace-topbar-tabs {
+  position: absolute;
+  left: 0;
+  top: 44px;
+  bottom: 0;
+  z-index: 30;
+  width: 188px;
+  max-width: 188px;
+  height: calc(100vh - 44px);
+  flex-direction: column;
+  align-items: stretch;
+  overflow-y: auto;
+  background: var(--launcher-bg);
+  border-right: 1px solid var(--border-strong);
+}
+
+body.appearance-vertical-tabs .workspace-tab {
+  width: 100%;
+  max-width: none;
+  min-height: 38px;
+  justify-content: flex-start;
+  border-right: 0;
+  border-bottom: 1px solid var(--border);
+}
+
+body.appearance-vertical-tabs .app-window-content-wrapper,
+body.appearance-vertical-tabs .app-window-settings-body {
+  margin-left: 188px;
+}
+
+body.appearance-input-top .launcher-shell.chat-active {
+  flex-direction: column;
+}
+
+body.appearance-input-top .launcher-shell.chat-active .dock-stack {
+  order: -1;
+  border-top: 0;
+  border-bottom: 1px solid var(--border);
+}
+
+body.appearance-shell-input .composer-shell,
+body.appearance-shell-input .terminal-composer-shell {
+  border-radius: 10px;
+}
+
+body.appearance-alt-screen-padding-enabled .terminal-detail-body {
+  padding-left: calc(16px + var(--appearance-alt-screen-padding, 0px));
+  padding-right: calc(16px + var(--appearance-alt-screen-padding, 0px));
+}
+
+body .terminal-detail-body,
+body .terminal-output,
+body .terminal-composer-shell,
+body .composer-shell,
+body .message-bubble,
+body .terminal-block-row {
+  font-size: var(--appearance-terminal-font-size, 13px);
+  line-height: var(--appearance-line-height, 1.2);
+  font-weight: var(--appearance-font-weight, 400);
+}
+
+body .terminal-detail-body,
+body .terminal-output,
+body .terminal-composer-shell {
+  font-family: var(--font-mono);
+}
+
+body .composer-shell,
+body .message-bubble {
+  font-family: var(--appearance-agent-font, var(--font-mono));
 }

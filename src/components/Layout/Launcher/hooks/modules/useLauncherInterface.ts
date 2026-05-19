@@ -59,6 +59,7 @@ export function useLauncherInterface(params: {
       workingDirectory: runtime.workingDirectory,
       gitContext: runtime.gitContext,
       runtimeContext: runtime.runtimeContext,
+      agentSettings: runtime.agentSettings,
       dockRef,
       modelSelection: runtime.modelSelection,
       activeShellPrediction: composer.activeShellPrediction,

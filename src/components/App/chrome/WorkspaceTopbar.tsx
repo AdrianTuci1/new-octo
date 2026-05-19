@@ -2,6 +2,8 @@ import './WorkspaceTopbar.css';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { ChevronDown, ChevronRight, Cloud, GitBranch, Inbox, LayoutGrid, PanelLeftOpen, Plus, Search, Server, Sparkles, TerminalSquare } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { ProfileAvatar } from '../profile/ProfileAvatar';
+import { useProfileSettings } from '../settings/useProfileSettings';
 import type { WorkspaceChromeTab } from './workspaceChromeTypes';
 import { WorkspaceTopbarTab } from './WorkspaceTopbarTab';
 import { WorkspaceTopbarTabMenu } from './WorkspaceTopbarTabMenu';
@@ -112,6 +114,7 @@ export function WorkspaceTopbar({
 }: WorkspaceTopbarProps) {
   const headerRef = useRef<HTMLElement | null>(null);
   const dragSpacerRef = useRef<HTMLDivElement | null>(null);
+  const { profile } = useProfileSettings();
   const [menuState, setMenuState] = useState<{ tabId: string; left: number; top: number } | null>(null);
 
   const menuTab = useMemo(
@@ -436,6 +439,22 @@ export function WorkspaceTopbar({
             top: `${accountMenuState.top}px`
           }}
         >
+          <div className="workspace-topbar-account-menu-profile">
+            <ProfileAvatar profile={profile} size={28} showInitials={Boolean(profile.avatarDataUrl)} />
+            <div>
+              <div className="workspace-topbar-account-menu-name">{profile.displayName}</div>
+              <div className="workspace-topbar-account-menu-subtitle">Local profile</div>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setAccountMenuState(null);
+              onOpenSettingsSection('profile');
+            }}
+          >
+            Profile
+          </button>
           <button type="button" onClick={() => { setAccountMenuState(null); console.log("What's New clicked"); }}>
             What's New
           </button>
@@ -460,10 +479,6 @@ export function WorkspaceTopbar({
           <button type="button" onClick={() => { setAccountMenuState(null); console.log("View Logs clicked"); }}>
             View Logs
           </button>
-          <div className="workspace-topbar-account-menu-divider" />
-          <button type="button" className="sign-out-btn" onClick={() => { setAccountMenuState(null); console.log("Sign In/Sign Out clicked"); }}>
-            Sign Out
-          </button>
         </div>
       )}
 
@@ -474,10 +489,10 @@ export function WorkspaceTopbar({
         <button
           className="workspace-topbar-avatar-button"
           type="button"
-          title="Account options"
+          title="Profile options"
           onClick={(e) => openAccountMenu(e.currentTarget)}
         >
-          <div className="workspace-topbar-avatar">AT</div>
+          <ProfileAvatar profile={profile} size={18} />
         </button>
       </div>
     </header>

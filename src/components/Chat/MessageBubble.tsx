@@ -12,6 +12,8 @@ import type { ChatMessage, ExecutionPlanArtifact } from '../../types/chat';
 import type { CommandApproval } from '../../types/terminal';
 import type { FileDiff } from '../../types/diff';
 import { useEditorStore } from '../../stores/editorStore';
+import { ProfileAvatar } from '../App/profile/ProfileAvatar';
+import { useProfileSettings } from '../App/settings/useProfileSettings';
 
 type MessageBubbleProps = {
   message: ChatMessage;
@@ -129,7 +131,7 @@ function extractFileProposalFromMarkdown(body: string) {
 
 export function MessageBubble({ message, onRequestCommandApproval }: MessageBubbleProps) {
   const isUser = message.role === 'user';
-  const initials = "AT"; // Placeholder for user initials
+  const { profile } = useProfileSettings();
   const openFile = useEditorStore((state) => state.openFile);
   const rawVisibleBodyWithArtifacts = message.role === 'assistant'
     ? visibleChatMessageBody(message.body)
@@ -256,9 +258,7 @@ export function MessageBubble({ message, onRequestCommandApproval }: MessageBubb
     <div className={`message-bubble ${message.role}`}>
       <div className="role-avatar-container">
         {isUser && (
-          <div className="initials-avatar">
-            {initials}
-          </div>
+          <ProfileAvatar profile={profile} size={24} showInitials={Boolean(profile.avatarDataUrl)} />
         )}
       </div>
 

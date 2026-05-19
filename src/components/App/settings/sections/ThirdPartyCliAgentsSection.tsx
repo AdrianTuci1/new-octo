@@ -19,6 +19,13 @@ import {
   Info, 
   X 
 } from 'lucide-react';
+import { useMemoryStore } from '../../../../stores';
+import {
+  buildAgentSettingsValues,
+  DEFAULT_THIRD_PARTY_LEFT_CHIP_IDS,
+  DEFAULT_THIRD_PARTY_RIGHT_CHIP_IDS,
+  normalizeAgentSettings
+} from '../agentSettings';
 import './ThirdPartyCliAgentsSection.css';
 
 interface ChipItem {
@@ -57,56 +64,88 @@ const DEFAULT_RIGHT_CHIPS: ChipItem[] = [
   { id: 'settings', label: 'Settings', icon: Sliders }
 ];
 
+const ALL_CHIPS = [
+  ...DEFAULT_AVAILABLE_CHIPS,
+  ...DEFAULT_LEFT_CHIPS,
+  ...DEFAULT_RIGHT_CHIPS
+];
+
+function chipsFromIds(ids: string[]) {
+  return ids
+    .map((id) => ALL_CHIPS.find((chip) => chip.id === id))
+    .filter((chip): chip is ChipItem => Boolean(chip));
+}
+
 export function ThirdPartyCliAgentsSection() {
-  // Toggle States
-  const [showToolbar, setShowToolbar] = useState(true);
-  const [autoShowHide, setAutoShowHide] = useState(true);
-  const [autoOpen, setAutoOpen] = useState(false);
-  const [autoDismiss, setAutoDismiss] = useState(false);
-
-  // Command input regex
+  const settings = useMemoryStore((state) => state.settings);
+  const saveSettings = useMemoryStore((state) => state.saveSettings);
+  const agentSettings = normalizeAgentSettings(settings?.values);
+  const thirdPartyCli = agentSettings.thirdPartyCli;
   const [regexCommand, setRegexCommand] = useState('');
+  const leftChips = chipsFromIds(thirdPartyCli.leftChipIds);
+  const rightChips = chipsFromIds(thirdPartyCli.rightChipIds);
+  const usedChipIds = new Set([...thirdPartyCli.leftChipIds, ...thirdPartyCli.rightChipIds]);
+  const availableChips = ALL_CHIPS.filter((chip) => !usedChipIds.has(chip.id));
 
-  // Layout Chips State
-  const [availableChips, setAvailableChips] = useState<ChipItem[]>(DEFAULT_AVAILABLE_CHIPS);
-  const [leftChips, setLeftChips] = useState<ChipItem[]>(DEFAULT_LEFT_CHIPS);
-  const [rightChips, setRightChips] = useState<ChipItem[]>(DEFAULT_RIGHT_CHIPS);
+  const saveThirdPartyCli = (nextThirdPartyCli: typeof thirdPartyCli) => {
+    void saveSettings(buildAgentSettingsValues({
+      ...agentSettings,
+      thirdPartyCli: nextThirdPartyCli
+    }), true);
+  };
 
-  // Interaction handlers
   const handleRemoveLeftChip = (id: string) => {
-    const target = leftChips.find(c => c.id === id);
-    if (target) {
-      setLeftChips(leftChips.filter(c => c.id !== id));
-      if (!availableChips.some(c => c.id === id)) {
-        setAvailableChips([...availableChips, target]);
-      }
-    }
+    saveThirdPartyCli({
+      ...thirdPartyCli,
+      leftChipIds: thirdPartyCli.leftChipIds.filter((chipId) => chipId !== id)
+    });
   };
 
   const handleRemoveRightChip = (id: string) => {
-    const target = rightChips.find(c => c.id === id);
-    if (target) {
-      setRightChips(rightChips.filter(c => c.id !== id));
-      if (!availableChips.some(c => c.id === id)) {
-        setAvailableChips([...availableChips, target]);
-      }
-    }
+    saveThirdPartyCli({
+      ...thirdPartyCli,
+      rightChipIds: thirdPartyCli.rightChipIds.filter((chipId) => chipId !== id)
+    });
   };
 
   const handleAddAvailableChip = (chip: ChipItem) => {
-    // Add to Left side by default if space is available, otherwise Right side
     if (leftChips.length <= rightChips.length) {
-      setLeftChips([...leftChips, chip]);
+      saveThirdPartyCli({
+        ...thirdPartyCli,
+        leftChipIds: [...thirdPartyCli.leftChipIds, chip.id]
+      });
     } else {
-      setRightChips([...rightChips, chip]);
+      saveThirdPartyCli({
+        ...thirdPartyCli,
+        rightChipIds: [...thirdPartyCli.rightChipIds, chip.id]
+      });
     }
-    setAvailableChips(availableChips.filter(c => c.id !== chip.id));
   };
 
   const handleRestoreDefaults = () => {
-    setAvailableChips(DEFAULT_AVAILABLE_CHIPS);
-    setLeftChips(DEFAULT_LEFT_CHIPS);
-    setRightChips(DEFAULT_RIGHT_CHIPS);
+    saveThirdPartyCli({
+      ...thirdPartyCli,
+      leftChipIds: DEFAULT_THIRD_PARTY_LEFT_CHIP_IDS,
+      rightChipIds: DEFAULT_THIRD_PARTY_RIGHT_CHIP_IDS
+    });
+  };
+
+  const handleAddCommandPattern = () => {
+    const nextPattern = regexCommand.trim();
+    if (!nextPattern || thirdPartyCli.commandPatterns.includes(nextPattern)) return;
+
+    saveThirdPartyCli({
+      ...thirdPartyCli,
+      commandPatterns: [...thirdPartyCli.commandPatterns, nextPattern]
+    });
+    setRegexCommand('');
+  };
+
+  const handleRemoveCommandPattern = (pattern: string) => {
+    saveThirdPartyCli({
+      ...thirdPartyCli,
+      commandPatterns: thirdPartyCli.commandPatterns.filter((entry) => entry !== pattern)
+    });
   };
 
   return (
@@ -126,11 +165,11 @@ export function ThirdPartyCliAgentsSection() {
           </div>
           <div className="settings-row-action">
             <button
-              className={`settings-toggle ${showToolbar ? 'active' : ''}`}
+              className={`settings-toggle ${thirdPartyCli.showToolbar ? 'active' : ''}`}
               type="button"
-              onClick={() => setShowToolbar(!showToolbar)}
+              onClick={() => saveThirdPartyCli({ ...thirdPartyCli, showToolbar: !thirdPartyCli.showToolbar })}
               role="switch"
-              aria-checked={showToolbar}
+              aria-checked={thirdPartyCli.showToolbar}
             >
               <span />
             </button>
@@ -149,11 +188,11 @@ export function ThirdPartyCliAgentsSection() {
           </div>
           <div className="settings-row-action">
             <button
-              className={`settings-toggle ${autoShowHide ? 'active' : ''}`}
+              className={`settings-toggle ${thirdPartyCli.autoShowHideRichInput ? 'active' : ''}`}
               type="button"
-              onClick={() => setAutoShowHide(!autoShowHide)}
+              onClick={() => saveThirdPartyCli({ ...thirdPartyCli, autoShowHideRichInput: !thirdPartyCli.autoShowHideRichInput })}
               role="switch"
-              aria-checked={autoShowHide}
+              aria-checked={thirdPartyCli.autoShowHideRichInput}
             >
               <span />
             </button>
@@ -167,11 +206,11 @@ export function ThirdPartyCliAgentsSection() {
           </div>
           <div className="settings-row-action">
             <button
-              className={`settings-toggle ${autoOpen ? 'active' : ''}`}
+              className={`settings-toggle ${thirdPartyCli.autoOpenRichInput ? 'active' : ''}`}
               type="button"
-              onClick={() => setAutoOpen(!autoOpen)}
+              onClick={() => saveThirdPartyCli({ ...thirdPartyCli, autoOpenRichInput: !thirdPartyCli.autoOpenRichInput })}
               role="switch"
-              aria-checked={autoOpen}
+              aria-checked={thirdPartyCli.autoOpenRichInput}
             >
               <span />
             </button>
@@ -185,11 +224,11 @@ export function ThirdPartyCliAgentsSection() {
           </div>
           <div className="settings-row-action">
             <button
-              className={`settings-toggle ${autoDismiss ? 'active' : ''}`}
+              className={`settings-toggle ${thirdPartyCli.autoDismissRichInput ? 'active' : ''}`}
               type="button"
-              onClick={() => setAutoDismiss(!autoDismiss)}
+              onClick={() => saveThirdPartyCli({ ...thirdPartyCli, autoDismissRichInput: !thirdPartyCli.autoDismissRichInput })}
               role="switch"
-              aria-checked={autoDismiss}
+              aria-checked={thirdPartyCli.autoDismissRichInput}
             >
               <span />
             </button>
@@ -207,11 +246,35 @@ export function ThirdPartyCliAgentsSection() {
             placeholder="command (supports regex)"
             value={regexCommand}
             onChange={(e) => setRegexCommand(e.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') {
+                event.preventDefault();
+                handleAddCommandPattern();
+              }
+            }}
           />
-          <button className="cli-input-arrow-btn" type="button" aria-label="Submit command">
+          <button className="cli-input-arrow-btn" type="button" aria-label="Submit command" onClick={handleAddCommandPattern}>
             <CornerDownLeft size={14} />
           </button>
         </div>
+        {thirdPartyCli.commandPatterns.length > 0 && (
+          <div className="cli-command-pattern-list">
+            {thirdPartyCli.commandPatterns.map((pattern) => (
+              <span key={pattern} className="layout-chip active-chip">
+                <Terminal size={12} className="chip-icon" />
+                <span>{pattern}</span>
+                <button
+                  className="chip-remove-btn"
+                  type="button"
+                  onClick={() => handleRemoveCommandPattern(pattern)}
+                  aria-label={`Remove ${pattern}`}
+                >
+                  <X size={10} />
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
         <p className="cli-field-description mt-6">
           Add regex patterns to show the coding agent toolbar for matching commands.
         </p>

@@ -372,22 +372,6 @@
   }
 }
 
-/* User Avatar & Account Menu Styles */
-.workspace-topbar-avatar {
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  background: linear-gradient(135deg, #40c6ff, #0072ff);
-  color: #ffffff;
-  font-size: 10px;
-  font-weight: 700;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
-  user-select: none;
-}
-
 .workspace-topbar-account-menu {
   position: absolute;
   z-index: 100;
@@ -400,6 +384,29 @@
   display: grid;
   gap: 2px;
   animation: slide-down 0.12s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.workspace-topbar-account-menu-profile {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px 10px;
+}
+
+.workspace-topbar-account-menu-name {
+  max-width: 128px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-main);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.workspace-topbar-account-menu-subtitle {
+  margin-top: 2px;
+  color: var(--text-dim);
+  font-size: 11px;
 }
 
 .workspace-topbar-account-menu button {
@@ -424,11 +431,6 @@
   height: 1px;
   background: var(--border-strong);
   margin: 4px 6px;
-}
-
-.workspace-topbar-account-menu button.sign-out-btn:hover {
-  background: rgba(239, 68, 68, 0.12);
-  color: #ef4444;
 }
 
 /* Plus Dropdown Context Menu */

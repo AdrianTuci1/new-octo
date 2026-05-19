@@ -4,6 +4,7 @@ import * as Hooks from '../../../../../hooks';
 import { useMemoryStore, useLauncherStore, useUIStore } from '../../../../../stores';
 import * as Utils from '../../utils';
 import { consumeShellModeActivator } from '../../../../../lib';
+import { normalizeAgentSettings } from '../../../../App/settings/agentSettings';
 import type { LauncherProps } from '../types';
 import type { CommandApproval, FileChangeApproval } from '../../../../../types';
 import type { WebSearchRequest, WebSearchResponse } from '../../../../../types/chat';
@@ -21,6 +22,8 @@ export function useLauncherRuntime(props: LauncherProps, store: any, tray: any) 
   // Use selectors for store to prevent unnecessary re-renders of this orchestrator
   // We use stable selectors here.
   const memoryStore = useMemoryStore();
+  const agentSettings = useMemo(() => normalizeAgentSettings(memoryStore.settings?.values), [memoryStore.settings?.values]);
+  const defaultProfileCallWebTools = agentSettings.profiles[0]?.callWebTools !== false;
   const setLocalConversationId = useLauncherStore(state => state.setLocalConversationId);
   const setLocalPendingApproval = useLauncherStore(state => state.setLocalPendingApproval);
   const localConversationId = useLauncherStore(state => state.localConversationId);
@@ -152,6 +155,18 @@ export function useLauncherRuntime(props: LauncherProps, store: any, tray: any) 
   ]);
 
   const requestWebSearch = useCallback(async (request: WebSearchRequest) => {
+    if (!agentSettings.enabled || !agentSettings.permissions.webSearch || !defaultProfileCallWebTools) {
+      void chatApiRef.current?.submitToolResult(
+        request.toolCallId,
+        'Web search is disabled in Agent settings.',
+        'web-search',
+        request.query,
+        [],
+        { webSearchStatus: 'error' }
+      );
+      return;
+    }
+
     try {
       const response = await invoke<WebSearchResponse>('web_search', {
         request: {
@@ -189,7 +204,7 @@ export function useLauncherRuntime(props: LauncherProps, store: any, tray: any) 
         { webSearchStatus: 'error' }
       );
     }
-  }, []);
+  }, [agentSettings.enabled, agentSettings.permissions.webSearch, defaultProfileCallWebTools]);
 
   const onConversationCreated = useCallback((nextId: string) => {
     setLocalConversationId(nextId);
@@ -248,6 +263,7 @@ export function useLauncherRuntime(props: LauncherProps, store: any, tray: any) 
   // Aggregate everything into a single stable object
   return useMemo(() => ({
     memoryStore,
+    agentSettings,
     workingDirectory,
     gitContext,
     runtimeContext,
@@ -269,6 +285,7 @@ export function useLauncherRuntime(props: LauncherProps, store: any, tray: any) 
     hasControlledPendingApproval,
   }), [
     memoryStore,
+    agentSettings,
     workingDirectory,
     gitContext,
     runtimeContext,

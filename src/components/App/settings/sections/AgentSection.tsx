@@ -1,64 +1,18 @@
-import React, { type ReactNode } from 'react';
-import { ChevronDown, Plus } from 'lucide-react';
+import { Plus } from 'lucide-react';
 import { useMemoryStore, useUIStore } from '../../../../stores';
 import type { ThinkingDisplayMode, ConfiguredModel } from '../../../../types/chat';
-
-function SettingsToggle({ checked = false, onChange }: { checked?: boolean; onChange?: () => void }) {
-  return (
-    <button
-      className={`settings-toggle ${checked ? 'active' : ''}`}
-      type="button"
-      role="switch"
-      aria-checked={checked}
-      onClick={onChange}
-    >
-      <span />
-    </button>
-  );
-}
-
-function SectionHeader({ title }: { title: string }) {
-  return (
-    <div className="settings-section-header">
-      <h2 className="settings-section-title">{title}</h2>
-    </div>
-  );
-}
-
-function SettingsRow({ 
-  title, 
-  description, 
-  action 
-}: { 
-  title: string; 
-  description?: string | ReactNode; 
-  action: ReactNode 
-}) {
-  return (
-    <div className="settings-row">
-      <div className="settings-row-info">
-        <div className="settings-row-title">{title}</div>
-        {description && <div className="settings-row-description">{description}</div>}
-      </div>
-      <div className="settings-row-action">
-        {action}
-      </div>
-    </div>
-  );
-}
+import { buildAgentSettingsValues, normalizeAgentSettings, type AgentSettings } from '../agentSettings';
+import { SectionHeader, SettingsRow, SettingsSelect, SettingsToggle } from './SettingsPrimitives';
 
 export function AgentSection() {
   const setIsModelDrawerOpen = useUIStore((state) => state.setIsModelDrawerOpen);
   const setSelectedModelIdForEdit = useUIStore((state) => state.setSelectedModelIdForEdit);
   const settings = useMemoryStore((state) => state.settings);
   const saveSettings = useMemoryStore((state) => state.saveSettings);
+  const agentSettings = normalizeAgentSettings(settings?.values);
   const modelId = settings?.values.selectedModelId ?? null;
-  const webSearchEnabled = settings?.values.webSearchEnabled !== false;
-  const thinkingDisplayMode = settings?.values.thinkingDisplayMode === 'always-show'
-    || settings?.values.thinkingDisplayMode === 'never-show'
-    || settings?.values.thinkingDisplayMode === 'show-and-collapse'
-    ? settings.values.thinkingDisplayMode as ThinkingDisplayMode
-    : 'show-and-collapse';
+  const webSearchEnabled = agentSettings.permissions.webSearch;
+  const thinkingDisplayMode = agentSettings.other.thinkingDisplayMode;
   const providerLabel = typeof settings?.values.aiProviderLabel === 'string' && settings.values.aiProviderLabel.trim().length > 0
     ? settings.values.aiProviderLabel
     : 'Configured provider';
@@ -74,22 +28,28 @@ export function AgentSection() {
     friendlyName: friendlyName ?? undefined,
     hasApiKey: true
   }] : []);
-  const nextThinkingDisplayMode: Record<ThinkingDisplayMode, ThinkingDisplayMode> = {
-    'show-and-collapse': 'always-show',
-    'always-show': 'never-show',
-    'never-show': 'show-and-collapse'
-  };
   const thinkingDisplayModeLabel: Record<ThinkingDisplayMode, string> = {
     'show-and-collapse': 'Show & collapse',
     'always-show': 'Always show',
     'never-show': 'Never show'
+  };
+  const preferredLayoutLabel: Record<AgentSettings['other']['preferredConversationLayout'], string> = {
+    'new-tab': 'New Tab',
+    'current-pane': 'Current Pane',
+    'split-pane': 'Split Pane'
+  };
+  const saveAgent = (nextAgentSettings: AgentSettings) => {
+    void saveSettings(buildAgentSettingsValues(nextAgentSettings), true);
+  };
+  const patchAgent = (patch: Partial<AgentSettings>) => {
+    saveAgent({ ...agentSettings, ...patch });
   };
 
   return (
     <section className="settings-panel">
       <div className="settings-panel-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <h1>Octo Agent</h1>
-        <SettingsToggle checked={true} />
+        <SettingsToggle checked={agentSettings.enabled} onChange={() => patchAgent({ enabled: !agentSettings.enabled })} />
       </div>
 
       <div className="settings-group">
@@ -97,22 +57,22 @@ export function AgentSection() {
         <SettingsRow 
           title="Next Command" 
           description="Let AI suggest the next command to run based on your command history, outputs, and common workflows."
-          action={<SettingsToggle checked={true} />}
+          action={<SettingsToggle checked={agentSettings.activeAi.nextCommand} onChange={() => patchAgent({ activeAi: { ...agentSettings.activeAi, nextCommand: !agentSettings.activeAi.nextCommand } })} />}
         />
         <SettingsRow 
           title="Prompt Suggestions" 
           description="Let AI suggest natural language prompts, as inline banners in the input, based on recent commands and their outputs."
-          action={<SettingsToggle checked={true} />}
+          action={<SettingsToggle checked={agentSettings.activeAi.promptSuggestions} onChange={() => patchAgent({ activeAi: { ...agentSettings.activeAi, promptSuggestions: !agentSettings.activeAi.promptSuggestions } })} />}
         />
         <SettingsRow 
           title="Suggested Code Banners" 
           description="Let AI suggest code diffs and queries as inline banners in the blocklist, based on recent commands and their outputs."
-          action={<SettingsToggle checked={true} />}
+          action={<SettingsToggle checked={agentSettings.activeAi.suggestedCodeBanners} onChange={() => patchAgent({ activeAi: { ...agentSettings.activeAi, suggestedCodeBanners: !agentSettings.activeAi.suggestedCodeBanners } })} />}
         />
         <SettingsRow 
           title="Shared Block Title Generation" 
           description="Let AI generate a title for your shared block based on the command and output."
-          action={<SettingsToggle checked={true} />}
+          action={<SettingsToggle checked={agentSettings.activeAi.sharedBlockTitleGeneration} onChange={() => patchAgent({ activeAi: { ...agentSettings.activeAi, sharedBlockTitleGeneration: !agentSettings.activeAi.sharedBlockTitleGeneration } })} />}
         />
       </div>
 
@@ -120,12 +80,12 @@ export function AgentSection() {
         <SectionHeader title="Input" />
         <SettingsRow 
           title="Autodetect agent prompts in terminal input"
-          action={<SettingsToggle checked={false} />}
+          action={<SettingsToggle checked={agentSettings.input.autodetectAgentPromptsInTerminal} onChange={() => patchAgent({ input: { ...agentSettings.input, autodetectAgentPromptsInTerminal: !agentSettings.input.autodetectAgentPromptsInTerminal } })} />}
         />
         <SettingsRow 
           title="Autodetect terminal commands in agent input"
           description={<span>Encountered an incorrect detection? <button className="settings-link-inline">Let us know</button></span>}
-          action={<SettingsToggle checked={true} />}
+          action={<SettingsToggle checked={agentSettings.input.autodetectTerminalCommandsInAgent} onChange={() => patchAgent({ input: { ...agentSettings.input, autodetectTerminalCommandsInAgent: !agentSettings.input.autodetectTerminalCommandsInAgent } })} />}
         />
         
         <div className="settings-row-vertical">
@@ -138,21 +98,23 @@ export function AgentSection() {
               type="text" 
               className="settings-text-input" 
               placeholder="Commands, comma separated" 
+              value={agentSettings.input.naturalLanguageDenylist}
+              onChange={(event) => patchAgent({ input: { ...agentSettings.input, naturalLanguageDenylist: event.target.value } })}
             />
           </div>
         </div>
 
         <SettingsRow 
           title="Show input hint text"
-          action={<SettingsToggle checked={true} />}
+          action={<SettingsToggle checked={agentSettings.input.showInputHintText} onChange={() => patchAgent({ input: { ...agentSettings.input, showInputHintText: !agentSettings.input.showInputHintText } })} />}
         />
         <SettingsRow 
           title="Show agent tips"
-          action={<SettingsToggle checked={true} />}
+          action={<SettingsToggle checked={agentSettings.input.showAgentTips} onChange={() => patchAgent({ input: { ...agentSettings.input, showAgentTips: !agentSettings.input.showAgentTips } })} />}
         />
         <SettingsRow 
           title="Include agent-executed commands in history"
-          action={<SettingsToggle checked={false} />}
+          action={<SettingsToggle checked={agentSettings.input.includeAgentExecutedCommandsInHistory} onChange={() => patchAgent({ input: { ...agentSettings.input, includeAgentExecutedCommandsInHistory: !agentSettings.input.includeAgentExecutedCommandsInHistory } })} />}
         />
       </div>
 
@@ -164,7 +126,7 @@ export function AgentSection() {
           action={
             <SettingsToggle
               checked={webSearchEnabled}
-              onChange={() => { void saveSettings({ webSearchEnabled: !webSearchEnabled }, true); }}
+              onChange={() => patchAgent({ permissions: { ...agentSettings.permissions, webSearch: !webSearchEnabled } })}
             />
           }
         />
@@ -232,39 +194,46 @@ export function AgentSection() {
         <SectionHeader title="Other" />
         <SettingsRow 
           title="Show Oz changelog in new conversation view"
-          action={<SettingsToggle checked={true} />}
+          action={<SettingsToggle checked={agentSettings.other.showOzChangelog} onChange={() => patchAgent({ other: { ...agentSettings.other, showOzChangelog: !agentSettings.other.showOzChangelog } })} />}
         />
         <SettingsRow 
           title={'Show "Use Agent" footer'}
           description={'Shows hint to use the "Full Terminal Use"-enabled agent in long running commands.'}
-          action={<SettingsToggle checked={true} />}
+          action={<SettingsToggle checked={agentSettings.other.showUseAgentFooter} onChange={() => patchAgent({ other: { ...agentSettings.other, showUseAgentFooter: !agentSettings.other.showUseAgentFooter } })} />}
         />
         <SettingsRow 
           title="Show conversation history in tools panel"
-          action={<SettingsToggle checked={true} />}
+          action={<SettingsToggle checked={agentSettings.other.showConversationHistoryInToolsPanel} onChange={() => patchAgent({ other: { ...agentSettings.other, showConversationHistoryInToolsPanel: !agentSettings.other.showConversationHistoryInToolsPanel } })} />}
         />
 
         <SettingsRow 
           title="Agent thinking display"
           description="Controls how reasoning/thinking traces are displayed."
           action={
-            <button
-              className="settings-select"
-              onClick={() => { void saveSettings({ thinkingDisplayMode: nextThinkingDisplayMode[thinkingDisplayMode] }, true); }}
-            >
-              <span>{thinkingDisplayModeLabel[thinkingDisplayMode]}</span>
-              <ChevronDown size={14} />
-            </button>
+            <SettingsSelect
+              value={thinkingDisplayMode}
+              options={[
+                { value: 'show-and-collapse', label: thinkingDisplayModeLabel['show-and-collapse'] },
+                { value: 'always-show', label: thinkingDisplayModeLabel['always-show'] },
+                { value: 'never-show', label: thinkingDisplayModeLabel['never-show'] }
+              ]}
+              onChange={(value) => patchAgent({ other: { ...agentSettings.other, thinkingDisplayMode: value as ThinkingDisplayMode } })}
+            />
           }
         />
 
         <SettingsRow 
           title="Preferred layout when opening existing agent conversations"
           action={
-            <button className="settings-select">
-              <span>New Tab</span>
-              <ChevronDown size={14} />
-            </button>
+            <SettingsSelect
+              value={agentSettings.other.preferredConversationLayout}
+              options={[
+                { value: 'new-tab', label: preferredLayoutLabel['new-tab'] },
+                { value: 'current-pane', label: preferredLayoutLabel['current-pane'] },
+                { value: 'split-pane', label: preferredLayoutLabel['split-pane'] }
+              ]}
+              onChange={(value) => patchAgent({ other: { ...agentSettings.other, preferredConversationLayout: value as AgentSettings['other']['preferredConversationLayout'] } })}
+            />
           }
         />
       </div>
@@ -274,7 +243,7 @@ export function AgentSection() {
         <SettingsRow 
           title="Computer Use" 
           description="Allow the agent to take control of your mouse and keyboard to perform tasks."
-          action={<SettingsToggle checked={false} />}
+          action={<SettingsToggle checked={agentSettings.permissions.computerUse} onChange={() => patchAgent({ permissions: { ...agentSettings.permissions, computerUse: !agentSettings.permissions.computerUse } })} />}
         />
       </div>
     </section>

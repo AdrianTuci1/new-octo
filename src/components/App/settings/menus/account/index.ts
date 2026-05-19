@@ -2,15 +2,14 @@ import type { SettingsSectionMeta, SettingsSidebarLeafItem } from '../../setting
 
 export const accountSidebarItem: SettingsSidebarLeafItem = {
   kind: 'leaf',
-  id: 'account',
-  label: 'Account'
+  id: 'profile',
+  label: 'Profile'
 };
 
-export const accountSectionMeta: Record<'account', SettingsSectionMeta> = {
-  account: {
-    title: 'Account',
-    description: 'Manage the workspace identity, sync preferences, and release channel.',
-    contentKind: 'account'
+export const accountSectionMeta: Record<'profile', SettingsSectionMeta> = {
+  profile: {
+    title: 'Profile',
+    description: 'Manage your local workspace identity and avatar.',
+    contentKind: 'profile'
   }
 };
-

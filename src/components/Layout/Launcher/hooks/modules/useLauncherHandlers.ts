@@ -5,6 +5,7 @@ import { useEditorStore } from '../../../../../stores/editorStore';
 import { createConversationId } from '../../utils';
 import { runCommandInSurface } from '../../utils/terminal';
 import { consumeShellModeActivator } from '../../../../../lib';
+import { normalizeCodeSettings } from '../../../../App/settings/codeSettings';
 import type { LauncherProps } from '../types';
 import type { CommandApproval, FileChangeApproval } from '../../../../../types';
 import type { FileDiff } from '../../../../../types/diff';
@@ -115,6 +116,7 @@ export function useLauncherHandlers({
 
   const memoryConversations = memoryStore.conversations;
   const saveSettings = memoryStore.saveSettings;
+  const codeSettings = normalizeCodeSettings(memoryStore.settings?.values);
 
   const openCommandsTray = useCallback(() => {
     store.setSelectedHistoryIndex(0);
@@ -346,6 +348,10 @@ export function useLauncherHandlers({
         store.setComposerSurface('agent');
         store.setModeLock(null);
 
+        if (codeSettings.editor.autoOpenCodeReviewPanel && codeSettings.editor.codeReviewEditor === 'Warp') {
+          openFileDiffsInEditor(approval.fileDiffs, runtime.workingDirectory.currentPath);
+        }
+
         if (toolCallId) {
           void chat.submitToolResult(
             toolCallId,
@@ -390,6 +396,8 @@ export function useLauncherHandlers({
     agentTerminal,
     chat.submitToolResult,
     clearTerminalSurface,
+    codeSettings.editor.autoOpenCodeReviewPanel,
+    codeSettings.editor.codeReviewEditor,
     resolvedPendingApproval?.toolCallId,
     runtime.workingDirectory.currentPath,
     setResolvedPendingApproval,

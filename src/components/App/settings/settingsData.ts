@@ -32,7 +32,7 @@ export const settingsDefaultExpandedGroupIds = settingsSidebarItems
   .filter((item): item is SettingsSidebarGroupItem => item.kind === 'group' && item.defaultExpanded !== false)
   .map((item) => item.id);
 
-export const settingsDefaultSectionId = 'account';
+export const settingsDefaultSectionId = 'profile';
 
 export const settingsSectionMetaById: Record<string, SettingsSectionMeta> = {
   ...accountSectionMeta,
@@ -54,6 +54,10 @@ export function getSettingsSectionMeta(sectionId: string): SettingsSectionMeta {
       description: 'Configure default agent behavior and task routing.',
       contentKind: 'octo-agent'
     };
+  }
+
+  if (sectionId === 'account') {
+    return accountSectionMeta.profile;
   }
 
   return {

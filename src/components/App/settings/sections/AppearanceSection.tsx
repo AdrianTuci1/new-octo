@@ -1,6 +1,160 @@
 import { ChevronDown, GripVertical, Info, X } from 'lucide-react';
-import { useMemo, useState, type CSSProperties, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
+import { useMemoryStore } from '../../../../stores/memoryStore';
 import './AppearanceSection.css';
+
+type AppearanceSettings = {
+  cursorType: string;
+  cursorBlinking: boolean;
+  showTabIndicators: boolean;
+  showTabBar: string;
+  tabClosePosition: string;
+  preserveTabColor: boolean;
+  verticalTabs: boolean;
+  latestPromptTabNames: boolean;
+  syncWithOs: boolean;
+  customWindowSize: boolean;
+  useAltScreenPadding: boolean;
+  customIconStyle: string;
+  windowOpacity: number;
+  windowBlurRadius: number;
+  zoomLevel: string;
+  consistentToolsPanel: boolean;
+  inputType: string;
+  inputPosition: string;
+  dimInactivePanes: boolean;
+  focusFollowsMouse: boolean;
+  compactMode: boolean;
+  showJumpToBottom: boolean;
+  showBlockDividers: boolean;
+  terminalFont: string;
+  fontWeight: string;
+  fontSize: number;
+  lineHeight: number;
+  viewSystemFonts: boolean;
+  agentFont: string;
+  matchTerminalFont: boolean;
+  altScreenPadding: number;
+  toolbarLeftItems: string[];
+  toolbarRightItems: string[];
+};
+
+const DEFAULT_TOOLBAR_LEFT_ITEMS = ['Tools Panel', 'Agent Management'];
+const DEFAULT_TOOLBAR_RIGHT_ITEMS = ['Code Review', 'Notifications'];
+const TOOLBAR_ITEMS = [...DEFAULT_TOOLBAR_LEFT_ITEMS, ...DEFAULT_TOOLBAR_RIGHT_ITEMS];
+
+const DEFAULT_APPEARANCE_SETTINGS: AppearanceSettings = {
+  cursorType: 'block',
+  cursorBlinking: true,
+  showTabIndicators: true,
+  showTabBar: 'windowed',
+  tabClosePosition: 'right',
+  preserveTabColor: false,
+  verticalTabs: false,
+  latestPromptTabNames: false,
+  syncWithOs: false,
+  customWindowSize: false,
+  useAltScreenPadding: true,
+  customIconStyle: 'mono',
+  windowOpacity: 100,
+  windowBlurRadius: 1,
+  zoomLevel: '100',
+  consistentToolsPanel: true,
+  inputType: 'warp',
+  inputPosition: 'bottom',
+  dimInactivePanes: false,
+  focusFollowsMouse: false,
+  compactMode: false,
+  showJumpToBottom: true,
+  showBlockDividers: true,
+  terminalFont: 'Hack',
+  fontWeight: 'Normal',
+  fontSize: 13,
+  lineHeight: 1.2,
+  viewSystemFonts: false,
+  agentFont: 'Hack',
+  matchTerminalFont: false,
+  altScreenPadding: 0,
+  toolbarLeftItems: DEFAULT_TOOLBAR_LEFT_ITEMS,
+  toolbarRightItems: DEFAULT_TOOLBAR_RIGHT_ITEMS
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === 'object' && !Array.isArray(value));
+}
+
+function stringValue(record: Record<string, unknown>, key: keyof AppearanceSettings) {
+  return typeof record[key] === 'string' ? record[key] : DEFAULT_APPEARANCE_SETTINGS[key];
+}
+
+function booleanValue(record: Record<string, unknown>, key: keyof AppearanceSettings) {
+  return typeof record[key] === 'boolean' ? record[key] : DEFAULT_APPEARANCE_SETTINGS[key];
+}
+
+function numberValue(record: Record<string, unknown>, key: keyof AppearanceSettings) {
+  return typeof record[key] === 'number' && Number.isFinite(record[key])
+    ? record[key]
+    : DEFAULT_APPEARANCE_SETTINGS[key];
+}
+
+function stringArrayValue(record: Record<string, unknown>, key: keyof AppearanceSettings) {
+  return Array.isArray(record[key]) && record[key].every((item) => typeof item === 'string')
+    ? record[key] as string[]
+    : DEFAULT_APPEARANCE_SETTINGS[key] as string[];
+}
+
+function normalizeAppearanceSettings(raw: unknown): AppearanceSettings {
+  const record = isRecord(raw) ? raw : {};
+
+  return {
+    cursorType: stringValue(record, 'cursorType') as string,
+    cursorBlinking: booleanValue(record, 'cursorBlinking') as boolean,
+    showTabIndicators: booleanValue(record, 'showTabIndicators') as boolean,
+    showTabBar: stringValue(record, 'showTabBar') as string,
+    tabClosePosition: stringValue(record, 'tabClosePosition') as string,
+    preserveTabColor: booleanValue(record, 'preserveTabColor') as boolean,
+    verticalTabs: booleanValue(record, 'verticalTabs') as boolean,
+    latestPromptTabNames: booleanValue(record, 'latestPromptTabNames') as boolean,
+    syncWithOs: booleanValue(record, 'syncWithOs') as boolean,
+    customWindowSize: booleanValue(record, 'customWindowSize') as boolean,
+    useAltScreenPadding: booleanValue(record, 'useAltScreenPadding') as boolean,
+    customIconStyle: stringValue(record, 'customIconStyle') as string,
+    windowOpacity: numberValue(record, 'windowOpacity') as number,
+    windowBlurRadius: numberValue(record, 'windowBlurRadius') as number,
+    zoomLevel: stringValue(record, 'zoomLevel') as string,
+    consistentToolsPanel: booleanValue(record, 'consistentToolsPanel') as boolean,
+    inputType: stringValue(record, 'inputType') as string,
+    inputPosition: stringValue(record, 'inputPosition') as string,
+    dimInactivePanes: booleanValue(record, 'dimInactivePanes') as boolean,
+    focusFollowsMouse: booleanValue(record, 'focusFollowsMouse') as boolean,
+    compactMode: booleanValue(record, 'compactMode') as boolean,
+    showJumpToBottom: booleanValue(record, 'showJumpToBottom') as boolean,
+    showBlockDividers: booleanValue(record, 'showBlockDividers') as boolean,
+    terminalFont: stringValue(record, 'terminalFont') as string,
+    fontWeight: stringValue(record, 'fontWeight') as string,
+    fontSize: numberValue(record, 'fontSize') as number,
+    lineHeight: numberValue(record, 'lineHeight') as number,
+    viewSystemFonts: booleanValue(record, 'viewSystemFonts') as boolean,
+    agentFont: stringValue(record, 'agentFont') as string,
+    matchTerminalFont: booleanValue(record, 'matchTerminalFont') as boolean,
+    altScreenPadding: numberValue(record, 'altScreenPadding') as number,
+    toolbarLeftItems: stringArrayValue(record, 'toolbarLeftItems'),
+    toolbarRightItems: stringArrayValue(record, 'toolbarRightItems')
+  };
+}
+
+function clampNumber(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, Number.isFinite(value) ? value : min));
+}
+
+function fontFamilyFor(font: string) {
+  if (font === 'JetBrains') return '"JetBrains Mono", "SF Mono", monospace';
+  if (font === 'Monaspace') return '"Monaspace", "SF Mono", monospace';
+  if (font === 'Menlo') return 'Menlo, "SF Mono", monospace';
+  if (font === 'Monaco') return 'Monaco, "SF Mono", monospace';
+  if (font === 'SF Mono') return '"SF Mono", monospace';
+  return '"SF Mono", "Hack", "JetBrains Mono", monospace';
+}
 
 function SettingsToggle({ checked = false, onChange }: { checked?: boolean; onChange?: () => void }) {
   return (
@@ -205,11 +359,22 @@ function LayoutChip({
   );
 }
 
-function ToolbarLayoutCard() {
-  const defaultLeftItems = useMemo(() => ['Tools Panel', 'Agent Management'], []);
-  const defaultRightItems = useMemo(() => ['Code Review', 'Notifications'], []);
-  const [leftItems, setLeftItems] = useState(defaultLeftItems);
-  const [rightItems, setRightItems] = useState(defaultRightItems);
+function ToolbarLayoutCard({
+  leftItems,
+  rightItems,
+  onChange
+}: {
+  leftItems: string[];
+  rightItems: string[];
+  onChange: (next: Pick<AppearanceSettings, 'toolbarLeftItems' | 'toolbarRightItems'>) => void;
+}) {
+  const availableItems = TOOLBAR_ITEMS.filter((item) => !leftItems.includes(item) && !rightItems.includes(item));
+  const removeItem = (item: string) => {
+    onChange({
+      toolbarLeftItems: leftItems.filter((entry) => entry !== item),
+      toolbarRightItems: rightItems.filter((entry) => entry !== item)
+    });
+  };
 
   return (
     <div className="appearance-toolbar-card">
@@ -219,13 +384,37 @@ function ToolbarLayoutCard() {
           type="button"
           className="appearance-toolbar-action"
           onClick={() => {
-            setLeftItems(defaultLeftItems);
-            setRightItems(defaultRightItems);
+            onChange({
+              toolbarLeftItems: DEFAULT_TOOLBAR_LEFT_ITEMS,
+              toolbarRightItems: DEFAULT_TOOLBAR_RIGHT_ITEMS
+            });
           }}
         >
           Restore default
         </button>
       </div>
+
+      {availableItems.length > 0 && (
+        <div className="appearance-toolbar-available">
+          {availableItems.map((item) => (
+            <div key={item} className="appearance-toolbar-available-item">
+              <span>{item}</span>
+              <button
+                type="button"
+                onClick={() => onChange({ toolbarLeftItems: [...leftItems, item], toolbarRightItems: rightItems })}
+              >
+                Add left
+              </button>
+              <button
+                type="button"
+                onClick={() => onChange({ toolbarLeftItems: leftItems, toolbarRightItems: [...rightItems, item] })}
+              >
+                Add right
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
 
       <div className="appearance-toolbar-columns">
         <div>
@@ -237,9 +426,7 @@ function ToolbarLayoutCard() {
                   key={item}
                   label={item}
                   removable
-                  onRemove={() => {
-                    setLeftItems((current) => current.filter((entry) => entry !== item));
-                  }}
+                  onRemove={() => removeItem(item)}
                 />
               ))
             ) : (
@@ -257,9 +444,7 @@ function ToolbarLayoutCard() {
                   key={item}
                   label={item}
                   removable
-                  onRemove={() => {
-                    setRightItems((current) => current.filter((entry) => entry !== item));
-                  }}
+                  onRemove={() => removeItem(item)}
                 />
               ))
             ) : (
@@ -300,37 +485,149 @@ function ThemePreviewCard() {
 }
 
 export function AppearanceSection() {
-  const [cursorType, setCursorType] = useState('block');
-  const [cursorBlinking, setCursorBlinking] = useState(true);
-  const [showTabIndicators, setShowTabIndicators] = useState(true);
-  const [showTabBar, setShowTabBar] = useState('windowed');
-  const [tabClosePosition, setTabClosePosition] = useState('right');
-  const [preserveTabColor, setPreserveTabColor] = useState(false);
-  const [verticalTabs, setVerticalTabs] = useState(false);
-  const [latestPromptTabNames, setLatestPromptTabNames] = useState(false);
-  const [syncWithOs, setSyncWithOs] = useState(false);
-  const [customWindowSize, setCustomWindowSize] = useState(false);
-  const [useAltScreenPadding, setUseAltScreenPadding] = useState(true);
-  const [customIconStyle, setCustomIconStyle] = useState('mono');
-  const [windowOpacity, setWindowOpacity] = useState(100);
-  const [windowBlurRadius, setWindowBlurRadius] = useState(1);
-  const [zoomLevel, setZoomLevel] = useState('100');
-  const [consistentToolsPanel, setConsistentToolsPanel] = useState(true);
-  const [inputType, setInputType] = useState('warp');
-  const [inputPosition, setInputPosition] = useState('bottom');
-  const [dimInactivePanes, setDimInactivePanes] = useState(false);
-  const [focusFollowsMouse, setFocusFollowsMouse] = useState(false);
-  const [compactMode, setCompactMode] = useState(false);
-  const [showJumpToBottom, setShowJumpToBottom] = useState(true);
-  const [showBlockDividers, setShowBlockDividers] = useState(true);
-  const [terminalFont, setTerminalFont] = useState('Hack');
-  const [fontWeight, setFontWeight] = useState('Normal');
-  const [fontSize, setFontSize] = useState(13);
-  const [lineHeight, setLineHeight] = useState(1.2);
-  const [viewSystemFonts, setViewSystemFonts] = useState(false);
-  const [agentFont, setAgentFont] = useState('Hack');
-  const [matchTerminalFont, setMatchTerminalFont] = useState(false);
-  const [altScreenPadding, setAltScreenPadding] = useState(0);
+  const settings = useMemoryStore((state) => state.settings);
+  const saveSettings = useMemoryStore((state) => state.saveSettings);
+  const savedAppearance = useMemo(
+    () => normalizeAppearanceSettings(settings?.values.appearance),
+    [settings?.values.appearance]
+  );
+  const [appearance, setAppearance] = useState(savedAppearance);
+
+  useEffect(() => {
+    setAppearance(savedAppearance);
+  }, [savedAppearance]);
+
+  const updateAppearance = useCallback(<K extends keyof AppearanceSettings>(
+    key: K,
+    value: AppearanceSettings[K]
+  ) => {
+    setAppearance((current) => {
+      const next = { ...current, [key]: value };
+      void saveSettings({ appearance: next }, true);
+      return next;
+    });
+  }, [saveSettings]);
+
+  const updateToolbarLayout = useCallback((
+    nextLayout: Pick<AppearanceSettings, 'toolbarLeftItems' | 'toolbarRightItems'>
+  ) => {
+    setAppearance((current) => {
+      const next = { ...current, ...nextLayout };
+      void saveSettings({ appearance: next }, true);
+      return next;
+    });
+  }, [saveSettings]);
+
+  const {
+    cursorType,
+    cursorBlinking,
+    showTabIndicators,
+    showTabBar,
+    tabClosePosition,
+    preserveTabColor,
+    verticalTabs,
+    latestPromptTabNames,
+    syncWithOs,
+    customWindowSize,
+    useAltScreenPadding,
+    customIconStyle,
+    windowOpacity,
+    windowBlurRadius,
+    zoomLevel,
+    consistentToolsPanel,
+    inputType,
+    inputPosition,
+    dimInactivePanes,
+    focusFollowsMouse,
+    compactMode,
+    showJumpToBottom,
+    showBlockDividers,
+    terminalFont,
+    fontWeight,
+    fontSize,
+    lineHeight,
+    viewSystemFonts,
+    agentFont,
+    matchTerminalFont,
+    altScreenPadding,
+    toolbarLeftItems,
+    toolbarRightItems
+  } = appearance;
+  const fontOptions = useMemo(() => [
+    { value: 'Hack', label: 'Hack (default)' },
+    { value: 'JetBrains', label: 'JetBrains Mono' },
+    { value: 'Monaspace', label: 'Monaspace' },
+    ...(viewSystemFonts ? [
+      { value: 'SF Mono', label: 'SF Mono' },
+      { value: 'Menlo', label: 'Menlo' },
+      { value: 'Monaco', label: 'Monaco' }
+    ] : [])
+  ], [viewSystemFonts]);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    const body = document.body;
+    const terminalFamily = fontFamilyFor(terminalFont);
+    const resolvedFontSize = clampNumber(fontSize, 9, 32);
+    const resolvedLineHeight = clampNumber(lineHeight, 0.9, 2);
+    const resolvedOpacity = clampNumber(windowOpacity, 20, 100) / 100;
+    const resolvedBlur = clampNumber(windowBlurRadius, 0, 20);
+    const resolvedAltPadding = useAltScreenPadding ? clampNumber(altScreenPadding, 0, 80) : 0;
+    const resolvedZoom = clampNumber(Number(zoomLevel), 80, 120);
+
+    root.style.setProperty('--font-mono', terminalFamily);
+    root.style.setProperty('--appearance-agent-font', matchTerminalFont ? terminalFamily : fontFamilyFor(agentFont));
+    root.style.setProperty('--appearance-terminal-font-size', `${resolvedFontSize}px`);
+    root.style.setProperty('--appearance-line-height', String(resolvedLineHeight));
+    root.style.setProperty('--appearance-font-weight', fontWeight === 'Bold' ? '700' : fontWeight === 'Medium' ? '500' : '400');
+    root.style.setProperty('--appearance-window-opacity', String(resolvedOpacity));
+    root.style.setProperty('--appearance-window-blur-radius', `${resolvedBlur}px`);
+    root.style.setProperty('--appearance-alt-screen-padding', `${resolvedAltPadding}px`);
+    body.style.setProperty('zoom', `${resolvedZoom}%`);
+    body.style.opacity = String(resolvedOpacity);
+
+    body.classList.toggle('appearance-cursor-blinking', cursorBlinking);
+    body.classList.toggle('appearance-cursor-bar', cursorType === 'bar');
+    body.classList.toggle('appearance-cursor-block', cursorType === 'block');
+    body.classList.toggle('appearance-cursor-underline', cursorType === 'underline');
+    body.classList.toggle('appearance-compact-mode', compactMode);
+    body.classList.toggle('appearance-dim-inactive-panes', dimInactivePanes);
+    body.classList.toggle('appearance-focus-follows-mouse', focusFollowsMouse);
+    body.classList.toggle('appearance-hide-block-dividers', !showBlockDividers);
+    body.classList.toggle('appearance-hide-jump-to-bottom', !showJumpToBottom);
+    body.classList.toggle('appearance-hide-tab-indicators', !showTabIndicators);
+    body.classList.toggle('appearance-hide-tab-bar', showTabBar === 'never');
+    body.classList.toggle('appearance-tab-close-left', tabClosePosition === 'left');
+    body.classList.toggle('appearance-vertical-tabs', verticalTabs);
+    body.classList.toggle('appearance-input-top', inputPosition === 'top');
+    body.classList.toggle('appearance-shell-input', inputType === 'shell');
+    body.classList.toggle('appearance-alt-screen-padding-enabled', useAltScreenPadding);
+  }, [
+    agentFont,
+    altScreenPadding,
+    compactMode,
+    cursorBlinking,
+    cursorType,
+    dimInactivePanes,
+    focusFollowsMouse,
+    fontSize,
+    fontWeight,
+    inputPosition,
+    inputType,
+    lineHeight,
+    matchTerminalFont,
+    showBlockDividers,
+    showJumpToBottom,
+    showTabBar,
+    showTabIndicators,
+    tabClosePosition,
+    terminalFont,
+    useAltScreenPadding,
+    verticalTabs,
+    windowBlurRadius,
+    windowOpacity,
+    zoomLevel
+  ]);
 
   return (
     <section className="settings-panel appearance-panel">
@@ -340,14 +637,14 @@ export function AppearanceSection() {
 
       <div className="settings-group">
         <SectionHeader title="Theme" />
-        <button className="appearance-inline-link" type="button">
-          Create your own custom theme
+        <button className="appearance-inline-link" type="button" disabled>
+          Create your own custom theme (coming soon)
         </button>
 
         <SettingsRow
           title="Sync with OS"
           description="Automatically switch between light and dark themes when your system does."
-          action={<SettingsToggle checked={syncWithOs} onChange={() => setSyncWithOs((value) => !value)} />}
+          action={<SettingsToggle checked={syncWithOs} onChange={() => updateAppearance('syncWithOs', !syncWithOs)} />}
         />
 
         <ThemePreviewCard />
@@ -362,7 +659,7 @@ export function AppearanceSection() {
           action={
             <SelectControl
               value={customIconStyle}
-              onChange={setCustomIconStyle}
+              onChange={(value) => updateAppearance('customIconStyle', value)}
               options={[
                 { value: 'mono', label: 'Mono' },
                 { value: 'color', label: 'Color' }
@@ -378,20 +675,20 @@ export function AppearanceSection() {
         <SectionHeader title="Window" />
         <SettingsRow
           title="Open new windows with custom size"
-          action={<SettingsToggle checked={customWindowSize} onChange={() => setCustomWindowSize((value) => !value)} />}
+          action={<SettingsToggle checked={customWindowSize} onChange={() => updateAppearance('customWindowSize', !customWindowSize)} />}
         />
         <SettingsRow
-          title="Window Opacity: 100"
-          action={<SliderControl value={windowOpacity} min={20} max={100} onChange={setWindowOpacity} />}
+          title={`Window Opacity: ${windowOpacity}`}
+          action={<SliderControl value={windowOpacity} min={20} max={100} onChange={(value) => updateAppearance('windowOpacity', value)} />}
         />
         <SettingsRow
           title={(
             <>
-              Window Blur Radius: 1
+              Window Blur Radius: {windowBlurRadius}
               <Info size={12} className="info-icon-hint" />
             </>
           )}
-          action={<SliderControl value={windowBlurRadius} min={0} max={10} onChange={setWindowBlurRadius} />}
+          action={<SliderControl value={windowBlurRadius} min={0} max={10} onChange={(value) => updateAppearance('windowBlurRadius', value)} />}
         />
         <SettingsRow
           title="Zoom"
@@ -399,7 +696,7 @@ export function AppearanceSection() {
           action={
             <SelectControl
               value={zoomLevel}
-              onChange={setZoomLevel}
+              onChange={(value) => updateAppearance('zoomLevel', value)}
               options={[
                 { value: '80', label: '80%' },
                 { value: '90', label: '90%' },
@@ -412,7 +709,7 @@ export function AppearanceSection() {
         />
         <SettingsRow
           title="Tools panel visibility is consistent across tabs"
-          action={<SettingsToggle checked={consistentToolsPanel} onChange={() => setConsistentToolsPanel((value) => !value)} />}
+          action={<SettingsToggle checked={consistentToolsPanel} onChange={() => updateAppearance('consistentToolsPanel', !consistentToolsPanel)} />}
         />
       </div>
 
@@ -425,7 +722,7 @@ export function AppearanceSection() {
           action={
             <RadioGroup
               value={inputType}
-              onChange={setInputType}
+              onChange={(value) => updateAppearance('inputType', value)}
               options={[
                 { value: 'warp', label: 'Warp' },
                 { value: 'shell', label: 'Shell (PS1)' }
@@ -438,7 +735,7 @@ export function AppearanceSection() {
           action={
             <SelectControl
               value={inputPosition}
-              onChange={setInputPosition}
+              onChange={(value) => updateAppearance('inputPosition', value)}
               options={[
                 { value: 'bottom', label: 'Pin to the bottom (Warp mode)' },
                 { value: 'top', label: 'Pin to the top' }
@@ -450,26 +747,26 @@ export function AppearanceSection() {
           <SectionHeader title="Panes" />
           <SettingsRow
             title="Dim inactive panes"
-            action={<SettingsToggle checked={dimInactivePanes} onChange={() => setDimInactivePanes((value) => !value)} />}
+            action={<SettingsToggle checked={dimInactivePanes} onChange={() => updateAppearance('dimInactivePanes', !dimInactivePanes)} />}
           />
           <SettingsRow
             title="Focus follows mouse"
-            action={<SettingsToggle checked={focusFollowsMouse} onChange={() => setFocusFollowsMouse((value) => !value)} />}
+            action={<SettingsToggle checked={focusFollowsMouse} onChange={() => updateAppearance('focusFollowsMouse', !focusFollowsMouse)} />}
           />
         </div>
         <div className="settings-group">
           <SectionHeader title="Blocks" />
           <SettingsRow
             title="Compact mode"
-            action={<SettingsToggle checked={compactMode} onChange={() => setCompactMode((value) => !value)} />}
+            action={<SettingsToggle checked={compactMode} onChange={() => updateAppearance('compactMode', !compactMode)} />}
           />
           <SettingsRow
             title="Show Jump to Bottom of Block button"
-            action={<SettingsToggle checked={showJumpToBottom} onChange={() => setShowJumpToBottom((value) => !value)} />}
+            action={<SettingsToggle checked={showJumpToBottom} onChange={() => updateAppearance('showJumpToBottom', !showJumpToBottom)} />}
           />
           <SettingsRow
             title="Show block dividers"
-            action={<SettingsToggle checked={showBlockDividers} onChange={() => setShowBlockDividers((value) => !value)} />}
+            action={<SettingsToggle checked={showBlockDividers} onChange={() => updateAppearance('showBlockDividers', !showBlockDividers)} />}
           />
         </div>
         <div className="settings-group">
@@ -479,19 +776,15 @@ export function AppearanceSection() {
               <div className="appearance-field-label">Terminal font</div>
               <SelectControl
                 value={terminalFont}
-                onChange={setTerminalFont}
-                options={[
-                  { value: 'Hack', label: 'Hack (default)' },
-                  { value: 'JetBrains', label: 'JetBrains Mono' },
-                  { value: 'Monaspace', label: 'Monaspace' }
-                ]}
+                onChange={(value) => updateAppearance('terminalFont', value)}
+                options={fontOptions}
               />
             </div>
             <div className="appearance-field">
               <div className="appearance-field-label">Font weight</div>
               <SelectControl
                 value={fontWeight}
-                onChange={setFontWeight}
+                onChange={(value) => updateAppearance('fontWeight', value)}
                 options={[
                   { value: 'Normal', label: 'Normal' },
                   { value: 'Medium', label: 'Medium' },
@@ -501,39 +794,43 @@ export function AppearanceSection() {
             </div>
             <div className="appearance-field">
               <div className="appearance-field-label">Font size (px)</div>
-              <NumberControl value={fontSize} onChange={setFontSize} width={92} />
+              <NumberControl value={fontSize} onChange={(value) => updateAppearance('fontSize', value)} width={92} />
             </div>
             <div className="appearance-field">
               <div className="appearance-field-label">Line height</div>
-              <NumberControl value={lineHeight} onChange={setLineHeight} width={92} step={0.1} />
-              <button type="button" className="appearance-inline-link">Reset to default</button>
+              <NumberControl value={lineHeight} onChange={(value) => updateAppearance('lineHeight', value)} width={92} step={0.1} />
+              <button
+                type="button"
+                className="appearance-inline-link"
+                onClick={() => updateAppearance('lineHeight', DEFAULT_APPEARANCE_SETTINGS.lineHeight)}
+              >
+                Reset to default
+              </button>
             </div>
           </div>
           <div style={{ marginTop: 16 }}>
             <CheckboxRow
               label="View all available system fonts"
               checked={viewSystemFonts}
-              onChange={setViewSystemFonts}
+              onChange={(checked) => updateAppearance('viewSystemFonts', checked)}
             />
           </div>
           <div className="appearance-grid two-columns" style={{ marginTop: 18 }}>
             <div className="appearance-field">
               <div className="appearance-field-label">Agent font</div>
               <SelectControl
-                value={agentFont}
-                onChange={setAgentFont}
-                options={[
-                  { value: 'Hack', label: 'Hack (default)' },
-                  { value: 'JetBrains', label: 'JetBrains Mono' },
-                  { value: 'Match', label: 'Match terminal' }
-                ]}
+                value={matchTerminalFont ? terminalFont : agentFont}
+                onChange={(value) => updateAppearance('agentFont', value)}
+                options={matchTerminalFont ? [
+                  { value: terminalFont, label: 'Match terminal' }
+                ] : fontOptions}
               />
             </div>
             <div style={{ alignSelf: 'end' }}>
               <CheckboxRow
                 label="Match terminal"
                 checked={matchTerminalFont}
-                onChange={setMatchTerminalFont}
+                onChange={(checked) => updateAppearance('matchTerminalFont', checked)}
               />
             </div>
           </div>
@@ -549,7 +846,7 @@ export function AppearanceSection() {
           action={
             <RadioGroup
               value={cursorType}
-              onChange={setCursorType}
+              onChange={(value) => updateAppearance('cursorType', value)}
               options={[
                 { value: 'bar', label: 'Bar' },
                 { value: 'block', label: 'Block' },
@@ -560,7 +857,7 @@ export function AppearanceSection() {
         />
         <SettingsRow
           title="Blinking cursor"
-          action={<SettingsToggle checked={cursorBlinking} onChange={() => setCursorBlinking((value) => !value)} />}
+          action={<SettingsToggle checked={cursorBlinking} onChange={() => updateAppearance('cursorBlinking', !cursorBlinking)} />}
         />
       </div>
 
@@ -570,14 +867,14 @@ export function AppearanceSection() {
         <SectionHeader title="Tabs" />
         <SettingsRow
           title="Show tab indicators"
-          action={<SettingsToggle checked={showTabIndicators} onChange={() => setShowTabIndicators((value) => !value)} />}
+          action={<SettingsToggle checked={showTabIndicators} onChange={() => updateAppearance('showTabIndicators', !showTabIndicators)} />}
         />
         <SettingsRow
           title="Show the tab bar"
           action={
             <SelectControl
               value={showTabBar}
-              onChange={setShowTabBar}
+              onChange={(value) => updateAppearance('showTabBar', value)}
               options={[
                 { value: 'always', label: 'Always' },
                 { value: 'windowed', label: 'When windowed' },
@@ -591,7 +888,7 @@ export function AppearanceSection() {
           action={
             <SelectControl
               value={tabClosePosition}
-              onChange={setTabClosePosition}
+              onChange={(value) => updateAppearance('tabClosePosition', value)}
               options={[
                 { value: 'right', label: 'Right' },
                 { value: 'left', label: 'Left' }
@@ -601,20 +898,24 @@ export function AppearanceSection() {
         />
         <SettingsRow
           title="Preserve active tab color for new tabs"
-          action={<SettingsToggle checked={preserveTabColor} onChange={() => setPreserveTabColor((value) => !value)} />}
+          action={<SettingsToggle checked={preserveTabColor} onChange={() => updateAppearance('preserveTabColor', !preserveTabColor)} />}
         />
         <SettingsRow
           title="Use vertical tab layout"
-          action={<SettingsToggle checked={verticalTabs} onChange={() => setVerticalTabs((value) => !value)} />}
+          action={<SettingsToggle checked={verticalTabs} onChange={() => updateAppearance('verticalTabs', !verticalTabs)} />}
         />
         <SettingsRow
           title="Use latest user prompt as conversation title in tab names"
           description="Show the latest user prompt instead of the generated conversation title for Oz and third-party agent sessions in vertical tabs."
-          action={<SettingsToggle checked={latestPromptTabNames} onChange={() => setLatestPromptTabNames((value) => !value)} />}
+          action={<SettingsToggle checked={latestPromptTabNames} onChange={() => updateAppearance('latestPromptTabNames', !latestPromptTabNames)} />}
           topAligned
         />
 
-        <ToolbarLayoutCard />
+        <ToolbarLayoutCard
+          leftItems={toolbarLeftItems}
+          rightItems={toolbarRightItems}
+          onChange={updateToolbarLayout}
+        />
       </div>
 
       <hr className="appearance-divider" />
@@ -623,11 +924,11 @@ export function AppearanceSection() {
         <SectionHeader title="Full-screen Apps" />
         <SettingsRow
           title="Use custom padding in alt-screen"
-          action={<SettingsToggle checked={useAltScreenPadding} onChange={() => setUseAltScreenPadding((value) => !value)} />}
+          action={<SettingsToggle checked={useAltScreenPadding} onChange={() => updateAppearance('useAltScreenPadding', !useAltScreenPadding)} />}
         />
         <SettingsRow
           title="Uniform padding (px)"
-          action={<NumberControl value={altScreenPadding} onChange={setAltScreenPadding} />}
+          action={<NumberControl value={altScreenPadding} onChange={(value) => updateAppearance('altScreenPadding', value)} />}
         />
       </div>
     </section>

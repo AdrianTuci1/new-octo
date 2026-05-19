@@ -1,7 +1,10 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
-import { Copy, Info } from 'lucide-react';
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { Copy, RefreshCw, Upload } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from 'react';
+import { ProfileAvatar } from '../../profile/ProfileAvatar';
+import { createAvatarSeed } from '../profileSettings';
+import { useProfileSettings } from '../useProfileSettings';
 
 type AppUpdateRelease = {
   version: string;
@@ -33,10 +36,7 @@ function SettingsRow({
   return (
     <div className="settings-row">
       <div>
-        <div className="settings-row-title">
-          {title}
-          {title === 'Settings sync' && <Info size={12} style={{ opacity: 0.6 }} />}
-        </div>
+        <div className="settings-row-title">{title}</div>
         <div className="settings-row-description">{description}</div>
       </div>
       {action}
@@ -44,21 +44,15 @@ function SettingsRow({
   );
 }
 
-function SettingsToggle() {
-  return (
-    <button
-      className="settings-toggle active"
-      type="button"
-      aria-label="Settings sync enabled"
-      aria-pressed="true"
-    >
-      <span />
-    </button>
-  );
-}
-
-export function AccountSection() {
+export function ProfileSection() {
+  const { profile, saveProfile } = useProfileSettings();
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [displayName, setDisplayName] = useState(profile.displayName);
   const [updateState, setUpdateState] = useState<AppUpdateStateSnapshot | null>(null);
+
+  useEffect(() => {
+    setDisplayName(profile.displayName);
+  }, [profile.displayName]);
 
   useEffect(() => {
     let mounted = true;
@@ -70,7 +64,7 @@ export function AccountSection() {
         }
       })
       .catch((error) => {
-        console.warn('[account-settings] failed to load updater state', error);
+        console.warn('[profile-settings] failed to load updater state', error);
       });
 
     const unlistenPromise = listen<AppUpdateStateSnapshot>('app:update-state', (event) => {
@@ -140,6 +134,39 @@ export function AccountSection() {
     || updateState?.stage === 'downloading'
     || updateState?.stage === 'installing';
 
+  const handleSaveName = () => {
+    const nextName = displayName.trim() || profile.displayName;
+    setDisplayName(nextName);
+    void saveProfile({
+      ...profile,
+      displayName: nextName
+    });
+  };
+
+  const handleAvatarUpload = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+
+    try {
+      const avatarDataUrl = await readAvatarFile(file);
+      void saveProfile({
+        ...profile,
+        avatarDataUrl
+      });
+    } catch (error) {
+      console.warn('[profile-settings] failed to load avatar image', error);
+    }
+  };
+
+  const handleRegenerateAvatar = () => {
+    void saveProfile({
+      ...profile,
+      avatarDataUrl: null,
+      avatarSeed: createAvatarSeed()
+    });
+  };
+
   const handleUpdateAction = async () => {
     try {
       if (updateState?.stage === 'updateReady') {
@@ -156,36 +183,54 @@ export function AccountSection() {
       const nextState = await invoke<AppUpdateStateSnapshot>('app_updates_check');
       setUpdateState(nextState);
     } catch (error) {
-      console.warn('[account-settings] updater action failed', error);
+      console.warn('[profile-settings] updater action failed', error);
     }
   };
 
   return (
-    <section className="settings-panel">
+    <section className="settings-panel profile-settings-panel">
       <div className="settings-panel-header">
-        <h1>Account</h1>
+        <h1>Profile</h1>
       </div>
 
-      <div className="settings-profile">
-        <div className="settings-avatar">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm0 18a8 8 0 1 1 8-8 8 8 0 0 1-8 8z"/><path d="M12 8v8"/><path d="M8 12h8"/></svg>
-        </div>
-        <div className="settings-brand-info">
-          <div className="settings-profile-name">staticlabs</div>
-          <div className="settings-profile-email">hello@staticlabs.ro</div>
+      <div className="settings-profile profile-settings-card">
+        <ProfileAvatar profile={profile} size={72} showInitials={Boolean(profile.avatarDataUrl)} />
+        <div className="settings-brand-info profile-settings-info">
+          <div className="settings-profile-name">{profile.displayName}</div>
+          <div className="settings-profile-email">Local workspace profile</div>
+          <div className="profile-avatar-actions">
+            <button className="settings-secondary-button" type="button" onClick={() => fileInputRef.current?.click()}>
+              <Upload size={14} />
+              <span>Upload photo</span>
+            </button>
+            <button className="settings-secondary-button" type="button" onClick={handleRegenerateAvatar}>
+              <RefreshCw size={14} />
+              <span>Generate mosaic</span>
+            </button>
+          </div>
+          <input ref={fileInputRef} className="profile-avatar-input" type="file" accept="image/*" onChange={handleAvatarUpload} />
         </div>
       </div>
 
       <SettingsRow
-        title="Settings sync"
-        description=""
-        action={<SettingsToggle />}
-      />
-
-      <SettingsRow
-        title=""
-        description="Earn rewards by sharing Warp with friends & colleagues"
-        action={<button className="settings-link" type="button">Refer a friend</button>}
+        title="Display name"
+        description="Shown in local workspace surfaces and used for avatar initials when needed."
+        action={(
+          <div className="profile-name-editor">
+            <input
+              className="settings-text-input profile-name-input"
+              value={displayName}
+              onBlur={handleSaveName}
+              onChange={(event) => setDisplayName(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  event.currentTarget.blur();
+                }
+              }}
+            />
+            <button className="settings-link" type="button" onClick={handleSaveName}>Save</button>
+          </div>
+        )}
       />
 
       <div className="settings-row settings-row-link">
@@ -209,10 +254,36 @@ export function AccountSection() {
           <span className="settings-version-status" title={updateStatusLabel}>{updateStatusLabel}</span>
         </div>
       </div>
-
-      <div className="settings-actions">
-        <button className="settings-primary-button" type="button">Log out</button>
-      </div>
     </section>
   );
+}
+
+export const AccountSection = ProfileSection;
+
+function readAvatarFile(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(reader.error ?? new Error('Unable to read image'));
+    reader.onload = () => {
+      const image = new Image();
+      image.onerror = () => reject(new Error('Unable to decode image'));
+      image.onload = () => {
+        const maxSize = 512;
+        const scale = Math.min(1, maxSize / Math.max(image.width, image.height));
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, Math.round(image.width * scale));
+        canvas.height = Math.max(1, Math.round(image.height * scale));
+        const context = canvas.getContext('2d');
+        if (!context) {
+          reject(new Error('Unable to prepare image'));
+          return;
+        }
+
+        context.drawImage(image, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL('image/jpeg', 0.86));
+      };
+      image.src = String(reader.result ?? '');
+    };
+    reader.readAsDataURL(file);
+  });
 }

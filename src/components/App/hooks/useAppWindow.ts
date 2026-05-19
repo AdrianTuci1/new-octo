@@ -7,6 +7,7 @@ import { settingsDefaultExpandedGroupIds, settingsDefaultSectionId } from '../se
 import { formatCompactPathLabel } from '../../../lib/pathLabels';
 import { useUIStore } from '../../../stores';
 import { useMemoryStore } from '../../../stores/memoryStore';
+import { normalizeAgentSettings } from '../settings/agentSettings';
 import type { FilesystemPathContext } from '../../../types/filesystem';
 import type { CommandApproval, TerminalBlockSharedMeta, TerminalCommandBlock } from '../../../types/terminal';
 import type { WorkspaceChromeTab, WorkspaceConversation, WorkspacePaneLayout } from '../chrome';
@@ -47,6 +48,25 @@ function buildEmptyWorkspaceSnapshot(options: {
 
 const SETTINGS_TAB_ID = 'settings';
 
+function appearanceFlag(settings: ReturnType<typeof useMemoryStore.getState>['settings'], key: string) {
+  const appearance = settings?.values.appearance;
+  return Boolean(appearance && typeof appearance === 'object' && !Array.isArray(appearance) && (appearance as Record<string, unknown>)[key] === true);
+}
+
+function latestUserPromptTitle(record: { messages?: Array<{ role?: string; body?: string }> } | null) {
+  const latestUserMessage = record?.messages
+    ?.slice()
+    .reverse()
+    .find((message) => message.role === 'user' && typeof message.body === 'string' && message.body.trim().length > 0);
+  const title = latestUserMessage?.body?.trim() ?? null;
+
+  if (!title) {
+    return null;
+  }
+
+  return title.length > 80 ? `${title.slice(0, 79)}...` : title;
+}
+
 export function useAppWindow() {
   const [tabs, setTabs] = useState<WorkspaceChromeTab[]>(initialWorkspaceChromeTabs);
   const [selectedTabId, setSelectedTabId] = useState(defaultWorkspaceChromeTabId);
@@ -72,12 +92,17 @@ export function useAppWindow() {
   const memoryStatus = useMemoryStore((state) => state.status);
   const memoryWorkspace = useMemoryStore((state) => state.workspace);
   const memoryConversations = useMemoryStore((state) => state.conversations);
+  const memoryConversationRecords = useMemoryStore((state) => state.conversationRecords);
+  const memorySettings = useMemoryStore((state) => state.settings);
   const saveWorkspace = useMemoryStore((state) => state.saveWorkspace);
   const deleteConversation = useMemoryStore((state) => state.deleteConversation);
   const saveSettings = useMemoryStore((state) => state.saveSettings);
   const setIsCloudProfileDrawerOpen = useUIStore((state) => state.setIsCloudProfileDrawerOpen);
   const setSelectedCloudProfileIdForEdit = useUIStore((state) => state.setSelectedCloudProfileIdForEdit);
   const memoryConversationsById = useMemo(() => new Map(memoryConversations.map((conversation) => [conversation.id, conversation])), [memoryConversations]);
+  const preserveActiveTabColor = appearanceFlag(memorySettings, 'preserveTabColor');
+  const useLatestPromptTabNames = appearanceFlag(memorySettings, 'latestPromptTabNames');
+  const preferredConversationLayout = normalizeAgentSettings(memorySettings?.values).other.preferredConversationLayout;
 
   const selectedTab = tabs.find((tab) => tab.id === selectedTabId) ?? tabs[0] ?? initialWorkspaceChromeTabs[0];
   const selectedPaneLayout = selectedTab.kind === 'terminal'
@@ -168,9 +193,12 @@ export function useAppWindow() {
 
     const activePaneIdForTab = paneLayoutsByTabId[tab.id]?.activePaneId ?? tab.id;
     const session = terminalSessions[activePaneIdForTab];
-    const activeConversation = session?.activeConversationId
-      ? memoryConversationsById.get(session.activeConversationId) ?? null
+    const conversationId = session?.activeConversationId ?? null;
+    const activeConversation = conversationId
+      ? memoryConversationsById.get(conversationId) ?? null
       : null;
+    const activeConversationRecord = conversationId ? memoryConversationRecords[conversationId] ?? null : null;
+    const latestPromptTitle = useLatestPromptTabNames ? latestUserPromptTitle(activeConversationRecord) : null;
     const pathLabel = formatCompactPathLabel(
       session?.workingDirectory ?? pathContext?.homeDir ?? pathContext?.currentDir ?? null,
       pathContext?.homeDir ?? null
@@ -178,10 +206,10 @@ export function useAppWindow() {
 
     return {
       ...tab,
-      label: tab.customLabel?.trim() || activeConversation?.title || (session?.activeConversationId ? 'New agent conversation' : pathLabel),
-      lastExecutionStatus: session?.activeConversationId ? activeConversation?.status ?? 'idle' : null
+      label: tab.customLabel?.trim() || latestPromptTitle || activeConversation?.title || (conversationId ? 'New agent conversation' : pathLabel),
+      lastExecutionStatus: conversationId ? activeConversation?.status ?? 'idle' : null
     };
-  }), [tabs, terminalSessions, memoryConversationsById, paneLayoutsByTabId, pathContext]);
+  }), [memoryConversationRecords, memoryConversationsById, paneLayoutsByTabId, pathContext, tabs, terminalSessions, useLatestPromptTabNames]);
 
   useEffect(() => {
     latestLocalWorkspaceComparableRef.current = Utils.buildWorkspaceComparableSnapshot(
@@ -370,7 +398,10 @@ export function useAppWindow() {
   ]);
 
   const createTerminalTab = useCallback(() => {
-    const nextTab = Utils.buildTerminalTab(nextTerminalIndex, '~');
+    const nextTab = {
+      ...Utils.buildTerminalTab(nextTerminalIndex, '~'),
+      tintColor: preserveActiveTabColor ? selectedTab.tintColor ?? null : null
+    };
     setTabs((current) => [...current, nextTab]);
     setPaneLayoutsByTabId((current) => ({
       ...current,
@@ -382,7 +413,7 @@ export function useAppWindow() {
     }));
     setNextTerminalIndex((value) => value + 1);
     return nextTab;
-  }, [nextTerminalIndex, pathContext]);
+  }, [nextTerminalIndex, pathContext, preserveActiveTabColor, selectedTab.tintColor]);
 
   const closeAppWindowWithFreshWorkspace = useCallback(async () => {
     isClosingWorkspaceRef.current = true;
@@ -487,6 +518,51 @@ export function useAppWindow() {
       return;
     }
 
+    if (preferredConversationLayout === 'current-pane') {
+      const tabId = resolveTerminalTabId();
+      const paneId = resolvePaneId(tabId);
+      setTerminalSessions((current) => ({
+        ...current,
+        [paneId]: {
+          ...current[paneId],
+          activeConversationId: conversationId,
+          composerSurface: 'agent'
+        }
+      }));
+      setSelectedTabId(tabId);
+      return;
+    }
+
+    if (preferredConversationLayout === 'split-pane') {
+      const tabId = selectedTab.kind === 'terminal' ? selectedTab.id : resolveTerminalTabId();
+      const sourcePaneId = resolvePaneId(tabId);
+      const nextPaneId = Utils.buildPaneId(
+        tabId,
+        Object.values(paneLayoutsByTabId).flatMap((layout) => Utils.collectPaneIdsFromLayout(layout))
+      );
+      const sourceSession = terminalSessions[sourcePaneId] ?? Utils.createEmptyTerminalSession(pathContext?.homeDir ?? null);
+
+      setTerminalSessions((current) => ({
+        ...current,
+        [nextPaneId]: {
+          ...Utils.createEmptyTerminalSession(sourceSession.workingDirectory),
+          activeConversationId: conversationId,
+          composerSurface: 'agent'
+        }
+      }));
+      setPaneLayoutsByTabId((current) => ({
+        ...current,
+        [tabId]: Utils.splitPaneLayout(
+          current[tabId] ?? Utils.createDefaultPaneLayout(tabId),
+          sourcePaneId,
+          'horizontal',
+          nextPaneId
+        )
+      }));
+      setSelectedTabId(tabId);
+      return;
+    }
+
     const nextTab = createTerminalTab();
     setTerminalSessions((current) => ({
       ...current,
@@ -497,7 +573,18 @@ export function useAppWindow() {
       }
     }));
     setSelectedTabId(nextTab.id);
-  }, [createTerminalTab, memoryConversationsById, paneLayoutsByTabId, selectedTabId, terminalSessions]);
+  }, [
+    createTerminalTab,
+    memoryConversationsById,
+    paneLayoutsByTabId,
+    pathContext?.homeDir,
+    preferredConversationLayout,
+    resolvePaneId,
+    resolveTerminalTabId,
+    selectedTab,
+    selectedTabId,
+    terminalSessions
+  ]);
 
   const onNewConversation = useCallback((_options?: { seedPrompt?: string }) => {
     const nextConversationId = Utils.createConversationId();

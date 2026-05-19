@@ -2,6 +2,8 @@ import { Code2, MoreHorizontal, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { normalizeCodeSettings } from '../App/settings/codeSettings';
+import { useMemoryStore } from '../../stores/memoryStore';
 import { useEditorStore } from '../../stores/editorStore';
 import { MonacoEditor } from './MonacoEditor';
 import './Editor.css';
@@ -10,18 +12,21 @@ type MarkdownViewMode = 'rendered' | 'raw';
 
 export function EditorWorkspace() {
   const { tabs, activeTabId, setActiveTab, closeTab, closeAllTabs } = useEditorStore();
+  const settings = useMemoryStore((state) => state.settings);
+  const codeSettings = normalizeCodeSettings(settings?.values);
   const activeTab = tabs.find((tab) => tab.id === activeTabId) ?? null;
   const isArtifactMarkdownMode = activeTab?.presentation === 'artifact-markdown' && activeTab.language === 'markdown';
+  const isMarkdownFile = activeTab?.language === 'markdown';
   const [markdownViewMode, setMarkdownViewMode] = useState<MarkdownViewMode>('rendered');
 
   useEffect(() => {
-    if (isArtifactMarkdownMode) {
+    if (isArtifactMarkdownMode || (isMarkdownFile && codeSettings.editor.openMarkdownInViewer)) {
       setMarkdownViewMode('rendered');
       return;
     }
 
     setMarkdownViewMode('raw');
-  }, [activeTabId, isArtifactMarkdownMode]);
+  }, [activeTabId, isArtifactMarkdownMode, isMarkdownFile, codeSettings.editor.openMarkdownInViewer]);
 
   const markdownTitle = useMemo(() => {
     if (!activeTab) {
@@ -116,7 +121,7 @@ export function EditorWorkspace() {
 
       <div className="editor-container">
         {activeTab ? (
-          isArtifactMarkdownMode && markdownViewMode === 'rendered' ? (
+          isMarkdownFile && markdownViewMode === 'rendered' ? (
             <div className="editor-markdown-preview-shell">
               <div className="editor-markdown-preview">
                 <ReactMarkdown remarkPlugins={[remarkGfm]}>

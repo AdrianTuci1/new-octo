@@ -1,0 +1,225 @@
+.code-settings-panel {
+  max-width: 1120px;
+  padding-bottom: 72px;
+}
+
+.code-settings-panel .settings-panel-header h1 {
+  margin-bottom: 36px;
+  font-size: 21px;
+}
+
+.code-settings-group {
+  margin-top: 0;
+}
+
+.code-settings-row {
+  align-items: flex-start;
+  gap: 28px;
+  min-height: 82px;
+  padding: 0 0 26px;
+}
+
+.code-settings-row .settings-row-info {
+  min-width: 0;
+  max-width: 920px;
+}
+
+.code-settings-row .settings-row-title {
+  font-size: 16px;
+  line-height: 1.25;
+  color: var(--text-main);
+}
+
+.code-settings-row .settings-row-description {
+  max-width: 940px;
+  margin-top: 10px;
+  font-size: 15px;
+  line-height: 1.25;
+  color: rgba(255, 255, 255, 0.58);
+}
+
+.code-settings-row .settings-row-action {
+  flex: 0 0 auto;
+  min-width: 76px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.code-indexed-folders-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  margin-top: 24px;
+}
+
+.code-indexed-folders-header h2 {
+  margin: 0;
+  font-size: 21px;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+}
+
+.code-outline-action {
+  height: 42px;
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  padding: 0 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-main);
+  font-size: 17px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 120ms ease, background 120ms ease;
+}
+
+.code-outline-action:hover {
+  border-color: rgba(255, 255, 255, 0.34);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.code-outline-action svg {
+  color: var(--text-main);
+}
+
+.code-empty-copy {
+  margin: 28px 0 0;
+  color: var(--text-main);
+  font-size: 16px;
+}
+
+.code-indexed-folder-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 24px;
+}
+
+.code-indexed-folder-item {
+  min-height: 58px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 12px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.code-indexed-folder-path {
+  min-width: 0;
+  max-width: 760px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-main);
+  font-size: 14px;
+}
+
+.code-indexed-folder-meta {
+  margin-top: 5px;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 12px;
+}
+
+.code-folder-remove {
+  flex: 0 0 auto;
+  border: 0;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.58);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.code-folder-remove:hover {
+  color: var(--text-main);
+}
+
+.code-editor-panel .settings-panel-header h1 {
+  margin-bottom: 48px;
+}
+
+.code-editor-panel .code-settings-row {
+  min-height: 58px;
+  padding-bottom: 22px;
+}
+
+.code-editor-panel .code-settings-row:has(.settings-row-description) {
+  min-height: 82px;
+}
+
+.code-static-select {
+  width: 250px;
+  height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.62);
+  font-size: 16px;
+  text-align: left;
+  cursor: default;
+}
+
+.code-static-select span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.code-static-select svg,
+.code-muted-icon,
+.code-info-icon {
+  color: rgba(255, 255, 255, 0.52);
+  flex-shrink: 0;
+}
+
+.code-info-icon {
+  color: rgba(255, 255, 255, 0.74);
+}
+
+@media (max-width: 900px) {
+  .code-settings-panel .settings-panel-header h1 {
+    margin-bottom: 28px;
+  }
+
+  .code-settings-row,
+  .code-editor-panel .code-settings-row {
+    flex-direction: column;
+    gap: 10px;
+    min-height: 0;
+    padding-bottom: 24px;
+  }
+
+  .code-settings-row .settings-row-action {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .code-static-select {
+    width: min(100%, 320px);
+  }
+
+  .code-indexed-folders-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .code-indexed-folder-item {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .code-indexed-folder-path {
+    max-width: 100%;
+  }
+}
