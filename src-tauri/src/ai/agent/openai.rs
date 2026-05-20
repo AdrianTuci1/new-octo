@@ -2,7 +2,7 @@ mod config;
 mod guardian;
 mod harness;
 mod prompt;
-mod skills;
+pub mod skills;
 mod tools;
 mod utils;
 

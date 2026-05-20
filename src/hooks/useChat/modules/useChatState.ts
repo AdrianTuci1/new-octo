@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from 'react';
-import type { ChatMessage } from '../../../types/chat';
+import type { ChatAttachment, ChatMessage } from '../../../types/chat';
 import { extractFollowUpSuggestion, extractInlinePlanArtifact } from '../parsers';
 import { pendingFollowUpPayloads } from '../bridge';
 
@@ -56,6 +56,7 @@ export function useChatState() {
   const [activeRunId, setActiveRunId] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [messages, setMessagesState] = useState<ChatMessage[]>([]);
+  const [attachments, setAttachmentsState] = useState<ChatAttachment[]>([]);
 
   const calculateThinkingDurationSeconds = useCallback((startedAt?: string) => {
     if (!startedAt) {
@@ -285,7 +286,24 @@ export function useChatState() {
     setActiveConversationId(null);
     setActiveRunId(null);
     setMessages([]);
+    setAttachmentsState([]);
   }, [setMessages]);
+
+  const addAttachments = useCallback((nextAttachments: ChatAttachment[]) => {
+    if (nextAttachments.length === 0) {
+      return;
+    }
+
+    setAttachmentsState((current) => [...current, ...nextAttachments]);
+  }, []);
+
+  const removeAttachment = useCallback((attachmentId: string) => {
+    setAttachmentsState((current) => current.filter((attachment) => attachment.id !== attachmentId));
+  }, []);
+
+  const clearAttachments = useCallback(() => {
+    setAttachmentsState([]);
+  }, []);
 
   return {
     instanceIdRef,
@@ -300,12 +318,16 @@ export function useChatState() {
     query,
     setQuery,
     messages,
+    attachments,
     setMessages,
     addMessage,
     updateMessage,
     appendToMessage,
     upsertReasoningMessage,
     finalizeReasoningMessage,
-    clearMessages
+    clearMessages,
+    addAttachments,
+    removeAttachment,
+    clearAttachments
   };
 }

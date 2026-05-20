@@ -9,6 +9,7 @@ import './ModelManagementDrawer.css';
 const DEFAULT_PROVIDER_LABEL = 'OpenAI';
 const DEFAULT_MODEL_ID = 'gpt-4o-mini';
 const DEFAULT_BASE_URL = 'https://api.openai.com/v1';
+const DEFAULT_SUPPORTS_ATTACHMENTS = false;
 
 export function ModelManagementDrawer() {
   const setIsModelDrawerOpen = useUIStore((state) => state.setIsModelDrawerOpen);
@@ -23,6 +24,7 @@ export function ModelManagementDrawer() {
   const [apiKey, setApiKey] = useState('');
   const [friendlyName, setFriendlyName] = useState('');
   const [hasApiKey, setHasApiKey] = useState(false);
+  const [supportsAttachments, setSupportsAttachments] = useState(DEFAULT_SUPPORTS_ATTACHMENTS);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -38,6 +40,7 @@ export function ModelManagementDrawer() {
         setBaseUrl(editingModel.baseUrl);
         setFriendlyName(editingModel.friendlyName ?? '');
         setHasApiKey(editingModel.hasApiKey ?? true);
+        setSupportsAttachments(editingModel.supportsAttachments ?? DEFAULT_SUPPORTS_ATTACHMENTS);
         setApiKey('');
       }
     } else {
@@ -46,6 +49,7 @@ export function ModelManagementDrawer() {
       setBaseUrl(DEFAULT_BASE_URL);
       setFriendlyName('');
       setHasApiKey(false);
+      setSupportsAttachments(DEFAULT_SUPPORTS_ATTACHMENTS);
       setApiKey('');
     }
     setErrorMessage(null);
@@ -110,7 +114,8 @@ export function ModelManagementDrawer() {
         modelId: trimmedModelId,
         baseUrl: trimmedBaseUrl,
         friendlyName: friendlyName.trim() || undefined,
-        hasApiKey: hasKey
+        hasApiKey: hasKey,
+        supportsAttachments
       };
 
       let nextConfiguredModels: ConfiguredModel[] = [];
@@ -281,6 +286,27 @@ export function ModelManagementDrawer() {
             value={friendlyName}
             onChange={(event) => setFriendlyName(event.target.value)}
           />
+        </div>
+
+        <div className="form-group">
+          <label>Attachments</label>
+          <button
+            className={`model-mgmt-checkbox ${supportsAttachments ? 'active' : ''}`}
+            type="button"
+            onClick={() => setSupportsAttachments((current) => !current)}
+            role="switch"
+            aria-checked={supportsAttachments}
+          >
+            <span className="model-mgmt-checkbox-track" aria-hidden="true">
+              <span className="model-mgmt-checkbox-thumb" />
+            </span>
+            <span className="model-mgmt-checkbox-copy">
+              Model accepts file or image attachments
+            </span>
+          </button>
+          <div className="model-mgmt-field-note">
+            Keep this off unless the provider/model is known to accept multimodal input.
+          </div>
         </div>
 
         {errorMessage && <div className="model-mgmt-feedback error">{errorMessage}</div>}

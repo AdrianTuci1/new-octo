@@ -239,3 +239,8 @@
   font-weight: 600;
   text-transform: lowercase;
 }
+
+.terminal-open-app-button {
+  margin-left: auto;
+  white-space: nowrap;
+}

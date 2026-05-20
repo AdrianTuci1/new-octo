@@ -5,6 +5,8 @@ import type { AgentContinueRequest, AgentStartResponse, ExecutionPlanArtifact, E
 import { useMemoryStore } from '../../../stores/memoryStore';
 import { artifactsFromMessages, chatHistoryFromMessages, titleFromConversationContent, statusFromConversationContent } from '../helpers';
 import { ensureAgentEventBridge, pendingTokenText, setAssistantRegistration } from '../bridge';
+import { buildAttachmentContextText, buildAttachmentsFromFiles } from '../attachments';
+import { buildComposerContextSummary, parseComposerContextMentions } from '../../../components/Composer/contextMentions';
 import type { useChatState } from './useChatState';
 
 const RESERVED_SLASH_COMMANDS = new Set([
@@ -140,6 +142,15 @@ function resolveAgentPrompt(rawPrompt: string) {
 }
 
 export function useChatActions({ options, state, onCommandApprovalRef, onFileChangeApprovalRef, onWebSearchRef }: UseChatActionsProps) {
+  const attachFiles = useCallback(async (files: File[]) => {
+    if (!files.length) {
+      return;
+    }
+
+    const attachments = await buildAttachmentsFromFiles(files);
+    state.addAttachments(attachments);
+  }, [state]);
+
   const formatPlanBody = useCallback((plan: ExecutionPlanArtifact) => {
     return [
       plan.summary?.trim() || 'Execution plan proposed.',
@@ -338,8 +349,20 @@ export function useChatActions({ options, state, onCommandApprovalRef, onFileCha
   const submitQuery = async (promptOverride?: string) => {
     const prompt = typeof promptOverride === 'string' ? promptOverride : state.query;
     const trimmed = prompt.trim();
-    if (!trimmed) return;
+    if (!trimmed && state.attachments.length === 0) return;
     const resolvedPrompt = resolveAgentPrompt(trimmed);
+    const { mentions, promptWithoutMentions } = parseComposerContextMentions(resolvedPrompt);
+    const contextSummary = buildComposerContextSummary(mentions);
+    const attachmentContext = buildAttachmentContextText(state.attachments);
+    const fallbackPrompt = mentions.length > 0 && state.attachments.length > 0
+      ? 'Please review the referenced context and attached files.'
+      : mentions.length > 0
+        ? 'Please review the referenced context.'
+        : state.attachments.length > 0
+          ? 'Please review the attached files.'
+          : '';
+    const composedPrompt = promptWithoutMentions || fallbackPrompt;
+    const userMessageBody = promptWithoutMentions || fallbackPrompt || trimmed;
 
     if (options.requiresModelSetup) {
       options.onRequireModelSetup?.();
@@ -366,11 +389,33 @@ export function useChatActions({ options, state, onCommandApprovalRef, onFileCha
     state.setActiveConversationId(conversationId);
     options.onConversationCreated?.(conversationId);
 
+    if (state.attachments.length > 0) {
+      state.addMessage({
+        id: `tool-attachments-${ts}`,
+        role: 'tool',
+        title: 'Attached Files',
+        body: attachmentContext,
+        conversationId,
+        createdAt: new Date().toISOString()
+      });
+    }
+
+    if (contextSummary) {
+      state.addMessage({
+        id: `tool-context-${ts}`,
+        role: 'tool',
+        title: 'Referenced Context',
+        body: contextSummary,
+        conversationId,
+        createdAt: new Date().toISOString()
+      });
+    }
+
     state.addMessage({
       id: `user-${ts}`,
       role: 'user',
       title: 'User',
-      body: trimmed,
+      body: userMessageBody,
       conversationId,
       createdAt: new Date().toISOString()
     });
@@ -395,7 +440,7 @@ export function useChatActions({ options, state, onCommandApprovalRef, onFileCha
         id: `${assistantMessageId}::reasoning`,
         role: 'assistant',
         title: 'Thinking',
-        body: buildSyntheticThinkingSummary(trimmed),
+        body: buildSyntheticThinkingSummary(trimmed || 'Review the attached files.'),
         conversationId,
         runId,
         messageKind: 'reasoning',
@@ -408,6 +453,7 @@ export function useChatActions({ options, state, onCommandApprovalRef, onFileCha
     }
 
     state.setQuery('');
+    state.clearAttachments();
     options.onCloseTray?.();
 
     const owner = state.instanceIdRef.current;
@@ -434,7 +480,7 @@ export function useChatActions({ options, state, onCommandApprovalRef, onFileCha
           runId,
           conversationId,
           assistantMessageId,
-          prompt: resolvedPrompt,
+          prompt: composedPrompt,
           cwd: options.cwd ?? null,
           modelId: options.modelId ?? null,
           terminalModelId: options.terminalModelId ?? null,
@@ -581,7 +627,7 @@ export function useChatActions({ options, state, onCommandApprovalRef, onFileCha
     }
   };
 
-  return { saveCurrentConversation, submitQuery, submitToolResult, submitPlanProposal, submitPlanExecution };
+  return { saveCurrentConversation, submitQuery, submitToolResult, submitPlanProposal, submitPlanExecution, attachFiles };
 }
 
 function mergeWorkstreams(

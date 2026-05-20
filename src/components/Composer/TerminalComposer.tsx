@@ -4,6 +4,7 @@ import { GitBranchPicker } from './GitBranchPicker';
 import { hasCompleteSlashCommand, SlashCommandHighlight } from './SlashCommandHighlight';
 import { useComposerBar } from './useComposerBar';
 import { WorkingDirectoryPicker } from './WorkingDirectoryPicker';
+import { hasComposerContextMentions } from './contextMentions';
 import type { RecommendedComposerAction, ShellPrediction } from '../../lib/composerIntelligence';
 import type { FilesystemDirectoryListing } from '../../types/filesystem';
 import type { GitRepoContext } from '../../types/git';
@@ -75,6 +76,7 @@ export function TerminalComposer({
   const showRecommendation = Boolean(recommendedAction) && query.trim().length === 0;
   const predictionSuffix = prediction?.completionText ?? '';
   const showSlashCommandHighlight = hasCompleteSlashCommand(query);
+  const showContextMentionHighlight = hasComposerContextMentions(query);
   const completionItems = completionState?.completions ?? [];
   const showCompletionPanel = Boolean(completionState) && (
     completionState?.status === 'running' ||
@@ -116,6 +118,7 @@ export function TerminalComposer({
             onToggle={onToggleGitBranchMenu}
           />
         )}
+
       </div>
 
       <div className="terminal-composer-body">
@@ -160,7 +163,7 @@ export function TerminalComposer({
 
             <textarea
               ref={inputRef}
-              className={`chat-input terminal-chat-input ${showRecommendation ? 'has-recommendation' : ''} ${showSlashCommandHighlight ? 'has-slash-command-highlight' : ''}`}
+              className={`chat-input terminal-chat-input ${showRecommendation ? 'has-recommendation' : ''} ${showSlashCommandHighlight ? 'has-slash-command-highlight' : ''} ${showContextMentionHighlight ? 'has-context-highlight' : ''}`.trim()}
               value={query}
               onChange={(event) => {
                 const nextValue = event.target.value;

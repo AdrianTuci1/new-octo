@@ -1,0 +1,7 @@
+<svg width="800px" height="800px" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+<title>file_type_css</title>
+<path d="M6 2h14l6 6v22H6z" fill="#264de4"/>
+<path d="M20 2v6h6" fill="#1d3fbe"/>
+<path d="M9.5 12.5h13v7c0 4-2.7 7-6.5 7s-6.5-3-6.5-7v-7z" fill="#2965f1"/>
+<text x="9.6" y="22" font-family="Arial, Helvetica, sans-serif" font-size="8" font-weight="700" fill="#ffffff">CSS</text>
+</svg>

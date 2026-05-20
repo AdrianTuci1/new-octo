@@ -83,6 +83,7 @@ export function useLauncherRuntime(props: LauncherProps, store: any, tray: any) 
     modelSelectionRaw.selectedModelApiId,
     modelSelectionRaw.models,
     modelSelectionRaw.selectedModelLabel,
+    modelSelectionRaw.selectedModelSupportsAttachments,
     modelSelectionRaw.isConfigured,
     modelSelectionRaw.requiresModelSetup
   ]);
@@ -271,11 +272,16 @@ export function useLauncherRuntime(props: LauncherProps, store: any, tray: any) 
 
   const chat = useMemo(() => chatRaw, [
     chatRaw.messages,
+    chatRaw.attachments,
     chatRaw.query,
     chatRaw.setQuery,
     chatRaw.submitQuery,
     chatRaw.clearMessages,
-    chatRaw.saveCurrentConversation
+    chatRaw.saveCurrentConversation,
+    chatRaw.attachFiles,
+    chatRaw.addAttachments,
+    chatRaw.removeAttachment,
+    chatRaw.clearAttachments
   ]);
 
   const { value: queryWithoutActivator } = consumeShellModeActivator(chat.query);

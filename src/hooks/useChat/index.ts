@@ -33,9 +33,26 @@ export function useChat(options: UseChatOptions = {}) {
     query: state.query,
     setQuery: state.setQuery,
     messages: state.messages,
+    attachments: state.attachments,
+    addAttachments: state.addAttachments,
+    removeAttachment: state.removeAttachment,
+    clearAttachments: state.clearAttachments,
     submitQuery: actions.submitQuery,
     submitToolResult: actions.submitToolResult,
+    attachFiles: actions.attachFiles,
     clearMessages: state.clearMessages,
     saveCurrentConversation: actions.saveCurrentConversation
-  }), [state.clearMessages, state.messages, state.query, actions.saveCurrentConversation, actions.submitQuery, actions.submitToolResult]);
+  }), [
+    actions.attachFiles,
+    actions.saveCurrentConversation,
+    actions.submitQuery,
+    actions.submitToolResult,
+    state.addAttachments,
+    state.attachments,
+    state.clearAttachments,
+    state.clearMessages,
+    state.messages,
+    state.query,
+    state.removeAttachment
+  ]);
 }

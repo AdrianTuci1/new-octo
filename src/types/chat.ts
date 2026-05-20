@@ -169,6 +169,18 @@ export type AgentProviderStatus = {
   source: string;
 };
 
+export type ChatAttachmentKind = 'text' | 'image' | 'binary';
+
+export type ChatAttachment = {
+  id: string;
+  name: string;
+  size: number;
+  mimeType?: string | null;
+  kind: ChatAttachmentKind;
+  content?: string | null;
+  truncated?: boolean;
+};
+
 export type AgentStatusEvent = {
   runId: string;
   conversationId: string;
@@ -221,4 +233,5 @@ export interface ConfiguredModel {
   baseUrl: string;
   friendlyName?: string;
   hasApiKey?: boolean;
+  supportsAttachments?: boolean;
 }

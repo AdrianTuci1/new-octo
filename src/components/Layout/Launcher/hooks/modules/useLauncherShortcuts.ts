@@ -48,13 +48,16 @@ export function useLauncherShortcuts({
     },
     onTerminalCommand: (cmd) => Utils.runCommandInSurface(
       cmd,
-      store.composerSurface,
+      'agent',
       terminal,
       agentTerminal,
       clearTerminalSurface,
       'user'
     ),
-    isShellMode: store.composerSurface === 'terminal' || store.modeLock === 'shell' || ui.composerMode === 'shell',
+    isShellMode: store.composerSurface === 'terminal'
+      || store.modeLock === 'shell'
+      || ui.composerMode === 'shell'
+      || store.autodetectedShellLatch,
     isManualShellMode: store.composerSurface !== 'terminal' && store.modeLock === 'shell',
     hasPrediction: Boolean(ui.activeShellPrediction?.completionText),
     onAcceptPrediction: () => {
@@ -73,7 +76,7 @@ export function useLauncherShortcuts({
 
   // 2. Global Event Listeners
   useEffect(() => {
-    if (!active || variant !== 'panel' || !openAppWindow) return;
+    if (!active || variant === 'workspace' || !openAppWindow) return;
     const handleOpenAppShortcut = (event: globalThis.KeyboardEvent) => {
       if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== 'x') return;
       event.preventDefault();
@@ -85,7 +88,7 @@ export function useLauncherShortcuts({
   }, [active, openAppWindow, variant]);
 
   useEffect(() => {
-    if (!active || variant !== 'panel' || !openAppWindow || !(window as any).__TAURI_INTERNALS__) {
+    if (!active || variant === 'workspace' || !openAppWindow || !(window as any).__TAURI_INTERNALS__) {
       return;
     }
 

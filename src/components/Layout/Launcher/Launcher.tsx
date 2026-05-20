@@ -103,7 +103,7 @@ export function Launcher(props: LauncherProps) {
               onSelectModel={(modelId: string) => launcher.ui.modelSelection.selectModel(modelId, true)}
               shellSource={launcher.terminal.shellSource}
               shellShortcutTokens={launcher.terminal.shellShortcutTokens}
-              showOpenInApp={launcher.ui.variant === 'panel'}
+              showOpenInApp={launcher.ui.variant !== 'workspace'}
               selectedHistoryIndex={launcher.store.selectedHistoryIndex}
               selectedModelId={launcher.ui.modelSelection.selectedModelId}
               selectedModelIndex={launcher.store.selectedModelIndex}
@@ -119,7 +119,7 @@ export function Launcher(props: LauncherProps) {
               gitContext={launcher.ui.gitContext.gitContext}
               onLaunchAgentComposer={launcher.actions.launchAgentComposer}
               onOpenCommandsTray={launcher.actions.openCommandsTray}
-              onOpenApp={launcher.ui.variant === 'panel' ? launcher.actions.openAppWindow : undefined}
+              onOpenApp={launcher.ui.variant !== 'workspace' ? launcher.actions.openAppWindow : undefined}
               onCloseGitBranchMenu={() => launcher.ui.gitContext.setIsBranchMenuOpen(false)}
               onCloseWorkingDirectoryPicker={launcher.ui.workingDirectory.closePicker}
               onHeightChange={() => { }}
@@ -137,7 +137,7 @@ export function Launcher(props: LauncherProps) {
               query={launcher.chat.query}
               recommendedAction={launcher.terminal.terminalComposerAction}
               runtimeNodeVersion={launcher.ui.runtimeContext?.nodeVersion ?? null}
-              showOpenInApp={launcher.ui.variant === 'panel'}
+              showOpenInApp={launcher.ui.variant !== 'workspace'}
               workingDirectory={launcher.ui.workingDirectory.currentPath}
               workingDirectoryLabel={launcher.ui.workingDirectory.buttonLabel}
               workingDirectoryListing={launcher.ui.workingDirectory.listing}
@@ -171,9 +171,13 @@ export function Launcher(props: LauncherProps) {
               onToggleModelTray={() => (modelSetupRequired ? launcher.actions.openModelDrawer() : launcher.tray.toggleTray('models'))}
               placeholder={launcher.ui.agentSettings?.input?.showInputHintText === false ? '' : placeholder}
               prediction={launcher.ui.activeShellPrediction}
+              attachedFiles={launcher.chat.attachments}
               query={launcher.chat.query}
               recommendedAction={launcher.ui.recommendedAction}
               selectedModelLabel={launcher.ui.modelSelection.selectedModelLabel}
+              onAttachFiles={launcher.chat.attachFiles}
+              onRemoveAttachedFile={launcher.chat.removeAttachment}
+              onClearAttachments={launcher.chat.clearAttachments}
               terminalAutoDetectEnabled={launcher.store.terminalAutoDetectEnabled && launcher.ui.agentSettings?.enabled !== false && launcher.ui.agentSettings?.input?.autodetectTerminalCommandsInAgent !== false}
               workingDirectory={launcher.ui.workingDirectory.currentPath}
               workingDirectoryLabel={launcher.ui.workingDirectory.buttonLabel}
@@ -185,6 +189,7 @@ export function Launcher(props: LauncherProps) {
               onToggleWorkingDirectoryPicker={launcher.ui.workingDirectory.togglePicker}
               onWorkingDirectorySearchChange={launcher.ui.workingDirectory.setSearchQuery}
               onToggleSingleCharacterPrediction={() => launcher.store.setAllowSingleCharacterCommandPrediction(!launcher.store.allowSingleCharacterCommandPrediction)}
+              selectedModelSupportsAttachments={launcher.ui.modelSelection.selectedModelSupportsAttachments}
             />
           )}
         </div>

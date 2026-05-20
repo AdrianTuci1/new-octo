@@ -320,6 +320,7 @@ fn main() {
             ai::agent_cancel,
             ai::agent_get_run,
             ai::agent_list_runs,
+            ai::agent_list_skills,
             ai::agent_get_loop_contract,
             ai::agent_configure_openai_compatible,
             ai::agent_clear_openai_compatible,

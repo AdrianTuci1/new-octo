@@ -159,17 +159,29 @@ export function TrayPanel({
 
           {isOpen && (
             <>
-              <TrayFooter
-                activeMode={activeMode}
-                inputMode={inputMode}
-                isOpen={true}
-                onExitShellMode={onExitShellMode}
-                onToggleCommands={onToggleCommands}
-                onToggleConversations={onToggleConversations}
-                onToggleHelp={onToggleHelp}
-                shellShortcutTokens={shellShortcutTokens}
-                shellSource={shellSource}
-              />
+              <div className="tray-footer-open-row">
+                <TrayFooter
+                  activeMode={activeMode}
+                  inputMode={inputMode}
+                  isOpen={true}
+                  onExitShellMode={onExitShellMode}
+                  onToggleCommands={onToggleCommands}
+                  onToggleConversations={onToggleConversations}
+                  onToggleHelp={onToggleHelp}
+                  shellShortcutTokens={shellShortcutTokens}
+                  shellSource={shellSource}
+                />
+
+                {showOpenInApp && onOpenApp && (
+                  <button className="tray-open-app-button" type="button" onClick={onOpenApp}>
+                    <span className="mode-button tray-open-app-shortcut" aria-hidden="true">
+                      <Command size={10} />
+                    </span>
+                    <span className="mode-button tray-open-app-shortcut" aria-hidden="true">X</span>
+                    <span>open in app</span>
+                  </button>
+                )}
+              </div>
               <div className="tray-footer-divider" aria-hidden="true" />
             </>
           )}

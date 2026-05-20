@@ -4,8 +4,17 @@ use std::{
     path::PathBuf,
 };
 
+use serde::Serialize;
+
 use crate::ai::agent::types::AgentInputMessage;
 use crate::octomus_paths::{bundled_skills_dir_candidates, OctomusPaths};
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SkillCatalogItem {
+    pub name: String,
+    pub description: String,
+    pub path: String,
+}
 
 /// Citeste dinamic skill-urile disponibile si intoarce instructiunile
 /// pentru skill-urile care au fost invocate (mentionate) de utilizator.
@@ -31,6 +40,23 @@ pub fn load_skills_instructions(prompt: &str, messages: &[AgentInputMessage]) ->
     }
 
     injected_skills_text
+}
+
+pub fn list_available_skills() -> Vec<SkillCatalogItem> {
+    let available_skills = discover_available_skills();
+    available_skills
+        .into_iter()
+        .filter_map(|(skill_name, skill_dir)| {
+            let skill_md_path = skill_dir.join("SKILL.md");
+            let content = fs::read_to_string(&skill_md_path).ok()?;
+            let (parsed_name, description) = parse_skill_metadata(&content);
+            Some(SkillCatalogItem {
+                name: if parsed_name.is_empty() { skill_name } else { parsed_name },
+                description,
+                path: skill_dir.to_string_lossy().to_string(),
+            })
+        })
+        .collect()
 }
 
 fn discover_available_skills() -> BTreeMap<String, PathBuf> {
@@ -139,6 +165,51 @@ fn reserved_slash_commands() -> HashSet<&'static str> {
         "create-mcp",
         "new",
     ])
+}
+
+fn parse_skill_metadata(content: &str) -> (String, String) {
+    let lines: Vec<&str> = content.lines().collect();
+    if lines.first().map(|line| line.trim()) != Some("---") {
+        return (String::new(), String::new());
+    }
+
+    let Some(end_idx) = lines.iter().enumerate().skip(1).find_map(|(index, line)| {
+        line.trim().eq("---").then_some(index)
+    }) else {
+        return (String::new(), String::new());
+    };
+
+    let mut name = String::new();
+    let mut description = String::new();
+    let frontmatter_lines = &lines[1..end_idx];
+    let mut index = 0;
+    while index < frontmatter_lines.len() {
+        let line = frontmatter_lines[index].trim_end();
+        if let Some(value) = line.strip_prefix("name:") {
+            name = value.trim().trim_matches('"').trim_matches('\'').to_string();
+        } else if let Some(value) = line.strip_prefix("description:") {
+            let value = value.trim();
+            if matches!(value, ">" | "|" | ">-" | "|-") {
+                let mut continuation_lines = Vec::new();
+                index += 1;
+                while index < frontmatter_lines.len() {
+                    let next_line = frontmatter_lines[index];
+                    if next_line.starts_with(' ') || next_line.starts_with('\t') {
+                        continuation_lines.push(next_line.trim().to_string());
+                        index += 1;
+                    } else {
+                        break;
+                    }
+                }
+                description = continuation_lines.join(" ");
+                continue;
+            }
+            description = value.trim_matches('"').trim_matches('\'').to_string();
+        }
+        index += 1;
+    }
+
+    (name, description)
 }
 
 #[cfg(test)]

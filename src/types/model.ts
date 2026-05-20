@@ -5,4 +5,5 @@ export type ModelSpec = {
   provider: string;
   note?: string;
   baseUrl?: string | null;
+  supportsAttachments?: boolean;
 };

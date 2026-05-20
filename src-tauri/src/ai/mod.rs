@@ -82,6 +82,11 @@ pub fn agent_list_runs(
 }
 
 #[tauri::command]
+pub fn agent_list_skills() -> Result<Vec<agent::openai::skills::SkillCatalogItem>, String> {
+    Ok(agent::openai::skills::list_available_skills())
+}
+
+#[tauri::command]
 pub fn agent_get_loop_contract() -> Result<AgentLoopContract, String> {
     agent::agent_get_loop_contract()
 }

@@ -1,4 +1,5 @@
 import { COMMAND_ITEMS } from '../../lib/constants';
+import { hasComposerContextMentions, splitComposerTextForHighlight } from './contextMentions';
 
 type SlashCommandHighlightProps = {
   query: string;
@@ -30,17 +31,34 @@ export function hasCompleteSlashCommand(query: string) {
 
 export function SlashCommandHighlight({ query, extraClassName = '' }: SlashCommandHighlightProps) {
   const parts = splitSlashCommand(query);
-  if (!parts || !KNOWN_SLASH_COMMANDS.has(parts.command)) {
+  const hasSlashCommand = Boolean(parts && KNOWN_SLASH_COMMANDS.has(parts.command));
+  const hasMentions = hasComposerContextMentions(query);
+
+  if (!hasSlashCommand && !hasMentions) {
     return null;
   }
+
+  const highlightSource = hasSlashCommand ? (parts?.remainder ?? '') : query;
+  const mentionSegments = hasMentions
+    ? splitComposerTextForHighlight(highlightSource)
+    : [{ text: highlightSource }];
 
   return (
     <div
       aria-hidden="true"
       className={`composer-input-highlight ${extraClassName}`.trim()}
     >
-      <span className="composer-input-highlight-command">{parts.command}</span>
-      <span className="composer-input-highlight-rest">{parts.remainder}</span>
+      {hasSlashCommand ? (
+        <span className="composer-input-highlight-command">{parts?.command ?? ''}</span>
+      ) : null}
+      {mentionSegments.map((segment, index) => (
+        <span
+          key={`${segment.text}-${index}`}
+          className={segment.className ?? 'composer-input-highlight-rest'}
+        >
+          {segment.text}
+        </span>
+      ))}
     </div>
   );
 }

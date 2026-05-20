@@ -6,20 +6,30 @@ import {
   ChevronRight, 
   ChevronDown,
   FolderOpen,
-  FileCode,
-  FileJson,
-  FileText,
-  AlertCircle,
-  Search,
-  X
+  AlertCircle
 } from 'lucide-react';
+import nodejsIcon from '../../../../assets/svg/nodejs-logo.svg';
+import typescriptIcon from '../../../../assets/svg/file_type/typescript.svg';
+import cssIcon from '../../../../assets/svg/file_type/css.svg';
+import jsonIcon from '../../../../assets/svg/file_type/json.svg';
+import markdownIcon from '../../../../assets/svg/file_type/markdown.svg';
+import pythonIcon from '../../../../assets/svg/file_type/python.svg';
+import goIcon from '../../../../assets/svg/file_type/go.svg';
+import rustIcon from '../../../../assets/svg/file_type/rust.svg';
+import phpIcon from '../../../../assets/svg/file_type/php.svg';
+import cppIcon from '../../../../assets/svg/file_type/cpp.svg';
+import cIcon from '../../../../assets/svg/file_type/c.svg';
+import kotlinIcon from '../../../../assets/svg/file_type/kotlin.svg';
+import wasmIcon from '../../../../assets/svg/file_type/wasm.svg';
+import terraformIcon from '../../../../assets/svg/file_type/terraform.svg';
+import npmIcon from '../../../../assets/svg/file_type/npm.svg';
+import sqlIcon from '../../../../assets/svg/file_type/sql.svg';
 import type { 
   FilesystemEntry, 
   FilesystemDirectoryListing, 
-  FilesystemPathContext,
-  FilesystemSearchEntry,
-  FilesystemSearchListing
+  FilesystemPathContext
 } from '../../../types/filesystem';
+import type { GitWorktreeDiff } from '../../../types/gitDiff';
 import './FileExplorer.css';
 
 interface FileExplorerProps {
@@ -42,7 +52,17 @@ interface ContextMenuState {
   node: TreeEntry | null;
 }
 
-const normalizePath = (path: string) => path.replace(/\/$/, '');
+const normalizePath = (path: string) => (path === '/' ? '/' : path.replace(/\/+$/, '') || path);
+const joinPath = (base: string, relative: string) => {
+  const trimmedBase = normalizePath(base);
+  const trimmedRelative = relative.replace(/^\/+/, '');
+
+  if (trimmedBase === '/') {
+    return normalizePath(`/${trimmedRelative}`);
+  }
+
+  return normalizePath(`${trimmedBase}/${trimmedRelative}`);
+};
 
 export function FileExplorer({ 
   initialPath, 
@@ -51,20 +71,15 @@ export function FileExplorer({
   onOpenInNewPane 
 }: FileExplorerProps) {
   const [tree, setTree] = useState<TreeEntry[]>([]);
-  const [rootPath, setRootPath] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [searchTree, setSearchTree] = useState<TreeEntry[] | null>(null);
-  const [searchLoading, setSearchLoading] = useState(false);
-  const [searchError, setSearchError] = useState<string | null>(null);
-  const [searchRetryCount, setSearchRetryCount] = useState(0);
   const [contextMenu, setContextMenu] = useState<ContextMenuState>({ x: 0, y: 0, visible: false, node: null });
   const menuRef = useRef<HTMLDivElement>(null);
   const directoryCacheRef = useRef(new Map<string, FilesystemEntry[]>());
-  const searchRequestIdRef = useRef(0);
+  const diffToneByPathRef = useRef(new Map<string, 'added' | 'modified'>());
+  const [, forceDiffToneRefresh] = useState(0);
 
-  const fetchEntries = useCallback(async (path: string | null = null): Promise<FilesystemEntry[]> => {
+  const fetchEntries = useCallback(async (path: string | null = null): Promise<FilesystemDirectoryListing> => {
     try {
       const result = await invoke<FilesystemDirectoryListing>('terminal_list_directory_entries', {
         request: {
@@ -72,7 +87,7 @@ export function FileExplorer({
           directoriesOnly: false
         }
       });
-      return result.entries;
+      return result;
     } catch (err) {
       console.error('[FileExplorer] Fetch failed:', err);
       throw err;
@@ -83,22 +98,108 @@ export function FileExplorer({
     directoryCacheRef.current.set(normalizePath(path), entries.map((entry) => ({ ...entry })));
   }, []);
 
-  const mapSearchEntryToTreeEntry = useCallback((entry: FilesystemSearchEntry): TreeEntry => {
-    return {
-      name: entry.name,
-      path: entry.path,
-      isDirectory: entry.isDirectory,
-      isOpen: true,
-      children: entry.children.map((child) => mapSearchEntryToTreeEntry(child))
-    };
+  const loadDiffStatuses = useCallback(async (path: string, visibleRootPath: string) => {
+    try {
+      const diff = await invoke<GitWorktreeDiff>('terminal_get_worktree_diff', {
+        request: { path, includePatch: false }
+      });
+
+      if (!diff.isRepo || !diff.repoRoot) {
+        diffToneByPathRef.current = new Map();
+        forceDiffToneRefresh((current) => current + 1);
+        return;
+      }
+
+      const nextTones = new Map<string, 'added' | 'modified'>();
+      const normalizedRepoRoot = normalizePath(diff.repoRoot);
+      const normalizedVisibleRoot = normalizePath(visibleRootPath);
+
+      const setTone = (targetPath: string, tone: 'added' | 'modified') => {
+        const normalizedTarget = normalizePath(targetPath);
+        const existingTone = nextTones.get(normalizedTarget);
+        if (existingTone === 'modified' || existingTone === tone) {
+          return;
+        }
+        nextTones.set(normalizedTarget, tone);
+      };
+
+      diff.files.forEach((file) => {
+        const tone: 'added' | 'modified' = file.status.startsWith('A') || file.status.startsWith('?')
+          ? 'added'
+          : 'modified';
+        let currentPath = normalizePath(joinPath(diff.repoRoot as string, file.path));
+
+        while (true) {
+          setTone(currentPath, tone);
+          if (currentPath === normalizedVisibleRoot || currentPath === normalizedRepoRoot) {
+            break;
+          }
+
+          const parentPath = currentPath === '/' ? '/' : currentPath.slice(0, currentPath.lastIndexOf('/'));
+          if (!parentPath || parentPath === currentPath) {
+            break;
+          }
+
+          currentPath = parentPath;
+        }
+      });
+
+      diffToneByPathRef.current = nextTones;
+      forceDiffToneRefresh((current) => current + 1);
+    } catch (err) {
+      console.warn('[FileExplorer] Failed to load git diff statuses:', err);
+      diffToneByPathRef.current = new Map();
+      forceDiffToneRefresh((current) => current + 1);
+    }
   }, []);
+
+  const updateTreeByPath = useCallback((
+    nodes: TreeEntry[],
+    targetPath: string,
+    updater: (node: TreeEntry) => TreeEntry
+  ): TreeEntry[] => {
+    const normalizedTarget = normalizePath(targetPath);
+
+    return nodes.map((node) => {
+      if (normalizePath(node.path) === normalizedTarget) {
+        return updater(node);
+      }
+
+      if (!node.children) {
+        return node;
+      }
+
+      return {
+        ...node,
+        children: updateTreeByPath(node.children, normalizedTarget, updater)
+      };
+    });
+  }, []);
+
+  const findTreeNodeByPath = (
+    nodes: TreeEntry[],
+    targetPath: string
+  ): TreeEntry | null => {
+    const normalizedTarget = normalizePath(targetPath);
+    for (const node of nodes) {
+      if (normalizePath(node.path) === normalizedTarget) {
+        return node;
+      }
+
+      if (node.children) {
+        const match = findTreeNodeByPath(node.children, normalizedTarget);
+        if (match) {
+          return match;
+        }
+      }
+    }
+
+    return null;
+  };
 
   const init = useCallback(async () => {
     setLoading(true);
     setError(null);
-    setSearchTree(null);
-    setSearchError(null);
-    setSearchRetryCount(0);
     let path = initialPath;
     
     try {
@@ -108,18 +209,18 @@ export function FileExplorer({
       }
 
       const resolvedPath = path ?? '.';
-      const entries = await fetchEntries(resolvedPath);
+      const listing = await fetchEntries(resolvedPath);
       directoryCacheRef.current.clear();
-      rememberEntries(resolvedPath, entries);
-      setRootPath(resolvedPath);
+      rememberEntries(listing.currentPath, listing.entries);
+      await loadDiffStatuses(listing.currentPath, listing.currentPath);
       
-      const rootName = resolvedPath.split('/').pop() || 'Project';
+      const rootName = listing.currentPath.split('/').pop() || 'Project';
       const rootNode: TreeEntry = {
         name: rootName,
-        path: resolvedPath,
+        path: listing.currentPath,
         isDirectory: true,
         isOpen: true,
-        children: entries.map(entry => ({ ...entry }))
+        children: listing.entries.map(entry => ({ ...entry }))
       };
       
       setTree([rootNode]);
@@ -127,16 +228,16 @@ export function FileExplorer({
       console.error('[FileExplorer] Init error:', err);
       setError(err.toString());
       try {
-        const entries = await fetchEntries('.');
+        const listing = await fetchEntries('.');
         directoryCacheRef.current.clear();
-        rememberEntries('.', entries);
-        setRootPath('.');
+        rememberEntries(listing.currentPath, listing.entries);
+        await loadDiffStatuses(listing.currentPath, listing.currentPath);
         setTree([{
           name: 'Project',
-          path: '.',
+          path: listing.currentPath,
           isDirectory: true,
           isOpen: true,
-          children: entries.map(entry => ({ ...entry }))
+          children: listing.entries.map(entry => ({ ...entry }))
         }]);
       } catch (innerErr) {
         console.error('[FileExplorer] Fallback failed:', innerErr);
@@ -144,54 +245,11 @@ export function FileExplorer({
     } finally {
       setLoading(false);
     }
-  }, [initialPath, fetchEntries]);
+  }, [initialPath, fetchEntries, loadDiffStatuses, rememberEntries]);
 
   useEffect(() => {
     init();
   }, [init]);
-
-  useEffect(() => {
-    const query = searchQuery.trim().toLowerCase();
-    const requestId = searchRequestIdRef.current + 1;
-    searchRequestIdRef.current = requestId;
-
-    if (!query) {
-      setSearchTree(null);
-      setSearchLoading(false);
-      setSearchError(null);
-      return;
-    }
-
-    const searchRootPath = rootPath ?? initialPath ?? '.';
-    setSearchLoading(true);
-    setSearchError(null);
-
-    void (async () => {
-      try {
-        const results = await invoke<FilesystemSearchListing>('terminal_search_directory_entries', {
-          request: {
-            path: searchRootPath,
-            query
-          }
-        });
-        if (searchRequestIdRef.current !== requestId) {
-          return;
-        }
-        setSearchTree(results.entries.map((entry) => mapSearchEntryToTreeEntry(entry)));
-      } catch (err) {
-        if (searchRequestIdRef.current !== requestId) {
-          return;
-        }
-        console.error('[FileExplorer] Search failed:', err);
-        setSearchError(err instanceof Error ? err.message : String(err));
-        setSearchTree([]);
-      } finally {
-        if (searchRequestIdRef.current === requestId) {
-          setSearchLoading(false);
-        }
-      }
-    })();
-  }, [initialPath, mapSearchEntryToTreeEntry, rootPath, searchQuery, searchRetryCount]);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -208,65 +266,49 @@ export function FileExplorer({
   }, []);
 
   const toggleFolder = async (path: string) => {
-    const normalizedTarget = normalizePath(path);
-    let shouldFetch = false;
+    const currentNode = findTreeNodeByPath(tree, path);
+    if (!currentNode || !currentNode.isDirectory) {
+      return;
+    }
 
-    // First, toggle the open state locally
-    setTree(prev => {
-      const updateNodes = (nodes: TreeEntry[]): TreeEntry[] => {
-        return nodes.map(node => {
-          if (normalizePath(node.path) === normalizedTarget) {
-            const isOpening = !node.isOpen;
-            if (isOpening && (!node.children || node.children.length === 0)) {
-              shouldFetch = true;
-            }
-            return { ...node, isOpen: isOpening, isLoading: isOpening && shouldFetch };
-          }
-          if (node.children) {
-            return { ...node, children: updateNodes(node.children) };
-          }
-          return node;
-        });
-      };
-      return updateNodes(prev);
-    });
+    const isOpening = !currentNode.isOpen;
+    const normalizedPath = normalizePath(path);
+    const cachedEntries = directoryCacheRef.current.get(normalizedPath);
+    const shouldFetch = isOpening && !cachedEntries && (!currentNode.children || currentNode.children.length === 0);
 
-    if (shouldFetch) {
-      try {
-        const children = await fetchEntries(path);
-        rememberEntries(path, children);
-        setTree(prev => {
-          const setChildren = (nodes: TreeEntry[]): TreeEntry[] => {
-            return nodes.map(node => {
-              if (normalizePath(node.path) === normalizedTarget) {
-                return { ...node, children: children.map(c => ({ ...c })), isLoading: false };
-              }
-              if (node.children) {
-                return { ...node, children: setChildren(node.children) };
-              }
-              return node;
-            });
-          };
-          return setChildren(prev);
-        });
-      } catch (err) {
-        console.error('[FileExplorer] Failed to fetch children:', err);
-        // Reset loading state on error
-        setTree(prev => {
-          const resetLoading = (nodes: TreeEntry[]): TreeEntry[] => {
-            return nodes.map(node => {
-              if (normalizePath(node.path) === normalizedTarget) {
-                return { ...node, isLoading: false };
-              }
-              if (node.children) {
-                return { ...node, children: resetLoading(node.children) };
-              }
-              return node;
-            });
-          };
-          return resetLoading(prev);
-        });
-      }
+    setTree((prev) => updateTreeByPath(prev, normalizedPath, (node) => ({
+      ...node,
+      isOpen: isOpening,
+      isLoading: isOpening && shouldFetch
+    })));
+
+    if (isOpening && cachedEntries) {
+      setTree((prev) => updateTreeByPath(prev, normalizedPath, (node) => ({
+        ...node,
+        children: cachedEntries.map((entry) => ({ ...entry })),
+        isLoading: false
+      })));
+      return;
+    }
+
+    if (!shouldFetch) {
+      return;
+    }
+
+    try {
+      const listing = await fetchEntries(path);
+      rememberEntries(listing.currentPath, listing.entries);
+      setTree(prev => updateTreeByPath(prev, normalizedPath, (node) => ({
+        ...node,
+        children: listing.entries.map((child) => ({ ...child })),
+        isLoading: false
+      })));
+    } catch (err) {
+      console.error('[FileExplorer] Failed to fetch children:', err);
+      setTree(prev => updateTreeByPath(prev, normalizedPath, (node) => ({
+        ...node,
+        isLoading: false
+      })));
     }
   };
 
@@ -310,59 +352,120 @@ export function FileExplorer({
     setContextMenu(prev => ({ ...prev, visible: false }));
   };
 
-  const getFileIcon = (name: string) => {
-    const ext = name.split('.').pop()?.toLowerCase();
+  const getFileIconSrc = (name: string) => {
+    const normalizedName = name.toLowerCase();
+    const ext = normalizedName.split('.').pop()?.toLowerCase();
+
+    if (normalizedName === 'package.json' || normalizedName === 'package-lock.json' || normalizedName === 'pnpm-lock.yaml' || normalizedName === 'yarn.lock') {
+      return npmIcon;
+    }
+
     switch (ext) {
       case 'ts':
       case 'tsx':
+      case 'mts':
+      case 'cts':
+        return typescriptIcon;
       case 'js':
       case 'jsx':
-        return <FileCode size={14} className="file-icon code" />;
+      case 'mjs':
+      case 'cjs':
+        return nodejsIcon;
+      case 'css':
+      case 'scss':
+      case 'sass':
+      case 'less':
+        return cssIcon;
       case 'json':
-        return <FileJson size={14} className="file-icon json" />;
+        return jsonIcon;
       case 'md':
-        return <FileText size={14} className="file-icon text" />;
+      case 'markdown':
+        return markdownIcon;
+      case 'py':
+        return pythonIcon;
+      case 'go':
+        return goIcon;
+      case 'rs':
+        return rustIcon;
+      case 'php':
+        return phpIcon;
+      case 'cpp':
+      case 'cc':
+      case 'cxx':
+      case 'hpp':
+      case 'hh':
+      case 'hxx':
+        return cppIcon;
+      case 'c':
+      case 'h':
+        return cIcon;
+      case 'kt':
+      case 'kts':
+        return kotlinIcon;
+      case 'wasm':
+        return wasmIcon;
+      case 'tf':
+      case 'tfvars':
+      case 'hcl':
+        return terraformIcon;
+      case 'sql':
+        return sqlIcon;
       default:
-        return <File size={14} className="file-icon default" />;
+        return null;
     }
   };
 
   const renderTree = (nodes: TreeEntry[], depth = 0) => {
     return nodes.map((node) => (
       <div key={`${node.path}-${depth}`} className="file-tree-node-container">
-        <div 
-          className={`file-tree-node ${node.isDirectory ? 'directory' : 'file'} ${node.isOpen ? 'open' : ''}`}
-          style={{ paddingLeft: `${depth * 16 + 12}px` }}
-          onClick={(e) => {
-            e.stopPropagation();
-            if (node.isDirectory) {
-              toggleFolder(node.path);
-            } else {
-              handleFileClick(node.path, node.name);
-            }
-          }}
-          onContextMenu={(e) => handleContextMenu(e, node)}
-        >
-          <div className="node-icon-wrapper">
-            {node.isDirectory && (
-              <div className="chevron-icon">
-                {node.isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+        {(() => {
+          const normalizedNodePath = normalizePath(node.path);
+          const diffTone = diffToneByPathRef.current.get(normalizedNodePath) ?? null;
+          const fileIconSrc = node.isDirectory ? null : getFileIconSrc(node.name);
+
+          return (
+            <div 
+              className={`file-tree-node ${node.isDirectory ? 'directory' : 'file'} ${node.isOpen ? 'open' : ''} ${diffTone ? `diff-${diffTone}` : ''}`}
+              style={{ paddingLeft: `${depth * 16 + 12}px` }}
+              onClick={(e) => {
+                e.stopPropagation();
+                if (node.isDirectory) {
+                  void toggleFolder(node.path);
+                } else {
+                  handleFileClick(node.path, node.name);
+                }
+              }}
+              onContextMenu={(e) => handleContextMenu(e, node)}
+            >
+              <div className="node-icon-wrapper">
+                {node.isDirectory && (
+                  <div className="chevron-icon">
+                    {node.isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                  </div>
+                )}
+                {!node.isDirectory && <div className="chevron-spacer" />}
+                <div className="main-icon">
+                  {node.isDirectory ? (
+                    node.isOpen ? <FolderOpen size={14} color="#a78bfa" fill="#a78bfa33" /> : <Folder size={14} color="#a78bfa" fill="#a78bfa33" />
+                  ) : fileIconSrc ? (
+                    <img
+                      src={fileIconSrc}
+                      alt=""
+                      aria-hidden="true"
+                      className="file-type-icon"
+                    />
+                  ) : (
+                    <File size={14} className="file-icon default" />
+                  )}
+                </div>
               </div>
-            )}
-            {!node.isDirectory && <div className="chevron-spacer" />}
-            <div className="main-icon">
-              {node.isDirectory ? (
-                node.isOpen ? <FolderOpen size={14} color="#a78bfa" fill="#a78bfa33" /> : <Folder size={14} color="#a78bfa" fill="#a78bfa33" />
-              ) : (
-                getFileIcon(node.name)
-              )}
+              <span className={`node-name ${diffTone ? `diff-${diffTone}` : ''}`}>
+                <span className={node.isDirectory ? 'node-folder-name' : 'node-file-name'}>{node.name}</span>
+              </span>
+              {node.isLoading && <div className="node-loading-spinner" />}
             </div>
-          </div>
-          <span className="node-name">
-            {node.name}
-          </span>
-          {node.isLoading && <div className="node-loading-spinner" />}
-        </div>
+          );
+        })()}
         {node.isDirectory && node.isOpen && node.children && (
           <div className="file-tree-children">
             {renderTree(node.children, depth + 1)}
@@ -374,28 +477,6 @@ export function FileExplorer({
 
   return (
     <div className="file-explorer">
-      <div className="file-explorer-toolbar">
-        <div className="file-explorer-search">
-          <Search size={14} className="file-explorer-search-icon" />
-          <input
-            type="text"
-            className="file-explorer-search-input"
-            placeholder="Search files and folders"
-            value={searchQuery}
-            onChange={(event) => setSearchQuery(event.target.value)}
-          />
-          {searchQuery.trim() && (
-            <button
-              type="button"
-              className="file-explorer-search-clear"
-              onClick={() => setSearchQuery('')}
-              aria-label="Clear search"
-            >
-              <X size={12} />
-            </button>
-          )}
-        </div>
-      </div>
       <div className="file-explorer-content">
         {error && (
           <div className="file-explorer-error">
@@ -404,23 +485,7 @@ export function FileExplorer({
             <button onClick={init}>Retry</button>
           </div>
         )}
-        {searchQuery.trim() ? (
-          searchLoading ? (
-            <div className="file-explorer-loading">Searching subdirectories...</div>
-          ) : searchError ? (
-            <div className="file-explorer-error">
-              <AlertCircle size={16} />
-              <span>{searchError}</span>
-              <button onClick={() => setSearchRetryCount((current) => current + 1)}>Retry</button>
-            </div>
-          ) : searchTree && searchTree.length > 0 ? (
-            <div className="file-tree">
-              {renderTree(searchTree)}
-            </div>
-          ) : (
-            <div className="file-explorer-empty">No matches found.</div>
-          )
-        ) : loading && tree.length === 0 ? (
+        {loading && tree.length === 0 ? (
           <div className="file-explorer-loading">Loading files...</div>
         ) : (
           <div className="file-tree">

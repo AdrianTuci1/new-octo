@@ -1,11 +1,7 @@
-use std::{
-    collections::BTreeSet,
-    collections::HashSet,
-    env, fs,
-    path::{Path, PathBuf},
-};
+use std::{collections::BTreeSet, env, fs, path::{Path, PathBuf}};
 
 use serde::{Deserialize, Serialize};
+use walkdir::WalkDir;
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -158,7 +154,13 @@ pub fn terminal_list_directory_entries(
             continue;
         }
 
-        if !normalized_query.is_empty() && !name.to_lowercase().starts_with(&normalized_query) {
+        let name_matches = name.to_lowercase().contains(&normalized_query);
+        let path_matches = entry_path
+            .to_string_lossy()
+            .to_lowercase()
+            .contains(&normalized_query);
+
+        if !normalized_query.is_empty() && !name_matches && !path_matches {
             continue;
         }
 
@@ -183,6 +185,8 @@ pub fn terminal_list_directory_entries(
 pub fn terminal_search_directory_entries(
     request: SearchDirectoryEntriesRequest,
 ) -> Result<FilesystemSearchListing, String> {
+    const MAX_SEARCH_RESULTS: usize = 64;
+
     let target_path = request
         .path
         .filter(|value| !value.trim().is_empty())
@@ -204,13 +208,49 @@ pub fn terminal_search_directory_entries(
     }
 
     let allow_hidden = normalized_query.starts_with('.');
-    let mut visited_dirs = HashSet::new();
-    let entries = search_directory_entries_recursive(
-        &normalized_path,
-        &normalized_query,
-        allow_hidden,
-        &mut visited_dirs,
-    )?;
+    let mut entries = Vec::new();
+
+    let walker = WalkDir::new(&normalized_path)
+        .follow_links(false)
+        .into_iter()
+        .filter_entry(|entry| {
+            if allow_hidden {
+                true
+            } else {
+                !entry.file_name().to_string_lossy().starts_with('.')
+            }
+        });
+
+    for entry in walker.filter_map(Result::ok).skip(1) {
+        if entries.len() >= MAX_SEARCH_RESULTS {
+            break;
+        }
+
+        let file_type = entry.file_type();
+        let path = entry.path().to_path_buf();
+        let Some(name) = entry.file_name().to_str().map(str::to_string) else {
+            continue;
+        };
+
+        if !allow_hidden && name.starts_with('.') {
+            continue;
+        }
+
+        let name_matches = name.to_lowercase().contains(&normalized_query);
+        let path_key = path.to_string_lossy().to_string();
+        let path_matches = path_key.to_lowercase().contains(&normalized_query);
+
+        if name_matches || path_matches {
+            entries.push(FilesystemSearchEntry {
+                name,
+                path: path_key,
+                is_directory: file_type.is_dir(),
+                children: Vec::new(),
+            });
+        }
+    }
+
+    entries.sort_by(|left, right| left.path.to_lowercase().cmp(&right.path.to_lowercase()));
 
     Ok(FilesystemSearchListing {
         current_path: normalized_path.to_string_lossy().to_string(),
@@ -226,81 +266,6 @@ pub fn terminal_read_file(request: PathRequest) -> Result<String, String> {
 
     fs::read_to_string(&path)
         .map_err(|error| format!("failed to read '{}': {error}", path.display()))
-}
-
-fn search_directory_entries_recursive(
-    path: &Path,
-    query: &str,
-    allow_hidden: bool,
-    visited_dirs: &mut HashSet<String>,
-) -> Result<Vec<FilesystemSearchEntry>, String> {
-    let canonical_path = path
-        .canonicalize()
-        .map_err(|error| format!("failed to open '{}': {error}", path.display()))?;
-    let canonical_key = canonical_path.to_string_lossy().to_string();
-
-    if !visited_dirs.insert(canonical_key) {
-        return Ok(Vec::new());
-    }
-
-    let mut results = Vec::new();
-
-    for entry in fs::read_dir(&canonical_path)
-        .map_err(|error| format!("failed to read '{}': {error}", canonical_path.display()))?
-        .flatten()
-    {
-        let file_type = match entry.file_type() {
-            Ok(file_type) => file_type,
-            Err(_) => continue,
-        };
-        let entry_path = entry.path();
-        let Some(name) = entry.file_name().to_str().map(str::to_string) else {
-            continue;
-        };
-
-        if name.starts_with('.') && !allow_hidden {
-            continue;
-        }
-
-        let name_matches = name.to_lowercase().contains(query);
-        let path_matches = entry_path
-            .to_string_lossy()
-            .to_lowercase()
-            .contains(query);
-        let is_directory = file_type.is_dir();
-        let is_symlink = file_type.is_symlink();
-
-        if is_directory && !is_symlink {
-            let children = search_directory_entries_recursive(
-                &entry_path,
-                query,
-                allow_hidden,
-                visited_dirs,
-            )?;
-
-            if name_matches || path_matches || !children.is_empty() {
-                results.push(FilesystemSearchEntry {
-                    name,
-                    path: entry_path.to_string_lossy().to_string(),
-                    is_directory: true,
-                    children,
-                });
-            }
-            continue;
-        }
-
-        if name_matches || path_matches {
-            results.push(FilesystemSearchEntry {
-                name,
-                path: entry_path.to_string_lossy().to_string(),
-                is_directory: false,
-                children: Vec::new(),
-            });
-        }
-    }
-
-    results.sort_by(|left, right| left.name.to_lowercase().cmp(&right.name.to_lowercase()));
-    Ok(results)
 }
 
 pub fn terminal_write_file(request: WriteFileRequest) -> Result<(), String> {
@@ -322,6 +287,81 @@ pub fn resolve_request_path(path: Option<String>) -> Result<PathBuf, String> {
         )
         .canonicalize()
         .map_err(|error| format!("failed to resolve path: {error}"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{terminal_list_directory_entries, ListDirectoryEntriesRequest};
+    use std::{fs, time::{SystemTime, UNIX_EPOCH}};
+
+    #[test]
+    fn directory_list_matches_substrings_in_names_and_paths() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time should be after unix epoch")
+            .as_nanos();
+        let temp_root = std::env::temp_dir().join(format!("octomus-dir-search-{unique}"));
+        let nested_dir = temp_root.join("project").join("src");
+        let matching_file = temp_root.join("composer_bar.rs");
+
+        fs::create_dir_all(&nested_dir).expect("nested directory should be created");
+        fs::write(&matching_file, "fn main() {}").expect("matching file should exist");
+
+        let listing = terminal_list_directory_entries(ListDirectoryEntriesRequest {
+            path: Some(temp_root.to_string_lossy().to_string()),
+            query: Some("bar".to_string()),
+            directories_only: Some(false),
+        }).expect("directory listing should succeed");
+
+        assert!(listing.entries.iter().any(|entry| entry.name == "composer_bar.rs"));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn search_listing_matches_nested_directories_and_files() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time should be after unix epoch")
+            .as_nanos();
+        let temp_root = std::env::temp_dir().join(format!("octomus-dir-search-recursive-{unique}"));
+        let nested_dir = temp_root.join("project").join("src");
+        let matching_file = nested_dir.join("composer_bar.rs");
+        let matching_dir = temp_root.join("project").join("bar-folder");
+
+        fs::create_dir_all(&nested_dir).expect("nested directory should be created");
+        fs::create_dir_all(&matching_dir).expect("matching directory should be created");
+        fs::write(&matching_file, "fn main() {}").expect("matching file should exist");
+
+        let listing = super::terminal_search_directory_entries(super::SearchDirectoryEntriesRequest {
+            path: Some(temp_root.to_string_lossy().to_string()),
+            query: "bar".to_string(),
+        }).expect("search listing should succeed");
+
+        let mut found_file = false;
+        let mut found_directory = false;
+
+        fn visit(entries: &[super::FilesystemSearchEntry], found_file: &mut bool, found_directory: &mut bool) {
+            for entry in entries {
+                if entry.name == "composer_bar.rs" {
+                    *found_file = true;
+                }
+
+                if entry.name == "bar-folder" && entry.is_directory {
+                    *found_directory = true;
+                }
+
+                visit(&entry.children, found_file, found_directory);
+            }
+        }
+
+        visit(&listing.entries, &mut found_file, &mut found_directory);
+
+        assert!(found_file);
+        assert!(found_directory);
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
 }
 
 #[cfg(unix)]
