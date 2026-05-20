@@ -6,8 +6,9 @@ import { createConversationId } from '../../utils';
 import { runCommandInSurface } from '../../utils/terminal';
 import { consumeShellModeActivator } from '../../../../../lib';
 import { normalizeCodeSettings } from '../../../../App/settings/codeSettings';
+import { buildAgentSettingsValues, normalizeAgentSettings } from '../../../../App/settings/agentSettings';
 import type { LauncherProps } from '../types';
-import type { CommandApproval, FileChangeApproval } from '../../../../../types';
+import type { CommandApproval } from '../../../../../types';
 import type { FileDiff } from '../../../../../types/diff';
 
 function getFileContentForDiff(diff: FileDiff) {
@@ -20,6 +21,66 @@ function getFileContentForDiff(diff: FileDiff) {
   }
 
   return diff.originalContent ?? '';
+}
+
+function fileChangeVerb(diff: FileDiff) {
+  if (diff.diffType.kind === 'create') return 'Created';
+  if (diff.diffType.kind === 'delete') return 'Deleted';
+  return 'Updated';
+}
+
+function appliedFileChangeBody(diffs: FileDiff[]) {
+  const fileLines = diffs.map((diff) => `- ${fileChangeVerb(diff)} \`${diff.filePath}\``);
+  return [
+    diffs.length === 1
+      ? `${fileChangeVerb(diffs[0])} file \`${diffs[0].filePath}\`.`
+      : `Applied changes across ${diffs.length} files.`,
+    fileLines.length > 1 ? fileLines.join('\n') : ''
+  ].filter(Boolean).join('\n\n');
+}
+
+function appliedFileChangeSummary(diffs: FileDiff[], requestedSummary?: string) {
+  if (diffs.length === 1) {
+    const diff = diffs[0];
+    const verb = fileChangeVerb(diff).toLowerCase();
+    const detail = requestedSummary?.trim()
+      ? ` ${requestedSummary.trim()}`
+      : '';
+    return `Am ${verb} fișierul \`${diff.filePath}\`.${detail}`;
+  }
+
+  return `Am aplicat modificările pentru ${diffs.length} fișiere.`;
+}
+
+function agentContinuationInstruction(kind: 'command' | 'file-change') {
+  if (kind === 'file-change') {
+    return [
+      '[Invisible harness instruction]',
+      'Continue toward the original user goal. If the user asked to run, test, or verify the created/edited file, immediately propose the next verification command with propose_terminal_command. Do not ask whether to rerun it.'
+    ].join('\n');
+  }
+
+  return [
+    '[Invisible harness instruction]',
+    'Continue toward the original user goal. If this command failed and you can fix it, propose_file_change. If you just fixed something and need to confirm it, propose_terminal_command for the verification step. Do not ask whether to continue or rerun unless a real ambiguity blocks progress.'
+  ].join('\n');
+}
+
+function terminalToolResult(command: string, result: { output?: string; block?: { exitCode?: number | null } }) {
+  const exitCode = typeof result.block?.exitCode === 'number' ? result.block.exitCode : null;
+  const output = result.output?.trim() || '(Comanda s-a executat fără output)';
+  const failedByOutput = /\b(?:syntaxerror|traceback|error|failed|fail)\b/i.test(output);
+  const failed = exitCode !== null ? exitCode !== 0 : failedByOutput;
+
+  return [
+    `[Terminal command result]`,
+    `COMMAND: ${command}`,
+    `EXIT_CODE: ${exitCode === null ? 'unknown' : exitCode}`,
+    `STATUS: ${failed ? 'failed' : 'succeeded'}`,
+    `OUTPUT:`,
+    output,
+    agentContinuationInstruction('command')
+  ].join('\n');
 }
 
 function isAbsolutePath(path: string) {
@@ -68,20 +129,8 @@ function openFileDiffsInEditor(diffs: FileDiff[], cwd?: string | null) {
   });
 }
 
-function buildFileChangeRefinePrompt(approval: FileChangeApproval) {
-  const fileList = approval.fileDiffs.map((diff) => `- ${diff.filePath}`).join('\n');
-  return [
-    approval.summary?.trim() || 'Refine the proposed file changes.',
-    fileList ? `Affected files:\n${fileList}` : '',
-    'Please revise the proposal and keep the same intent while improving the implementation.'
-  ].filter(Boolean).join('\n\n');
-}
-
-function buildCommandRefinePrompt(command: string) {
-  return [
-    'Refine the following terminal command so it is safer, clearer, and still solves the same task:',
-    command.trim()
-  ].filter(Boolean).join('\n\n');
+function exactCommandPattern(command: string) {
+  return `^${command.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`;
 }
 
 function isCommandSearchQuery(value: string) {
@@ -293,38 +342,60 @@ export function useLauncherHandlers({
     store.setModeLock(null);
   }, [setResolvedPendingApproval, store.setComposerSurface, store.setModeLock]);
 
-  const handlePendingApprovalRefine = useCallback((approval: CommandApproval) => {
-    setResolvedPendingApproval(null);
-    store.setComposerSurface('agent');
-    store.setModeLock(null);
-
-    if (approval.kind === 'file-change') {
-      void chat.submitQuery(buildFileChangeRefinePrompt(approval));
-      return;
-    }
-
-    if ('command' in approval) {
-      void chat.submitQuery(buildCommandRefinePrompt(approval.command));
-    }
-  }, [chat, setResolvedPendingApproval, store.setComposerSurface, store.setModeLock]);
-
   const handlePendingApprovalEdit = useCallback((approval: CommandApproval) => {
-    setResolvedPendingApproval(null);
-    store.setComposerSurface('agent');
-
     if (approval.kind === 'file-change') {
+      setResolvedPendingApproval(null);
+      store.setComposerSurface('agent');
       store.setModeLock(null);
       openFileDiffsInEditor(approval.fileDiffs, runtime.workingDirectory.currentPath);
       return;
     }
 
     if ('command' in approval) {
-      store.setModeLock('shell');
-      chat.setQuery(approval.command);
+      store.setComposerSurface('agent');
+      store.setModeLock(null);
     }
   }, [
-    chat.setQuery,
     runtime.workingDirectory.currentPath,
+    setResolvedPendingApproval,
+    store.setComposerSurface,
+    store.setModeLock
+  ]);
+
+  const handlePendingApprovalSaveEdit = useCallback((approval: CommandApproval) => {
+    setResolvedPendingApproval(approval);
+    store.setComposerSurface('agent');
+    store.setModeLock(null);
+  }, [setResolvedPendingApproval, store.setComposerSurface, store.setModeLock]);
+
+  const handlePendingApprovalReject = useCallback((approval: CommandApproval) => {
+    setResolvedPendingApproval(null);
+    store.setComposerSurface('agent');
+    store.setModeLock(null);
+
+    const toolCallId = approval.kind === 'topic-change'
+      ? null
+      : approval.toolCallId ?? resolvedPendingApproval?.toolCallId ?? null;
+    if (!toolCallId) {
+      return;
+    }
+
+    const label = approval.kind === 'file-change'
+      ? approval.summary
+      : 'command' in approval
+        ? approval.command
+        : undefined;
+    void chat.submitToolResult(
+      toolCallId,
+      approval.kind === 'file-change'
+        ? 'The user rejected the proposed file changes.'
+        : 'The user rejected the proposed command. Do not run it; suggest a safer alternative if needed.',
+      'command',
+      label
+    );
+  }, [
+    chat.submitToolResult,
+    resolvedPendingApproval?.toolCallId,
     setResolvedPendingApproval,
     store.setComposerSurface,
     store.setModeLock
@@ -341,7 +412,6 @@ export function useLauncherHandlers({
           });
         }
 
-        const appliedFiles = approval.fileDiffs.map((diff) => `- ${diff.filePath}`).join('\n');
         const toolCallId = approval.toolCallId ?? resolvedPendingApproval?.toolCallId;
 
         setResolvedPendingApproval(null);
@@ -352,17 +422,24 @@ export function useLauncherHandlers({
           openFileDiffsInEditor(approval.fileDiffs, runtime.workingDirectory.currentPath);
         }
 
-        if (toolCallId) {
-          void chat.submitToolResult(
-            toolCallId,
-            [
-              'Applied file changes successfully.',
-              appliedFiles ? `Files:\n${appliedFiles}` : ''
-            ].filter(Boolean).join('\n\n'),
-            'command',
-            approval.summary
-          );
-        }
+        void chat.submitToolResult(
+          toolCallId ?? `local-file-change-${Date.now()}`,
+          [
+            'Applied file changes successfully.',
+            appliedFileChangeBody(approval.fileDiffs),
+            agentContinuationInstruction('file-change')
+          ].filter(Boolean).join('\n\n'),
+          'file-change',
+          approval.summary,
+          undefined,
+          {
+            fileDiffs: approval.fileDiffs,
+            deferFollowUp: !toolCallId,
+            localAssistantSummary: !toolCallId
+              ? appliedFileChangeSummary(approval.fileDiffs, approval.summary)
+              : undefined
+          }
+        );
       } catch (error) {
         console.error('[Launcher] Failed to apply file changes:', error);
       }
@@ -386,7 +463,7 @@ export function useLauncherHandlers({
       if (toolCallId && result) {
         void chat.submitToolResult(
           toolCallId,
-          result.output || '(Comanda s-a executat fără output)',
+          terminalToolResult(approval.command, result),
           'command',
           approval.command
         );
@@ -407,8 +484,27 @@ export function useLauncherHandlers({
   ]);
 
   const handlePendingApprovalAutoApprove = useCallback((approval: CommandApproval) => {
+    if ('command' in approval) {
+      const agentSettings = normalizeAgentSettings(memoryStore.settings?.values);
+      const activeProfile = agentSettings.profiles.find((profile: any) => profile.id === agentSettings.activeProfileId)
+        ?? agentSettings.profiles[0];
+      const command = approval.command.trim();
+      const pattern = command ? exactCommandPattern(command) : '';
+      if (activeProfile && pattern && !activeProfile.commandAllowlist.includes(pattern)) {
+        void saveSettings(buildAgentSettingsValues({
+          ...agentSettings,
+          profiles: agentSettings.profiles.map((profile: any) => profile.id === activeProfile.id
+            ? {
+                ...profile,
+                commandAllowlist: [...profile.commandAllowlist, pattern]
+              }
+            : profile)
+        }), true);
+      }
+    }
+
     void handlePendingApprovalAccept(approval);
-  }, [handlePendingApprovalAccept]);
+  }, [handlePendingApprovalAccept, memoryStore.settings?.values, saveSettings]);
 
   const handleTerminalQueryChange = useCallback((value: string) => {
     chat.setQuery(value);
@@ -524,8 +620,9 @@ export function useLauncherHandlers({
     handleNewConversation,
     handlePendingTopicChangeStartNewConversation,
     handlePendingTopicChangeContinueConversation,
-    handlePendingApprovalRefine,
     handlePendingApprovalEdit,
+    handlePendingApprovalSaveEdit,
+    handlePendingApprovalReject,
     handlePendingApprovalAccept,
     handlePendingApprovalAutoApprove,
     handleTerminalQueryChange,

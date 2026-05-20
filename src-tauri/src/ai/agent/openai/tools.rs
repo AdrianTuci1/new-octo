@@ -256,7 +256,51 @@ pub(super) fn build_tool_definitions() -> Value {
                                     },
                                     "diffType": {
                                         "type": "object",
-                                        "description": "Diff object. For new files use { kind: 'create', delta: { replacement_line_range: { start: 1, end: 1 }, insertion: 'full file content' } }. For edits use kind 'update' with deltas."
+                                        "description": "Diff object. For new files use kind=create with one delta. For edits use kind=update with deltas.",
+                                        "properties": {
+                                            "kind": {
+                                                "type": "string",
+                                                "enum": ["create", "update", "delete"]
+                                            },
+                                            "delta": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "replacement_line_range": {
+                                                        "type": "object",
+                                                        "properties": {
+                                                            "start": { "type": "number" },
+                                                            "end": { "type": "number" }
+                                                        },
+                                                        "required": ["start", "end"]
+                                                    },
+                                                    "insertion": {
+                                                        "type": "string",
+                                                        "description": "Full file content for create/delete, or replacement text for a single delta."
+                                                    }
+                                                },
+                                                "required": ["replacement_line_range", "insertion"]
+                                            },
+                                            "deltas": {
+                                                "type": "array",
+                                                "items": {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "replacement_line_range": {
+                                                            "type": "object",
+                                                            "properties": {
+                                                                "start": { "type": "number" },
+                                                                "end": { "type": "number" }
+                                                            },
+                                                            "required": ["start", "end"]
+                                                        },
+                                                        "insertion": { "type": "string" }
+                                                    },
+                                                    "required": ["replacement_line_range", "insertion"]
+                                                }
+                                            },
+                                            "rename": { "type": "string" }
+                                        },
+                                        "required": ["kind"]
                                     },
                                     "originalContent": {
                                         "type": "string",
@@ -280,6 +324,59 @@ pub(super) fn build_tool_definitions() -> Value {
                         }
                     },
                     "required": ["fileDiffs"]
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "propose_mcp_server",
+                "description": "Propose an MCP server configuration when the user asks to add or connect an MCP server. Use this only when you have enough concrete details to configure it; otherwise ask a concise clarification in visible text about transport, CLI command or SSE URL, and required env tokens.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "name": {
+                            "type": "string",
+                            "description": "Short display name for the MCP server."
+                        },
+                        "transport": {
+                            "type": "string",
+                            "enum": ["cli", "sse"],
+                            "description": "Use cli for local stdio/command servers and sse for remote HTTP SSE servers."
+                        },
+                        "command": {
+                            "type": "string",
+                            "description": "CLI executable or command for stdio MCP servers, such as npx, uvx, python, node, or a local binary."
+                        },
+                        "args": {
+                            "type": "array",
+                            "items": { "type": "string" },
+                            "description": "CLI arguments, one item per argument. Do not include secrets here."
+                        },
+                        "url": {
+                            "type": "string",
+                            "description": "HTTP or HTTPS endpoint for SSE MCP servers."
+                        },
+                        "env": {
+                            "type": "object",
+                            "additionalProperties": { "type": "string" },
+                            "description": "Environment variables needed by the server. Use placeholder values like YOUR_GITHUB_TOKEN when the user has not provided secrets."
+                        },
+                        "headers": {
+                            "type": "object",
+                            "additionalProperties": { "type": "string" },
+                            "description": "HTTP headers for remote MCP servers. Use placeholder values for secrets. Prefer OAuth/mcp-remote when the server requires interactive auth."
+                        },
+                        "description": {
+                            "type": "string",
+                            "description": "One short sentence explaining what capability this MCP server adds."
+                        },
+                        "reason": {
+                            "type": "string",
+                            "description": "A short Romanian sentence explaining why this server should be added."
+                        }
+                    },
+                    "required": ["name", "transport"]
                 }
             }
         },

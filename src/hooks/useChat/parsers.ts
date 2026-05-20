@@ -1,4 +1,5 @@
 import type { ChatMessage, ExecutionPlanArtifact, ExecutionPlanStep, ExecutionPlanWorkstream } from '../../types/chat';
+import type { FileChangeApproval } from '../../types/terminal';
 import { FOLLOW_UP_START, FOLLOW_UP_END } from './helpers';
 
 export function stripThinkingBlocks(value: string) {
@@ -13,10 +14,25 @@ export function stripThinkingBlocks(value: string) {
   return stripped.replace(/[ \t]{2,}/g, ' ').trim();
 }
 
+export function stripHarnessProtocolArtifacts(value: string) {
+  return value
+    .replace(/<\|channel\>\s*thought(?!plan)\s*<\s*channel\|\s*>/gi, ' ')
+    .replace(/<\|channel\>\s*thought(?!plan)\s*<\|channel\|>/gi, ' ')
+    .replace(/<\|channel\>\s*(?:thought|analysis|reasoning)(?!plan)\b\s*/gi, ' ')
+    .replace(/<\|channel\>\s*(?:final|assistant|answer)\b\s*/gi, ' ')
+    .replace(/<\|(?:message|end|channel)\|>/gi, ' ')
+    .replace(/<\s*channel\|\s*>/gi, ' ')
+    .replace(/<tool_call\|>/gi, ' ')
+    .replace(/[ \t]{2,}/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
 export function visibleChatMessageBody(value: string) {
   const withoutFollowUp = extractFollowUpSuggestion(value).visibleBody;
   const withoutInlinePlan = extractInlinePlanArtifact(withoutFollowUp).visibleBody;
-  return stripThinkingBlocks(withoutInlinePlan);
+  const withoutInlineFileChange = extractInlineFileChangeApproval(withoutInlinePlan).visibleBody;
+  return stripHarnessProtocolArtifacts(stripThinkingBlocks(withoutInlineFileChange));
 }
 
 export function followUpSuggestionFromMessageBody(value: string) {
@@ -53,7 +69,9 @@ export function normalizeToolFollowUpSuggestion(args: any): ChatMessage['followU
     : undefined;
 
   return {
-    label: value,
+    label: typeof args?.label === 'string' && args.label.trim()
+      ? args.label.trim()
+      : value,
     value,
     description: description || undefined,
     confidence
@@ -148,9 +166,280 @@ export function extractRobustJsonFollowUpSuggestion(raw: string) {
   return null;
 }
 
+function findBalancedCallEnd(raw: string, openParenIndex: number) {
+  let depth = 0;
+  let quote: '"' | "'" | null = null;
+  let escaped = false;
+
+  for (let index = openParenIndex; index < raw.length; index += 1) {
+    const character = raw[index];
+
+    if (quote) {
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (character === '\\') {
+        escaped = true;
+        continue;
+      }
+      if (character === quote) {
+        quote = null;
+      }
+      continue;
+    }
+
+    if (character === '"' || character === "'") {
+      quote = character;
+      continue;
+    }
+    if (character === '(') {
+      depth += 1;
+      continue;
+    }
+    if (character === ')') {
+      depth -= 1;
+      if (depth === 0) {
+        return index;
+      }
+    }
+  }
+
+  return -1;
+}
+
+function parseLegacyFunctionArgs(payload: string) {
+  const args: Record<string, string | number | boolean> = {};
+  const argumentPattern = /([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(?:"((?:\\.|[^"\\])*)"|'((?:\\.|[^'\\])*)'|([+-]?(?:\d+\.?\d*|\.\d+)|true|false))/gi;
+
+  for (const match of payload.matchAll(argumentPattern)) {
+    const key = match[1];
+    const quotedValue = match[2] ?? match[3];
+    const rawValue = match[4];
+
+    if (quotedValue !== undefined) {
+      args[key] = quotedValue.replace(/\\(["'\\])/g, '$1');
+      continue;
+    }
+
+    if (rawValue?.toLowerCase() === 'true' || rawValue?.toLowerCase() === 'false') {
+      args[key] = rawValue.toLowerCase() === 'true';
+      continue;
+    }
+
+    const numericValue = Number(rawValue);
+    if (Number.isFinite(numericValue)) {
+      args[key] = numericValue;
+    }
+  }
+
+  return args;
+}
+
+function pendingLegacyFollowUpPrefixLength(value: string) {
+  const prefixes = ['<tool_call|>suggest_follow_up(', 'suggest_follow_up('];
+  let bestLength = 0;
+
+  for (const prefix of prefixes) {
+    const maxLength = Math.min(value.length, prefix.length - 1);
+    for (let length = maxLength; length > 0; length -= 1) {
+      if (prefix.toLowerCase().startsWith(value.slice(value.length - length).toLowerCase())) {
+        bestLength = Math.max(bestLength, length);
+        break;
+      }
+    }
+  }
+
+  return bestLength;
+}
+
+function extractLegacyFunctionFollowUpSuggestion(raw: string) {
+  const markerMatch = /(?:<tool_call\|>\s*)?suggest_follow_up\s*\(/i.exec(raw);
+  if (!markerMatch) {
+    const pendingLength = pendingLegacyFollowUpPrefixLength(raw);
+    if (pendingLength === 0) {
+      return null;
+    }
+
+    return {
+      visibleBody: raw.slice(0, raw.length - pendingLength).trimEnd(),
+      pendingPayload: raw.slice(raw.length - pendingLength),
+      suggestion: undefined as ChatMessage['followUpSuggestion'] | undefined
+    };
+  }
+
+  const startIndex = markerMatch.index;
+  const openParenIndex = raw.indexOf('(', startIndex);
+  const endIndex = findBalancedCallEnd(raw, openParenIndex);
+  if (endIndex < 0) {
+    return {
+      visibleBody: stripFollowUpBoilerplate(raw.slice(0, startIndex).trimEnd()),
+      pendingPayload: raw.slice(startIndex),
+      suggestion: undefined as ChatMessage['followUpSuggestion'] | undefined
+    };
+  }
+
+  const beforeCall = raw.slice(0, startIndex).replace(/<tool_call\|>\s*$/i, '').trimEnd();
+  const afterCall = raw.slice(endIndex + 1).trimStart();
+  const visibleBody = stripFollowUpBoilerplate(
+    [beforeCall, afterCall].filter(Boolean).join('\n\n').trimEnd()
+  );
+
+  return {
+    visibleBody,
+    pendingPayload: '',
+    suggestion: normalizeToolFollowUpSuggestion(parseLegacyFunctionArgs(raw.slice(openParenIndex + 1, endIndex)))
+  };
+}
+
+function findPseudoToolObjectEnd(raw: string, braceIndex: number) {
+  let depth = 0;
+  let insidePseudoQuote = false;
+  let quote: '"' | "'" | null = null;
+  let escaped = false;
+
+  for (let index = braceIndex; index < raw.length; index += 1) {
+    if (raw.startsWith('<|"|>', index)) {
+      insidePseudoQuote = !insidePseudoQuote;
+      index += '<|"|>'.length - 1;
+      continue;
+    }
+
+    const character = raw[index];
+
+    if (insidePseudoQuote) {
+      continue;
+    }
+
+    if (quote) {
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (character === '\\') {
+        escaped = true;
+        continue;
+      }
+      if (character === quote) {
+        quote = null;
+      }
+      continue;
+    }
+
+    if (character === '"' || character === "'") {
+      quote = character;
+      continue;
+    }
+    if (character === '{') {
+      depth += 1;
+      continue;
+    }
+    if (character === '}') {
+      depth -= 1;
+      if (depth === 0) {
+        return index;
+      }
+    }
+  }
+
+  return -1;
+}
+
+function extractPseudoStringValue(payload: string, key: string) {
+  const keyIndex = payload.search(new RegExp(`${key}\\s*:`, 'i'));
+  if (keyIndex < 0) return '';
+
+  const afterKey = payload.slice(keyIndex).replace(new RegExp(`^${key}\\s*:`, 'i'), '').trimStart();
+  if (afterKey.startsWith('<|"|>')) {
+    const valueStart = '<|"|>'.length;
+    const valueEnd = afterKey.indexOf('<|"|>', valueStart);
+    return valueEnd >= 0 ? afterKey.slice(valueStart, valueEnd) : afterKey.slice(valueStart);
+  }
+
+  const quotedMatch = afterKey.match(/^"((?:\\.|[^"\\])*)"/) ?? afterKey.match(/^'((?:\\.|[^'\\])*)'/);
+  if (quotedMatch?.[1]) {
+    return quotedMatch[1].replace(/\\(["'\\])/g, '$1');
+  }
+
+  const bareMatch = afterKey.match(/^([^,}\]]+)/);
+  return bareMatch?.[1]?.trim() ?? '';
+}
+
+function extractPseudoNumberValue(payload: string, key: string) {
+  const match = payload.match(new RegExp(`${key}\\s*:\\s*(\\d+)`, 'i'));
+  return match?.[1] ? Number(match[1]) : undefined;
+}
+
+function normalizePseudoQuotedText(value: string) {
+  return value
+    .replace(/<\|"\|>/g, '"')
+    .replace(/\r\n/g, '\n')
+    .trim();
+}
+
+export function extractInlineFileChangeApproval(raw: string) {
+  const markerMatch = /(?:<tool_call\|>\s*)?propose_file_change\s*\{/i.exec(raw);
+  if (!markerMatch) {
+    return {
+      visibleBody: raw,
+      pendingPayload: '',
+      approval: undefined as FileChangeApproval | undefined
+    };
+  }
+
+  const startIndex = markerMatch.index;
+  const braceIndex = raw.indexOf('{', startIndex);
+  const objectEnd = findPseudoToolObjectEnd(raw, braceIndex);
+  if (objectEnd < 0) {
+    return {
+      visibleBody: raw.slice(0, startIndex).trimEnd(),
+      pendingPayload: raw.slice(startIndex),
+      approval: undefined as FileChangeApproval | undefined
+    };
+  }
+
+  const payload = raw.slice(braceIndex, objectEnd + 1);
+  const filePath = normalizePseudoQuotedText(extractPseudoStringValue(payload, 'filePath'));
+  const insertion = normalizePseudoQuotedText(extractPseudoStringValue(payload, 'insertion'));
+  const summary = normalizePseudoQuotedText(extractPseudoStringValue(payload, 'summary'));
+  const kind: 'create' | 'delete' = normalizePseudoQuotedText(extractPseudoStringValue(payload, 'kind')) === 'delete'
+    ? 'delete'
+    : 'create';
+  const start = extractPseudoNumberValue(payload, 'start') ?? 1;
+  const end = extractPseudoNumberValue(payload, 'end') ?? 1;
+  const trailing = raw.slice(objectEnd + 1).trimStart();
+  const visibleBody = [raw.slice(0, startIndex).trimEnd(), trailing].filter(Boolean).join('\n\n').trimEnd();
+
+  return {
+    visibleBody,
+    pendingPayload: '',
+    approval: filePath && (insertion || kind === 'delete')
+      ? {
+          kind: 'file-change' as const,
+          summary: summary || undefined,
+          fileDiffs: [{
+            filePath,
+            diffType: {
+              kind,
+              delta: {
+                replacement_line_range: { start, end },
+                insertion
+              }
+            }
+          }]
+        }
+      : undefined
+  };
+}
+
 export function extractFollowUpSuggestion(raw: string) {
   const startIndex = raw.indexOf(FOLLOW_UP_START);
   if (startIndex < 0) {
+    const legacyFunctionCall = extractLegacyFunctionFollowUpSuggestion(raw);
+    if (legacyFunctionCall) {
+      return legacyFunctionCall;
+    }
+
     const robustJson = extractRobustJsonFollowUpSuggestion(raw);
     if (robustJson) {
       return robustJson;
@@ -306,6 +595,15 @@ function findInlinePlanMarker(raw: string) {
       startIndex: plainMarker,
       braceIndex: raw.indexOf('{', plainMarker),
       markerLength: 'thoughtplan'.length
+    };
+  }
+
+  const legacyToolMarker = raw.search(/(?:<tool_call\|>\s*)?propose_plan\s*\{/i);
+  if (legacyToolMarker >= 0) {
+    return {
+      startIndex: legacyToolMarker,
+      braceIndex: raw.indexOf('{', legacyToolMarker),
+      markerLength: raw.indexOf('{', legacyToolMarker) - legacyToolMarker
     };
   }
 

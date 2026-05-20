@@ -22,6 +22,15 @@ export type TerminalSessionInfo = {
   profileId?: string | null;
 };
 
+export type TerminalSessionTarget = {
+  kind?: TerminalSessionKind;
+  provider?: TerminalSessionProvider;
+  profileId?: string | null;
+  host?: string | null;
+  username?: string | null;
+  connectionMethod?: string | null;
+};
+
 export type TerminalDataEvent = {
   sessionId: string;
   data: number[];

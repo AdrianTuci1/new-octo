@@ -1,17 +1,9 @@
 import type { MemorySettingsValues } from '../../../types/memory';
 
-export type CodeIndexedFolder = {
-  id: string;
-  path: string;
-  status: 'indexed' | 'queued' | 'disabled';
-  lastIndexedAt: string;
-};
-
 export type CodeSettings = {
   indexing: {
     enabled: boolean;
     indexNewFoldersByDefault: boolean;
-    indexedFolders: CodeIndexedFolder[];
   };
   editor: {
     fileLinksEditor: 'Default App' | 'Warp';
@@ -30,8 +22,7 @@ export type CodeSettings = {
 export const DEFAULT_CODE_SETTINGS: CodeSettings = {
   indexing: {
     enabled: true,
-    indexNewFoldersByDefault: false,
-    indexedFolders: []
+    indexNewFoldersByDefault: false
   },
   editor: {
     fileLinksEditor: 'Default App',
@@ -59,33 +50,15 @@ function stringValue<T extends string>(value: unknown, allowed: readonly T[], fa
   return typeof value === 'string' && allowed.includes(value as T) ? value as T : fallback;
 }
 
-function normalizeIndexedFolder(value: unknown, index: number): CodeIndexedFolder | null {
-  const record = isRecord(value) ? value : null;
-  if (!record || typeof record.path !== 'string' || record.path.trim().length === 0) {
-    return null;
-  }
-
-  return {
-    id: typeof record.id === 'string' && record.id.trim().length > 0 ? record.id : `indexed_${index}`,
-    path: record.path,
-    status: stringValue(record.status, ['indexed', 'queued', 'disabled'] as const, 'indexed'),
-    lastIndexedAt: typeof record.lastIndexedAt === 'string' ? record.lastIndexedAt : new Date().toISOString()
-  };
-}
-
 export function normalizeCodeSettings(values?: MemorySettingsValues | null): CodeSettings {
   const rawCode = isRecord(values?.code) ? values.code : {};
   const rawIndexing = isRecord(rawCode.indexing) ? rawCode.indexing : {};
   const rawEditor = isRecord(rawCode.editor) ? rawCode.editor : {};
-  const rawIndexedFolders = Array.isArray(rawIndexing.indexedFolders) ? rawIndexing.indexedFolders : [];
 
   return {
     indexing: {
       enabled: booleanValue(rawIndexing.enabled, DEFAULT_CODE_SETTINGS.indexing.enabled),
-      indexNewFoldersByDefault: booleanValue(rawIndexing.indexNewFoldersByDefault, DEFAULT_CODE_SETTINGS.indexing.indexNewFoldersByDefault),
-      indexedFolders: rawIndexedFolders
-        .map(normalizeIndexedFolder)
-        .filter((folder): folder is CodeIndexedFolder => Boolean(folder))
+      indexNewFoldersByDefault: booleanValue(rawIndexing.indexNewFoldersByDefault, DEFAULT_CODE_SETTINGS.indexing.indexNewFoldersByDefault)
     },
     editor: {
       fileLinksEditor: stringValue(rawEditor.fileLinksEditor, ['Default App', 'Warp'] as const, DEFAULT_CODE_SETTINGS.editor.fileLinksEditor),

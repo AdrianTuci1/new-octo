@@ -1,7 +1,10 @@
 import './WorkspaceTopbar.css';
+import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { ChevronDown, ChevronRight, Cloud, GitBranch, Inbox, LayoutGrid, PanelLeftOpen, Plus, Search, Server, Sparkles, TerminalSquare } from 'lucide-react';
+import { ChevronDown, ChevronRight, Cloud, GitBranch, LayoutGrid, Minus, PanelLeftOpen, Plus, Search, Server, Sparkles, TerminalSquare } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useUIStore } from '../../../stores';
+import type { GitWorktreeDiff } from '../../../types/gitDiff';
 import { ProfileAvatar } from '../profile/ProfileAvatar';
 import { useProfileSettings } from '../settings/useProfileSettings';
 import type { WorkspaceChromeTab } from './workspaceChromeTypes';
@@ -12,7 +15,7 @@ import type { LucideIcon } from 'lucide-react';
 type PlusMenuItem = {
   id: 'agent' | 'terminal' | 'cloud-term' | 'my-tab-config' | 'named-tab-config' | 'worktree-config' | 'tab-config';
   label: string;
-  action: 'new-terminal' | 'open-cloud-settings' | 'none';
+  action: 'new-terminal' | 'new-cloud-terminal' | 'none';
   shortcut?: string;
   icon: LucideIcon;
   hasChevron?: boolean;
@@ -35,7 +38,7 @@ const PLUS_MENU_ITEMS: PlusMenuItem[] = [
   {
     id: 'cloud-term',
     label: 'Cloud term',
-    action: 'open-cloud-settings',
+    action: 'new-cloud-terminal',
     icon: Cloud
   },
   {
@@ -71,11 +74,13 @@ type WorkspaceTopbarProps = {
   activeTabId: string;
   launcherTabId: string | null;
   tabs: WorkspaceChromeTab[];
+  activeWorkingDirectory: string | null;
   onBringTabInLauncher: (tabId: string) => void;
   onCloseOtherTabs: (tabId: string) => void;
   onCloseTabsToRight: (tabId: string) => void;
   onSelectTab: (tabId: string) => void;
   onNewTerminalTab: () => void;
+  onNewCloudTerminalTab: () => void;
   onCloseTab: (tabId: string) => void;
   onMoveTab: (tabId: string, direction: 'left' | 'right') => void;
   onRemoveTabFromLauncher: (tabId: string) => void;
@@ -94,11 +99,13 @@ export function WorkspaceTopbar({
   activeTabId,
   launcherTabId,
   tabs,
+  activeWorkingDirectory,
   onBringTabInLauncher,
   onCloseOtherTabs,
   onCloseTabsToRight,
   onSelectTab,
   onNewTerminalTab,
+  onNewCloudTerminalTab,
   onCloseTab,
   onMoveTab,
   onRemoveTabFromLauncher,
@@ -115,7 +122,10 @@ export function WorkspaceTopbar({
   const headerRef = useRef<HTMLElement | null>(null);
   const dragSpacerRef = useRef<HTMLDivElement | null>(null);
   const { profile } = useProfileSettings();
+  const isCodeReviewDrawerOpen = useUIStore((state) => state.isCodeReviewDrawerOpen);
+  const toggleCodeReviewDrawer = useUIStore((state) => state.toggleCodeReviewDrawer);
   const [menuState, setMenuState] = useState<{ tabId: string; left: number; top: number } | null>(null);
+  const [gitDiffSummary, setGitDiffSummary] = useState<GitWorktreeDiff | null>(null);
 
   const menuTab = useMemo(
     () => tabs.find((tab) => tab.id === menuState?.tabId) ?? null,
@@ -143,6 +153,41 @@ export function WorkspaceTopbar({
     element.addEventListener('mousedown', onMouseDown);
     return () => element.removeEventListener('mousedown', onMouseDown);
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const refreshDiffSummary = async () => {
+      if (!activeWorkingDirectory) {
+        setGitDiffSummary(null);
+        return;
+      }
+
+      try {
+        const summary = await invoke<GitWorktreeDiff>('terminal_get_worktree_diff', {
+          request: { path: activeWorkingDirectory, includePatch: false }
+        });
+        if (!cancelled) {
+          setGitDiffSummary(summary);
+        }
+      } catch {
+        if (!cancelled) {
+          setGitDiffSummary(null);
+        }
+      }
+    };
+
+    void refreshDiffSummary();
+    const handleFocus = () => void refreshDiffSummary();
+    const intervalId = window.setInterval(() => void refreshDiffSummary(), 8000);
+    window.addEventListener('focus', handleFocus);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, [activeWorkingDirectory]);
 
   useEffect(() => {
     if (!menuState) {
@@ -250,9 +295,9 @@ export function WorkspaceTopbar({
       return;
     }
 
-    if (item.action === 'open-cloud-settings') {
+    if (item.action === 'new-cloud-terminal') {
       setPlusMenuState(null);
-      onOpenSettingsSection('cloud-platform/cloud');
+      onNewCloudTerminalTab();
       return;
     }
 
@@ -483,8 +528,22 @@ export function WorkspaceTopbar({
       )}
 
       <div className="workspace-topbar-right workspace-topbar-right-compact">
-        <button className="workspace-topbar-icon-button" type="button" title="Notifications">
-          <Inbox size={16} strokeWidth={1.8} />
+        <button
+          className={`workspace-topbar-icon-button workspace-topbar-diff-button ${isCodeReviewDrawerOpen ? 'active' : ''}`}
+          type="button"
+          title="Code review"
+          onClick={toggleCodeReviewDrawer}
+        >
+          <span className="workspace-topbar-diff-mark" aria-hidden="true">
+            <Plus size={13} strokeWidth={2.4} />
+            <Minus size={13} strokeWidth={2.4} />
+          </span>
+          {gitDiffSummary?.isRepo ? (
+            <span className="workspace-topbar-diff-stats">
+              <span className="workspace-topbar-diff-additions">+{gitDiffSummary.additions}</span>
+              <span className="workspace-topbar-diff-deletions">-{gitDiffSummary.deletions}</span>
+            </span>
+          ) : null}
         </button>
         <button
           className="workspace-topbar-avatar-button"

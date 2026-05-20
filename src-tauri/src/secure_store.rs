@@ -1,6 +1,68 @@
-use std::process::{Command, Stdio};
+use std::process::Command;
+
+use serde::{Deserialize, Serialize};
 
 const SERVICE_NAME: &str = "octomus.ai-provider";
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CloudProfileSecretRequest {
+    pub account: String,
+    pub secret: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CloudProfileSecretStatusRequest {
+    pub account: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CloudProfileSecretStatus {
+    pub account: String,
+    pub exists: bool,
+}
+
+#[tauri::command]
+pub fn cloud_store_profile_secret(request: CloudProfileSecretRequest) -> Result<(), String> {
+    let account = request.account.trim();
+    if account.is_empty() {
+        return Err("cloud secret account cannot be empty".to_string());
+    }
+    if request.secret.trim().is_empty() {
+        return Err("cloud secret cannot be empty".to_string());
+    }
+
+    store_secret(account, &request.secret)
+}
+
+#[tauri::command]
+pub fn cloud_profile_secret_status(
+    request: CloudProfileSecretStatusRequest,
+) -> Result<CloudProfileSecretStatus, String> {
+    let account = request.account.trim();
+    if account.is_empty() {
+        return Err("cloud secret account cannot be empty".to_string());
+    }
+
+    Ok(CloudProfileSecretStatus {
+        account: account.to_string(),
+        exists: load_secret(account)?.is_some(),
+    })
+}
+
+#[tauri::command]
+pub fn cloud_delete_profile_secret(
+    request: CloudProfileSecretStatusRequest,
+) -> Result<bool, String> {
+    let account = request.account.trim();
+    if account.is_empty() {
+        return Err("cloud secret account cannot be empty".to_string());
+    }
+
+    delete_secret(account)
+}
 
 pub fn store_secret(account: &str, secret: &str) -> Result<(), String> {
     #[cfg(target_os = "macos")]
@@ -147,9 +209,9 @@ fn store_secret_linux(account: &str, secret: &str) -> Result<(), String> {
             "account",
             account,
         ])
-        .stdin(Stdio::piped())
-        .stdout(Stdio::null())
-        .stderr(Stdio::piped())
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::piped())
         .spawn()
         .map_err(|error| format!("failed to invoke secret-tool: {error}"))?;
 

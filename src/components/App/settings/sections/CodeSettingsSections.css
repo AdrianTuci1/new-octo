@@ -81,6 +81,11 @@
   background: rgba(255, 255, 255, 0.05);
 }
 
+.code-outline-action:disabled {
+  opacity: 0.48;
+  cursor: default;
+}
+
 .code-outline-action svg {
   color: var(--text-main);
 }
@@ -89,6 +94,85 @@
   margin: 28px 0 0;
   color: var(--text-main);
   font-size: 16px;
+}
+
+.code-empty-copy.compact {
+  margin-top: 12px;
+  color: rgba(255, 255, 255, 0.58);
+  font-size: 13px;
+}
+
+.code-index-search {
+  height: 38px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 18px;
+  padding: 0 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.03);
+  color: rgba(255, 255, 255, 0.54);
+}
+
+.code-index-search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--text-main);
+  font: inherit;
+  font-size: 14px;
+}
+
+.code-index-search input:disabled {
+  cursor: default;
+}
+
+.code-index-search-results {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  margin-top: 14px;
+}
+
+.code-index-search-title {
+  color: rgba(255, 255, 255, 0.56);
+  font-size: 12px;
+}
+
+.code-index-search-result {
+  padding: 11px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.code-index-result-path {
+  color: var(--text-main);
+  font-size: 13px;
+  font-family: var(--font-mono, monospace);
+}
+
+.code-index-result-meta,
+.code-index-result-snippet {
+  margin-top: 5px;
+  color: rgba(255, 255, 255, 0.52);
+  font-size: 12px;
+}
+
+.code-index-result-snippet {
+  max-width: 900px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.code-index-error {
+  margin-top: 12px;
+  color: #ff8a66;
+  font-size: 13px;
 }
 
 .code-indexed-folder-list {
@@ -133,10 +217,24 @@
   color: rgba(255, 255, 255, 0.58);
   font-size: 13px;
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .code-folder-remove:hover {
   color: var(--text-main);
+}
+
+.code-folder-remove:disabled {
+  opacity: 0.42;
+  cursor: default;
+}
+
+.code-index-folder-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 
 .code-editor-panel .settings-panel-header h1 {
@@ -221,5 +319,9 @@
 
   .code-indexed-folder-path {
     max-width: 100%;
+  }
+
+  .code-index-folder-actions {
+    width: 100%;
   }
 }

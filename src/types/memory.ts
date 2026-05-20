@@ -1,5 +1,5 @@
 import type { ChatMessage } from './chat';
-import type { CommandApproval, TerminalBlockSharedMeta, TerminalCommandBlock } from './terminal';
+import type { CommandApproval, TerminalBlockSharedMeta, TerminalCommandBlock, TerminalSessionTarget } from './terminal';
 import type {
   WorkspaceChromeTab,
   WorkspaceConversation,
@@ -57,6 +57,8 @@ export type MemoryWorkspaceSnapshot = {
     workingDirectory?: string | null;
     terminalSessionId?: string | null;
     agentTerminalSessionId?: string | null;
+    terminalTarget?: TerminalSessionTarget | null;
+    agentTerminalTarget?: TerminalSessionTarget | null;
     pendingApproval?: CommandApproval | null;
     terminalBlockMetaById?: Record<string, TerminalBlockSharedMeta>;
     agentTerminalBlockMetaById?: Record<string, TerminalBlockSharedMeta>;

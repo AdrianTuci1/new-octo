@@ -33,6 +33,7 @@
     "plan_execution",
     "propose_terminal_command",
     "propose_file_change",
+    "propose_mcp_server",
     "suggest_follow_up"
   ],
   "stages": [
@@ -201,6 +202,7 @@
         "plan_execution",
         "propose_terminal_command",
         "propose_file_change",
+        "propose_mcp_server",
         "suggest_follow_up"
       ],
       "allowedDecisions": [
@@ -230,6 +232,13 @@
           "type": "emit_tool_call",
           "tool": "propose_file_change",
           "description": "Use for file creation or edits instead of heredocs or raw file dumps."
+        },
+        {
+          "id": "propose-mcp-server",
+          "actor": "model",
+          "type": "emit_tool_call",
+          "tool": "propose_mcp_server",
+          "description": "Use when the user asks to add a concrete MCP server configuration."
         },
         {
           "id": "attach-follow-up",
@@ -311,12 +320,14 @@
         "approved command",
         "approved file diff",
         "web search request",
+        "MCP server proposal",
         "tool call id"
       ],
       "allowedTools": [
         "lookup_web",
         "propose_terminal_command",
-        "propose_file_change"
+        "propose_file_change",
+        "propose_mcp_server"
       ],
       "allowedDecisions": [
         {
@@ -336,6 +347,12 @@
           "actor": "frontend",
           "type": "transition",
           "description": "Apply the approved file diff and surface the resulting file state back to the conversation."
+        },
+        {
+          "id": "write-mcp-config",
+          "actor": "frontend",
+          "type": "transition",
+          "description": "Save the proposed MCP server into the local Octomus MCP config."
         },
         {
           "id": "capture-tool-result",
@@ -379,6 +396,7 @@
         "lookup_web",
         "propose_terminal_command",
         "propose_file_change",
+        "propose_mcp_server",
         "suggest_follow_up"
       ],
       "allowedDecisions": [

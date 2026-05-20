@@ -1,18 +1,45 @@
+import { invoke } from '@tauri-apps/api/core';
 import { X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
-import { useUIStore } from '../../../stores';
+import { useMemoryStore, useUIStore } from '../../../stores';
 import { DrawerHeader } from '../drawers/DrawerHeader';
-import { defaultCloudProfiles, type CloudConnectionMethod, type CloudProviderId } from './cloudProfiles';
+import {
+  buildCloudProfilesSettingsValues,
+  cloudSecretAccount,
+  createCloudProfile,
+  normalizeCloudProfiles,
+  type CloudConnectionMethod,
+  type CloudProfile,
+  type CloudProviderId
+} from './cloudProfiles';
 import './CloudProfileDrawer.css';
 
 export function CloudProfileDrawer() {
   const setIsCloudProfileDrawerOpen = useUIStore((state) => state.setIsCloudProfileDrawerOpen);
   const setSelectedCloudProfileIdForEdit = useUIStore((state) => state.setSelectedCloudProfileIdForEdit);
   const selectedCloudProfileIdForEdit = useUIStore((state) => state.selectedCloudProfileIdForEdit);
+  const settings = useMemoryStore((state) => state.settings);
+  const saveSettings = useMemoryStore((state) => state.saveSettings);
+  const cloudProfiles = useMemo(() => normalizeCloudProfiles(settings?.values), [settings?.values]);
 
   const profile = useMemo(
-    () => (selectedCloudProfileIdForEdit ? defaultCloudProfiles.find((entry) => entry.id === selectedCloudProfileIdForEdit) ?? null : null),
-    [selectedCloudProfileIdForEdit]
+    () => {
+      if (!selectedCloudProfileIdForEdit) {
+        return null;
+      }
+
+      const existing = cloudProfiles.find((entry) => entry.id === selectedCloudProfileIdForEdit);
+      if (existing) {
+        return existing;
+      }
+
+      if (selectedCloudProfileIdForEdit === 'modal' || selectedCloudProfileIdForEdit === 'custom-vm') {
+        return createCloudProfile(selectedCloudProfileIdForEdit);
+      }
+
+      return null;
+    },
+    [cloudProfiles, selectedCloudProfileIdForEdit]
   );
 
   const [profileName, setProfileName] = useState('New cloud profile');
@@ -22,18 +49,25 @@ export function CloudProfileDrawer() {
   const [host, setHost] = useState('');
   const [username, setUsername] = useState('root');
   const [bootstrapPublicKey, setBootstrapPublicKey] = useState('');
+  const [sshPrivateKey, setSshPrivateKey] = useState('');
   const [modalToken, setModalToken] = useState('');
+  const [hasSecret, setHasSecret] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     const nextProvider = profile?.provider ?? 'custom-vm';
     setProfileName(profile?.title ?? 'New cloud profile');
     setProvider(nextProvider);
-    setEnvironment(nextProvider === 'modal' ? 'main' : 'dev');
-    setConnectionMethod(nextProvider === 'modal' ? 'modal-token' : 'ssh-key');
-    setHost('');
-    setUsername(nextProvider === 'modal' ? 'modal' : 'root');
-    setBootstrapPublicKey('');
+    setEnvironment(profile?.environment ?? (nextProvider === 'modal' ? 'main' : 'dev'));
+    setConnectionMethod(profile?.connectionMethod ?? (nextProvider === 'modal' ? 'modal-token' : 'ssh-key'));
+    setHost(profile?.host ?? '');
+    setUsername(profile?.username ?? (nextProvider === 'modal' ? 'modal' : 'ubuntu'));
+    setBootstrapPublicKey(profile?.bootstrapPublicKey ?? '');
+    setSshPrivateKey('');
     setModalToken('');
+    setHasSecret(Boolean(profile?.hasSecret));
+    setSaveError(null);
   }, [profile]);
 
   const connectionOptions: Array<{ value: CloudConnectionMethod; label: string; description: string }> =
@@ -59,6 +93,58 @@ export function CloudProfileDrawer() {
         ];
 
   const environmentOptions = provider === 'modal' ? ['main', 'dev', 'prod'] : ['dev', 'staging', 'prod'];
+
+  const handleSave = async () => {
+    setIsSaving(true);
+    setSaveError(null);
+
+    try {
+      const existingId = profile?.id;
+      const id = existingId && !['modal', 'custom-vm'].includes(existingId) ? existingId : `cloud_${Date.now()}`;
+      const nextSecret = provider === 'modal' ? modalToken.trim() : sshPrivateKey.trim();
+      const secretRef = cloudSecretAccount(id, provider);
+      const nextHasSecret = Boolean(nextSecret || hasSecret);
+
+      if (nextSecret) {
+        await invoke('cloud_store_profile_secret', {
+          request: {
+            account: secretRef,
+            secret: nextSecret
+          }
+        });
+      }
+
+      const nextProfile: CloudProfile = {
+        id,
+        title: profileName.trim() || (provider === 'modal' ? 'Modal profile' : 'Custom VM'),
+        provider,
+        environment,
+        runtime: provider === 'modal' ? 'Modal Sandbox' : host.trim() ? `${username.trim() || 'user'}@${host.trim()}` : 'Configure host and credentials',
+        connectionMethod,
+        host: provider === 'custom-vm' ? host.trim() : '',
+        username: username.trim() || (provider === 'modal' ? 'modal' : 'ubuntu'),
+        bootstrapPublicKey: provider === 'custom-vm' ? bootstrapPublicKey.trim() : '',
+        secretRef,
+        hasSecret: nextHasSecret,
+        status: provider === 'custom-vm'
+          ? (host.trim() && username.trim() && (connectionMethod === 'ssh-agent' || nextHasSecret) ? 'Ready' : 'Draft')
+          : (nextHasSecret ? 'Ready' : 'Draft')
+      };
+
+      const existingIndex = cloudProfiles.findIndex((entry) => entry.id === id);
+      const nextProfiles = existingIndex >= 0
+        ? cloudProfiles.map((entry) => entry.id === id ? nextProfile : entry)
+        : [...cloudProfiles, nextProfile];
+
+      await saveSettings(buildCloudProfilesSettingsValues(nextProfiles), true);
+      setSelectedCloudProfileIdForEdit(null);
+      setIsCloudProfileDrawerOpen(false);
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   return (
     <div className="cloud-profile-drawer">
@@ -105,15 +191,17 @@ export function CloudProfileDrawer() {
               value={provider}
               onChange={(event) => {
                 const nextProvider = event.target.value as CloudProviderId;
-                setProvider(nextProvider);
-                setEnvironment(nextProvider === 'modal' ? 'main' : 'dev');
-                setConnectionMethod(nextProvider === 'modal' ? 'modal-token' : 'ssh-key');
-                setHost('');
-                setUsername(nextProvider === 'modal' ? 'modal' : 'root');
-                setBootstrapPublicKey('');
-                setModalToken('');
-              }}
-            >
+              setProvider(nextProvider);
+              setEnvironment(nextProvider === 'modal' ? 'main' : 'dev');
+              setConnectionMethod(nextProvider === 'modal' ? 'modal-token' : 'ssh-key');
+              setHost('');
+              setUsername(nextProvider === 'modal' ? 'modal' : 'root');
+              setBootstrapPublicKey('');
+              setSshPrivateKey('');
+              setModalToken('');
+              setHasSecret(false);
+            }}
+          >
               <option value="custom-vm">Custom VM</option>
               <option value="modal">Modal</option>
             </select>
@@ -175,6 +263,19 @@ export function CloudProfileDrawer() {
             </div>
 
             <div className="form-group">
+              <label>SSH private key</label>
+              <textarea
+                className="cloud-profile-textarea"
+                value={sshPrivateKey}
+                onChange={(event) => setSshPrivateKey(event.target.value)}
+                placeholder={hasSecret ? 'Stored securely. Paste a replacement key to rotate.' : '-----BEGIN OPENSSH PRIVATE KEY-----'}
+              />
+              <div className="cloud-profile-select-hint">
+                The private key is written to the OS secure store and is never saved inside the settings payload.
+              </div>
+            </div>
+
+            <div className="form-group">
               <label>Bootstrap SSH public key</label>
               <textarea
                 className="cloud-profile-textarea"
@@ -196,10 +297,10 @@ export function CloudProfileDrawer() {
                 type="password"
                 value={modalToken}
                 onChange={(event) => setModalToken(event.target.value)}
-                placeholder="modal_token_..."
+                placeholder={hasSecret ? 'Stored securely. Paste a replacement token to rotate.' : 'modal_token_...'}
               />
               <div className="cloud-profile-select-hint">
-                Modal authenticates with an account token. No AWS-style access key / secret access key pair is needed.
+                Modal authenticates with an account token. The token is stored by the OS secure store, not in profile JSON.
               </div>
             </div>
 
@@ -218,8 +319,9 @@ export function CloudProfileDrawer() {
         )}
 
         <div className="model-mgmt-actions">
-          <button className="btn-save" type="button" onClick={() => setIsCloudProfileDrawerOpen(false)}>
-            Save configuration
+          {saveError ? <div className="cloud-profile-select-hint">{saveError}</div> : null}
+          <button className="btn-save" type="button" onClick={handleSave} disabled={isSaving}>
+            {isSaving ? 'Saving...' : 'Save configuration'}
           </button>
         </div>
       </div>

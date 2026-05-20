@@ -4,7 +4,7 @@ import type { UseChatOptions } from '../types';
 import type { AgentContinueRequest, AgentStartResponse, ExecutionPlanArtifact, ExecutionPlanWorkstream, PlanExecutionUpdate } from '../../../types/chat';
 import { useMemoryStore } from '../../../stores/memoryStore';
 import { artifactsFromMessages, chatHistoryFromMessages, titleFromConversationContent, statusFromConversationContent } from '../helpers';
-import { pendingTokenText, setAssistantRegistration } from '../bridge';
+import { ensureAgentEventBridge, pendingTokenText, setAssistantRegistration } from '../bridge';
 import type { useChatState } from './useChatState';
 
 const RESERVED_SLASH_COMMANDS = new Set([
@@ -27,8 +27,9 @@ const SKILL_SLASH_ALIASES: Record<string, string> = {
     '- Two modes: new cloud tab, or agent execution from the current chat session.',
     '- If Modal is already configured in the local CLI, say that the user can continue from chat directly.',
     '- Two connection options: Modal and VPS / Custom VM.',
-    '- If the user wants a separate cloud tab rather than chat execution, recommend `/create-environment`.',
-    '- Mention that after setup, the app can link the connection.',
+    '- If the user wants a separate cloud tab, tell them the Settings > Cloud profile is used by the topbar Cloud term action.',
+    '- Mention that credentials are stored in the OS secure store, while settings only keep a profile reference.',
+    '- Mention that a durable remote harness needs the Octomus CLI/runner installed on that cloud instance so work can continue after the desktop window closes.',
     '- Give one short example such as migrating MySQL to DynamoDB.',
     'Include these exact clickable markdown links on separate lines:',
     '[Configure Modal](octomus://cloud-profile/modal)',
@@ -260,6 +261,8 @@ export function useChatActions({ options, state, onCommandApprovalRef, onFileCha
       onWebSearch: (request) => onWebSearchRef.current?.(request)
     });
 
+    await ensureAgentEventBridge();
+
     const requestMessages = chatHistoryFromMessages(state.messagesRef.current);
       const response = await invoke<AgentStartResponse>('agent_continue', {
         request: {
@@ -268,6 +271,7 @@ export function useChatActions({ options, state, onCommandApprovalRef, onFileCha
           assistantMessageId,
           cwd: options.cwd ?? null,
           modelId: options.modelId ?? null,
+          terminalModelId: options.terminalModelId ?? null,
           messages: requestMessages,
           terminalBlocks: options.terminalBlocks ?? []
         } satisfies AgentContinueRequest
@@ -296,6 +300,7 @@ export function useChatActions({ options, state, onCommandApprovalRef, onFileCha
     onWebSearchRef,
     options.cwd,
     options.modelId,
+    options.terminalModelId,
     options.onConversationCreated,
     submitPlanExecution,
     submitPlanProposal,
@@ -420,6 +425,8 @@ export function useChatActions({ options, state, onCommandApprovalRef, onFileCha
     });
 
     try {
+      await ensureAgentEventBridge();
+
       const requestMessages = chatHistoryFromMessages(state.messagesRef.current);
 
       const response = await invoke<AgentStartResponse>('agent_start', {
@@ -430,6 +437,7 @@ export function useChatActions({ options, state, onCommandApprovalRef, onFileCha
           prompt: resolvedPrompt,
           cwd: options.cwd ?? null,
           modelId: options.modelId ?? null,
+          terminalModelId: options.terminalModelId ?? null,
           messages: requestMessages,
           terminalBlocks: options.terminalBlocks ?? []
         }
@@ -466,12 +474,14 @@ export function useChatActions({ options, state, onCommandApprovalRef, onFileCha
   const submitToolResult = async (
     toolCallId: string,
     result: string,
-    kind: 'command' | 'web-search' = 'command',
+    kind: 'command' | 'web-search' | 'file-change' = 'command',
     label?: string,
     webSearchResults?: Array<{ title: string; url: string; snippet?: string }>,
     toolResultOptions?: {
       deferFollowUp?: boolean;
       webSearchStatus?: 'searching' | 'success' | 'error';
+      fileDiffs?: import('../../../types/diff').FileDiff[];
+      localAssistantSummary?: string;
     }
   ) => {
     const ts = Date.now();
@@ -488,9 +498,14 @@ export function useChatActions({ options, state, onCommandApprovalRef, onFileCha
     if (existingToolMessage) {
       state.updateMessage(existingToolMessage.id, (message) => ({
         ...message,
-        title: kind === 'web-search' ? 'Web Search' : 'Tool Output',
+        title: kind === 'web-search'
+          ? 'Web Search'
+          : kind === 'file-change'
+            ? 'File Changes'
+            : 'Tool Output',
         body: result,
         toolKind: kind,
+        fileDiffs: toolResultOptions?.fileDiffs ?? message.fileDiffs,
         ...(kind === 'web-search' ? {
           webSearchStatus: toolResultOptions?.webSearchStatus ?? (webSearchResults ? 'success' : 'searching'),
           webSearchQuery: label,
@@ -501,11 +516,16 @@ export function useChatActions({ options, state, onCommandApprovalRef, onFileCha
       state.addMessage({
         id: toolMessageId,
         role: 'tool',
-        title: kind === 'web-search' ? 'Web Search' : 'Tool Output',
+        title: kind === 'web-search'
+          ? 'Web Search'
+          : kind === 'file-change'
+            ? 'File Changes'
+            : 'Tool Output',
         body: result,
         conversationId,
         toolCallId,
         toolKind: kind,
+        fileDiffs: toolResultOptions?.fileDiffs,
         ...(kind === 'web-search' ? {
           webSearchStatus: toolResultOptions?.webSearchStatus ?? (webSearchResults ? 'success' : 'searching'),
           webSearchQuery: label,
@@ -515,6 +535,19 @@ export function useChatActions({ options, state, onCommandApprovalRef, onFileCha
     }
 
     if (toolResultOptions?.deferFollowUp) {
+      if (toolResultOptions.localAssistantSummary?.trim()) {
+        state.addMessage({
+          id: `assistant-local-summary-${ts}`,
+          role: 'assistant',
+          title: 'Octomus',
+          body: toolResultOptions.localAssistantSummary.trim(),
+          conversationId,
+          runId,
+          status: 'completed',
+          isStreaming: false,
+          createdAt: new Date().toISOString()
+        });
+      }
       return;
     }
 

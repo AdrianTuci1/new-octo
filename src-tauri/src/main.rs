@@ -15,7 +15,8 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use octomus_launcher_prototype::{
-    ai, app_updates, keybindings, memory, octomus_paths, shell_signatures, terminal,
+    ai, app_updates, code_index, keybindings, memory, octomus_paths, secure_store,
+    shell_signatures, terminal,
 };
 use serde::Serialize;
 use std::sync::Mutex;
@@ -270,6 +271,7 @@ fn main() {
 
     tauri::Builder::default()
         .manage(app_updates::AppUpdateManager::default())
+        .manage(code_index::CodeIndexManager::default())
         .manage(terminal::TerminalManager::default())
         .manage(ai::AgentHarnessManager::default())
         .manage(ai::predict::composer::ComposerIntelligenceManager::default())
@@ -280,6 +282,10 @@ fn main() {
             app_updates::app_updates_check,
             app_updates::app_updates_install,
             app_updates::app_updates_restart,
+            code_index::code_index_list_projects,
+            code_index::code_index_index_project,
+            code_index::code_index_remove_project,
+            code_index::code_index_search,
             ai::agent_start,
             ai::agent_continue,
             ai::agent_cancel,
@@ -289,6 +295,10 @@ fn main() {
             ai::agent_configure_openai_compatible,
             ai::agent_clear_openai_compatible,
             ai::agent_provider_status,
+            ai::mcp::mcp_list_servers,
+            ai::mcp::mcp_list_runtime_tools,
+            ai::mcp::mcp_upsert_server,
+            ai::mcp::mcp_remove_server,
             ai::web_search,
             ai::ai_predict_command_smart,
             ai::diff::apply_file_diff,
@@ -304,6 +314,7 @@ fn main() {
             terminal::terminal_get_runtime_context,
             terminal::terminal_list_directory_entries,
             terminal::terminal_get_git_context,
+            terminal::terminal_get_worktree_diff,
             terminal::terminal_switch_git_branch,
             terminal::terminal_get_recent_history,
             terminal::terminal_get_prediction,
@@ -318,6 +329,9 @@ fn main() {
             memory::memory_list_conversations,
             memory::memory_delete_conversation,
             keybindings::keybindings_list_definitions,
+            secure_store::cloud_store_profile_secret,
+            secure_store::cloud_profile_secret_status,
+            secure_store::cloud_delete_profile_secret,
             memory::memory_put_cloud_object,
             memory::memory_get_cloud_object,
             memory::memory_list_cloud_object_index,
@@ -490,7 +504,11 @@ fn open_external_url(url: String) -> Result<(), String> {
 fn consume_pending_cloud_profile_drawer_request(
     pending_request: State<'_, PendingCloudProfileDrawerRequest>,
 ) -> Option<OpenCloudProfileDrawerPayload> {
-    pending_request.0.lock().ok().and_then(|mut pending| pending.take())
+    pending_request
+        .0
+        .lock()
+        .ok()
+        .and_then(|mut pending| pending.take())
 }
 
 fn parse_env_value(value: &str) -> String {

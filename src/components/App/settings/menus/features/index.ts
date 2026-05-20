@@ -13,4 +13,3 @@ export const featuresSectionMeta: Record<'features', SettingsSectionMeta> = {
     contentKind: 'placeholder'
   }
 };
-

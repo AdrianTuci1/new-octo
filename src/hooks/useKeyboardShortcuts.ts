@@ -67,7 +67,8 @@ export function useKeyboardShortcuts(options: KeyboardShortcutOptions) {
       event.preventDefault();
       const terminalCommand = parseTerminalCommand(query, options.isShellMode);
 
-      if (terminalCommand) {
+      if (terminalCommand !== null) {
+        if (!terminalCommand) return;
         options.onTerminalCommand?.(terminalCommand);
         setQuery('');
         options.onCloseTray?.();

@@ -1,5 +1,5 @@
 import { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
-import { Check, ChevronDown, Copy, Download, Filter, MoreVertical, Paperclip, Search, Terminal, X } from 'lucide-react';
+import { Check, ChevronDown, Download, Filter, MoreVertical, Paperclip, Terminal, X } from 'lucide-react';
 import './TerminalBlockDetail.css';
 import type { TerminalCommandBlock } from '../../../types/terminal';
 
@@ -9,6 +9,7 @@ type TerminalBlockDetailProps = {
   isSelected: boolean;
   onClose: () => void;
   onSelect: () => void;
+  workingDirectory?: string | null;
 };
 
 function formatDuration(durationMs?: number | null) {
@@ -26,14 +27,51 @@ function outputFor(block: TerminalCommandBlock) {
   return withoutEcho || (block.status === 'running' ? 'Running command...' : 'No output.');
 }
 
+const WORKFLOWS_STORAGE_KEY = 'octomus.savedTerminalWorkflows';
+const BOOKMARKS_STORAGE_KEY = 'octomus.bookmarkedTerminalBlocks';
+const AGENT_CONTEXT_STORAGE_KEY = 'octomus.agentContextTerminalBlocks';
+
+function readStringSet(key: string) {
+  if (typeof window === 'undefined') return new Set<string>();
+  try {
+    const values = JSON.parse(window.localStorage.getItem(key) ?? '[]');
+    return new Set(Array.isArray(values) ? values.filter((value): value is string => typeof value === 'string') : []);
+  } catch {
+    return new Set<string>();
+  }
+}
+
+function writeStringSet(key: string, values: Set<string>) {
+  if (typeof window === 'undefined') return;
+  window.localStorage.setItem(key, JSON.stringify(Array.from(values)));
+}
+
+function saveWorkflow(block: TerminalCommandBlock, output: string) {
+  if (typeof window === 'undefined') return;
+  const workflows = JSON.parse(window.localStorage.getItem(WORKFLOWS_STORAGE_KEY) ?? '[]');
+  const nextWorkflow = {
+    id: `workflow-${block.id}`,
+    blockId: block.id,
+    command: block.command,
+    output,
+    createdAt: new Date().toISOString()
+  };
+  const nextWorkflows = Array.isArray(workflows)
+    ? [nextWorkflow, ...workflows.filter((workflow) => workflow?.blockId !== block.id)]
+    : [nextWorkflow];
+  window.localStorage.setItem(WORKFLOWS_STORAGE_KEY, JSON.stringify(nextWorkflows.slice(0, 100)));
+}
+
 export function TerminalBlockDetail({
   block,
   failed,
   isSelected,
   onClose,
-  onSelect
+  onSelect,
+  workingDirectory
 }: TerminalBlockDetailProps) {
   const mountTimeRef = useRef(Date.now());
+  const outputRef = useRef<HTMLPreElement | null>(null);
   const [menuVisible, setMenuVisible] = useState(false);
   const [menuPos, setMenuPos] = useState({ x: 0, y: 0 });
   const [isPositioned, setIsPositioned] = useState(false);
@@ -44,6 +82,9 @@ export function TerminalBlockDetail({
   const [caseSensitive, setCaseSensitive] = useState(false);
   const [useRegex, setUseRegex] = useState(false);
   const [wholeWord, setWholeWord] = useState(false);
+  const [isAttachedContext, setIsAttachedContext] = useState(() => readStringSet(AGENT_CONTEXT_STORAGE_KEY).has(block.id));
+  const [isBookmarked, setIsBookmarked] = useState(() => readStringSet(BOOKMARKS_STORAGE_KEY).has(block.id));
+  const [isSavedWorkflow, setIsSavedWorkflow] = useState(false);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -102,27 +143,96 @@ export function TerminalBlockDetail({
     setMenuVisible(true);
   };
 
-  const handleCopyFull = async (e: React.MouseEvent) => {
-    e.stopPropagation();
+  const writeClipboard = async (value: string) => {
     try {
-      await navigator.clipboard.writeText(`${block.command}\n${block.output}`);
+      await navigator.clipboard.writeText(value);
     } catch (err) { console.error(err); }
+  };
+
+  const handleCopyFull = async (e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    await writeClipboard(`${block.command}\n${outputFor(block)}`);
     setMenuVisible(false);
   };
 
-  const handleCopyCommand = async (e: React.MouseEvent) => {
-    e.stopPropagation();
-    try {
-      await navigator.clipboard.writeText(block.command);
-    } catch (err) { console.error(err); }
+  const handleCopyCommand = async (e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    await writeClipboard(block.command);
     setMenuVisible(false);
   };
 
-  const handleCopyOutput = async (e: React.MouseEvent) => {
-    e.stopPropagation();
-    try {
-      await navigator.clipboard.writeText(outputFor(block));
-    } catch (err) { console.error(err); }
+  const handleCopyOutput = async (e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    await writeClipboard(outputFor(block));
+    setMenuVisible(false);
+  };
+
+  const handleShareBlock = async (e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    const text = `${block.command}\n\n${outputFor(block)}`;
+    if (navigator.share) {
+      await navigator.share({ title: 'Terminal block', text }).catch(() => undefined);
+    } else {
+      await writeClipboard(text);
+    }
+    setMenuVisible(false);
+  };
+
+  const handleShareSession = async (e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    const text = `Terminal session block ${block.id}\n\n${block.command}\n\n${outputFor(block)}`;
+    if (navigator.share) {
+      await navigator.share({ title: 'Terminal session', text }).catch(() => undefined);
+    } else {
+      await writeClipboard(text);
+    }
+    setMenuVisible(false);
+  };
+
+  const handleSaveWorkflow = (e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    saveWorkflow(block, outputFor(block));
+    setIsSavedWorkflow(true);
+    setMenuVisible(false);
+  };
+
+  const handleToggleAgentContext = (e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    const next = !isAttachedContext;
+    const values = readStringSet(AGENT_CONTEXT_STORAGE_KEY);
+    if (next) values.add(block.id);
+    else values.delete(block.id);
+    writeStringSet(AGENT_CONTEXT_STORAGE_KEY, values);
+    setIsAttachedContext(next);
+    setMenuVisible(false);
+  };
+
+  const handleToggleBookmark = (e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    const next = !isBookmarked;
+    const values = readStringSet(BOOKMARKS_STORAGE_KEY);
+    if (next) values.add(block.id);
+    else values.delete(block.id);
+    writeStringSet(BOOKMARKS_STORAGE_KEY, values);
+    setIsBookmarked(next);
+    setMenuVisible(false);
+  };
+
+  const handleCopyDebuggingId = async (e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    await writeClipboard(block.id);
+    setMenuVisible(false);
+  };
+
+  const handleScrollToTop = (e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    outputRef.current?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    setMenuVisible(false);
+  };
+
+  const handleScrollToBottom = (e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    outputRef.current?.scrollIntoView({ block: 'end', behavior: 'smooth' });
     setMenuVisible(false);
   };
 
@@ -182,7 +292,9 @@ export function TerminalBlockDetail({
     'terminal-block-detail',
     failed ? 'failed' : '',
     isSelected ? 'selected' : '',
-    block.source === 'user' ? 'is-user' : ''
+    block.source === 'user' ? 'is-user' : '',
+    isAttachedContext ? 'attached-context' : '',
+    isBookmarked ? 'bookmarked' : ''
   ].filter(Boolean).join(' ');
 
   return (
@@ -218,10 +330,20 @@ export function TerminalBlockDetail({
               aria-label="Terminal block actions"
               onClick={(event) => event.stopPropagation()}
             >
-              <button type="button" title="Attach as agent context">
+              <button
+                type="button"
+                title="Attach as agent context"
+                onClick={handleToggleAgentContext}
+                className={isAttachedContext ? 'active context-active' : ''}
+              >
                 <Paperclip size={18} />
               </button>
-              <button type="button" title="Save as workflow">
+              <button
+                type="button"
+                title="Save as workflow"
+                onClick={handleSaveWorkflow}
+                className={isSavedWorkflow ? 'active' : ''}
+              >
                 <Download size={18} />
               </button>
               <button 
@@ -302,7 +424,7 @@ export function TerminalBlockDetail({
           )}
         </header>
 
-        <pre className="terminal-block-output">
+        <pre ref={outputRef} className="terminal-block-output">
           {filteredLines || (filterText.trim() ? '(No matching lines)' : rawOutput)}
         </pre>
       </div>
@@ -331,37 +453,40 @@ export function TerminalBlockDetail({
             <span className="item-label">Copy output</span>
             <span className="item-shortcut">⌥⇧⌘C</span>
           </div>
-          <div className="context-menu-item" onClick={handleCloseMenu}>
+          <div className="context-menu-item" onClick={handleShareBlock}>
             <span className="item-label">Share block...</span>
             <span className="item-shortcut">⇧⌘S</span>
           </div>
-          <div className="context-menu-item" onClick={handleCloseMenu}>
+          <div className="context-menu-item" onClick={handleShareSession}>
             <span className="item-label">Share session...</span>
           </div>
           
           <div className="context-menu-separator" />
           
-          <div className="context-menu-item" onClick={handleCloseMenu}>
+          <div className="context-menu-item" onClick={handleSaveWorkflow}>
             <span className="item-label">Save as workflow</span>
             <span className="item-shortcut">⌘S</span>
           </div>
-          <div className="context-menu-item" onClick={handleCloseMenu}>
-            <span className="item-label">Attach as agent context</span>
+          <div className={`context-menu-item ${isAttachedContext ? 'context-attached' : ''}`} onClick={handleToggleAgentContext}>
+            <span className="item-label">{isAttachedContext ? 'Attached as agent context' : 'Attach as agent context'}</span>
             <span className="item-shortcut">⌃⇧Space</span>
           </div>
           
           <div className="context-menu-separator" />
           
-          <div className="context-menu-item" onClick={handleCloseMenu}>
+          <div className="context-menu-item" onClick={handleCopyCommand}>
             <span className="item-label">Copy prompt</span>
           </div>
-          <div className="context-menu-item" onClick={handleCloseMenu}>
+          <div className="context-menu-item" onClick={(event) => {
+            void writeClipboard(workingDirectory?.trim() || 'Working directory unavailable for this block');
+            handleCloseMenu(event);
+          }}>
             <span className="item-label">Copy working directory</span>
           </div>
           
           <div className="context-menu-separator" />
           
-          <div className="context-menu-item" onClick={handleCloseMenu}>
+          <div className="context-menu-item" onClick={handleToggleFilter}>
             <span className="item-label">Find within block</span>
             <span className="item-shortcut">⌘F</span>
           </div>
@@ -369,20 +494,26 @@ export function TerminalBlockDetail({
             <span className="item-label">Toggle block filter</span>
             <span className="item-shortcut">⌥⇧F</span>
           </div>
-          <div className="context-menu-item" onClick={handleCloseMenu}>
-            <span className="item-label">Toggle bookmark</span>
+          <div className={`context-menu-item ${isBookmarked ? 'context-attached' : ''}`} onClick={handleToggleBookmark}>
+            <span className="item-label">{isBookmarked ? 'Remove bookmark' : 'Toggle bookmark'}</span>
             <span className="item-shortcut">⌘B</span>
           </div>
           
           <div className="context-menu-separator" />
           
-          <div className="context-menu-item" onClick={handleCloseMenu}>
+          <div className="context-menu-item" onClick={handleScrollToTop}>
             <span className="item-label">Scroll to top of block</span>
             <span className="item-shortcut">⇧⌘↑</span>
           </div>
-          <div className="context-menu-item" onClick={handleCloseMenu}>
+          <div className="context-menu-item" onClick={handleScrollToBottom}>
             <span className="item-label">Scroll to bottom of block</span>
             <span className="item-shortcut">⇧⌘↓</span>
+          </div>
+
+          <div className="context-menu-separator" />
+
+          <div className="context-menu-item" onClick={handleCopyDebuggingId}>
+            <span className="item-label">Copy debugging ID</span>
           </div>
         </div>
       )}

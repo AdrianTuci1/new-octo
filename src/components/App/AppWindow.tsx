@@ -345,11 +345,13 @@ export function AppWindow() {
         activeTabId={app.chrome.selectedTab.id}
         launcherTabId={app.chrome.launcherTabId}
         tabs={app.chrome.displayTabs}
+        activeWorkingDirectory={app.chrome.activeWorkingDirectory}
         onBringTabInLauncher={app.actions.setLauncherTabId}
         onCloseOtherTabs={app.actions.handleCloseOtherTabs}
         onCloseTabsToRight={app.actions.handleCloseTabsToRight}
         onSelectTab={app.actions.onSelectTab}
         onNewTerminalTab={app.actions.onNewTerminalTab}
+        onNewCloudTerminalTab={app.actions.onNewCloudTerminalTab}
         onCloseTab={app.actions.onCloseTab}
         onMoveTab={app.actions.handleMoveTab}
         onRemoveTabFromLauncher={app.actions.onRemoveTabFromLauncher}
@@ -458,6 +460,7 @@ export function AppWindow() {
           <AppWindowDrawers
             isEditorOpen={isEditorOpen}
             isKeyboardShortcutsDrawerOpen={isKeyboardShortcutsDrawerOpen}
+            activeWorkingDirectory={app.chrome.activeWorkingDirectory}
             onCloseKeyboardShortcutsDrawer={() => setIsKeyboardShortcutsDrawerOpen(false)}
           />
 
