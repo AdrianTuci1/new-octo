@@ -5,6 +5,7 @@ import { useMemoryStore, useLauncherStore, useUIStore } from '../../../../../sto
 import * as Utils from '../../utils';
 import { consumeShellModeActivator } from '../../../../../lib';
 import { normalizeAgentSettings } from '../../../../App/settings/agentSettings';
+import { normalizeCodeSettings } from '../../../../App/settings/codeSettings';
 import type { LauncherProps } from '../types';
 import type { CommandApproval, FileChangeApproval } from '../../../../../types';
 import type { WebSearchRequest, WebSearchResponse } from '../../../../../types/chat';
@@ -23,7 +24,9 @@ export function useLauncherRuntime(props: LauncherProps, store: any, tray: any) 
   // We use stable selectors here.
   const memoryStore = useMemoryStore();
   const agentSettings = useMemo(() => normalizeAgentSettings(memoryStore.settings?.values), [memoryStore.settings?.values]);
+  const codeSettings = useMemo(() => normalizeCodeSettings(memoryStore.settings?.values), [memoryStore.settings?.values]);
   const defaultProfileCallWebTools = agentSettings.profiles[0]?.callWebTools !== false;
+  const autoIndexedPathsRef = useRef(new Set<string>());
   const setLocalConversationId = useLauncherStore(state => state.setLocalConversationId);
   const setLocalPendingApproval = useLauncherStore(state => state.setLocalPendingApproval);
   const localConversationId = useLauncherStore(state => state.localConversationId);
@@ -46,6 +49,18 @@ export function useLauncherRuntime(props: LauncherProps, store: any, tray: any) 
     workingDirectoryRaw.homeDir,
     workingDirectoryRaw.buttonLabel
   ]);
+
+  useEffect(() => {
+    const path = workingDirectory.currentPath?.trim();
+    if (!path || !codeSettings.indexing.enabled || !codeSettings.indexing.indexNewFoldersByDefault || autoIndexedPathsRef.current.has(path)) {
+      return;
+    }
+
+    autoIndexedPathsRef.current.add(path);
+    void invoke('code_index_index_project', { path }).catch((error) => {
+      console.warn('[launcher] failed to auto-index working directory', error);
+    });
+  }, [codeSettings.indexing.enabled, codeSettings.indexing.indexNewFoldersByDefault, workingDirectory.currentPath]);
 
   const gitContextRaw = Hooks.useGitContext(workingDirectory.currentPath);
   const gitContext = useMemo(() => gitContextRaw, [
@@ -264,6 +279,7 @@ export function useLauncherRuntime(props: LauncherProps, store: any, tray: any) 
   return useMemo(() => ({
     memoryStore,
     agentSettings,
+    codeSettings,
     workingDirectory,
     gitContext,
     runtimeContext,
@@ -286,6 +302,7 @@ export function useLauncherRuntime(props: LauncherProps, store: any, tray: any) 
   }), [
     memoryStore,
     agentSettings,
+    codeSettings,
     workingDirectory,
     gitContext,
     runtimeContext,

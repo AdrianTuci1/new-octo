@@ -1,6 +1,7 @@
 pub mod ai;
 pub mod app_updates;
 pub mod cli;
+pub mod code_index;
 pub mod keybindings;
 pub mod memory;
 pub mod octomus_paths;

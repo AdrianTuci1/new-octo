@@ -1,8 +1,10 @@
 import { invoke } from '@tauri-apps/api/core';
-import { CloudOff, FolderPlus, Info } from 'lucide-react';
+import { CloudOff, FolderPlus, Info, RefreshCw, Search, Trash2 } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { useMemoryStore } from '../../../../stores/memoryStore';
+import type { CodeIndexProject, CodeIndexSearchResult } from '../../../../types/codeIndex';
 import type { FilesystemPathContext } from '../../../../types/filesystem';
-import { buildCodeSettingsValues, normalizeCodeSettings, type CodeIndexedFolder, type CodeSettings } from '../codeSettings';
+import { buildCodeSettingsValues, normalizeCodeSettings, type CodeSettings } from '../codeSettings';
 import { SettingsSelect, SettingsToggle } from './SettingsPrimitives';
 import './CodeSettingsSections.css';
 
@@ -30,6 +32,13 @@ export function CodebaseIndexingSection() {
   const settings = useMemoryStore((state) => state.settings);
   const saveSettings = useMemoryStore((state) => state.saveSettings);
   const codeSettings = normalizeCodeSettings(settings?.values);
+  const [projects, setProjects] = useState<CodeIndexProject[]>([]);
+  const [isLoadingProjects, setIsLoadingProjects] = useState(true);
+  const [indexingPath, setIndexingPath] = useState<string | null>(null);
+  const [indexError, setIndexError] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<CodeIndexSearchResult[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
 
   const saveCodeSettings = (nextSettings: CodeSettings) => {
     void saveSettings(buildCodeSettingsValues(nextSettings), true);
@@ -44,6 +53,62 @@ export function CodebaseIndexingSection() {
       }
     });
   };
+
+  const loadProjects = async () => {
+    setIsLoadingProjects(true);
+    try {
+      const nextProjects = await invoke<CodeIndexProject[]>('code_index_list_projects');
+      setProjects(nextProjects);
+    } catch (error) {
+      console.warn('[settings] failed to load code index projects', error);
+      setIndexError(String(error));
+    } finally {
+      setIsLoadingProjects(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadProjects();
+  }, []);
+
+  useEffect(() => {
+    const query = searchQuery.trim();
+    if (!query || projects.length === 0) {
+      setSearchResults([]);
+      setIsSearching(false);
+      return;
+    }
+
+    let cancelled = false;
+    setIsSearching(true);
+    const timeout = window.setTimeout(() => {
+      void invoke<CodeIndexSearchResult[]>('code_index_search', {
+        query,
+        maxResults: 8
+      })
+        .then((results) => {
+          if (!cancelled) {
+            setSearchResults(results);
+          }
+        })
+        .catch((error) => {
+          console.warn('[settings] failed to search code index', error);
+          if (!cancelled) {
+            setSearchResults([]);
+          }
+        })
+        .finally(() => {
+          if (!cancelled) {
+            setIsSearching(false);
+          }
+        });
+    }, 180);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeout);
+    };
+  }, [projects.length, searchQuery]);
 
   const handleIndexNewFolder = async () => {
     const rememberedDirectory = typeof settings?.values.lastWorkingDirectory === 'string'
@@ -60,20 +125,37 @@ export function CodebaseIndexingSection() {
       }
     }
 
-    if (!path || codeSettings.indexing.indexedFolders.some((folder) => folder.path === path)) {
+    if (!path || projects.some((project) => project.path === path)) {
       return;
     }
 
-    const nextFolder: CodeIndexedFolder = {
-      id: `indexed_${Date.now()}`,
-      path,
-      status: codeSettings.indexing.enabled ? 'indexed' : 'disabled',
-      lastIndexedAt: new Date().toISOString()
-    };
+    await indexPath(path);
+  };
 
-    patchIndexing({
-      indexedFolders: [...codeSettings.indexing.indexedFolders, nextFolder]
-    });
+  const indexPath = async (path: string) => {
+    setIndexError(null);
+    setIndexingPath(path);
+    try {
+      await invoke<CodeIndexProject>('code_index_index_project', { path });
+      await loadProjects();
+    } catch (error) {
+      console.warn('[settings] failed to index project', error);
+      setIndexError(String(error));
+      await loadProjects();
+    } finally {
+      setIndexingPath(null);
+    }
+  };
+
+  const removeProject = async (projectId: string) => {
+    setIndexError(null);
+    try {
+      await invoke('code_index_remove_project', { projectId });
+      await loadProjects();
+    } catch (error) {
+      console.warn('[settings] failed to remove indexed project', error);
+      setIndexError(String(error));
+    }
   };
 
   return (
@@ -98,34 +180,66 @@ export function CodebaseIndexingSection() {
 
       <div className="code-indexed-folders-header">
         <h2>Initialized / indexed folders</h2>
-        <button className="code-outline-action" type="button" onClick={handleIndexNewFolder}>
+        <button className="code-outline-action" type="button" onClick={handleIndexNewFolder} disabled={Boolean(indexingPath) || !codeSettings.indexing.enabled}>
           <FolderPlus size={18} aria-hidden="true" />
-          <span>Index new folder</span>
+          <span>{indexingPath ? 'Indexing...' : 'Index new folder'}</span>
         </button>
       </div>
 
-      {codeSettings.indexing.indexedFolders.length > 0 ? (
+      <label className="code-index-search">
+        <Search size={15} aria-hidden="true" />
+        <input
+          value={searchQuery}
+          placeholder="Search indexed code"
+          onChange={(event) => setSearchQuery(event.target.value)}
+          disabled={projects.length === 0}
+        />
+      </label>
+
+      {indexError ? <div className="code-index-error">{indexError}</div> : null}
+
+      {searchQuery.trim() ? (
+        <div className="code-index-search-results">
+          <div className="code-index-search-title">
+            {isSearching ? 'Searching...' : `${searchResults.length} indexed result${searchResults.length === 1 ? '' : 's'}`}
+          </div>
+          {searchResults.map((result) => (
+            <div key={`${result.projectId}-${result.path}`} className="code-index-search-result">
+              <div className="code-index-result-path">{result.relativePath}</div>
+              <div className="code-index-result-meta">{result.projectName} · {result.language} · score {result.score}</div>
+              {result.snippet ? <div className="code-index-result-snippet">{result.snippet}</div> : null}
+            </div>
+          ))}
+          {!isSearching && searchResults.length === 0 ? <p className="code-empty-copy compact">No indexed matches found.</p> : null}
+        </div>
+      ) : null}
+
+      {projects.length > 0 ? (
         <div className="code-indexed-folder-list">
-          {codeSettings.indexing.indexedFolders.map((folder) => (
-            <div className="code-indexed-folder-item" key={folder.id}>
+          {projects.map((project) => (
+            <div className="code-indexed-folder-item" key={project.id}>
               <div>
-                <div className="code-indexed-folder-path">{folder.path}</div>
+                <div className="code-indexed-folder-path">{project.path}</div>
                 <div className="code-indexed-folder-meta">
-                  {folder.status === 'indexed' ? 'Indexed' : folder.status === 'queued' ? 'Queued' : 'Disabled'} · {formatIndexedAt(folder.lastIndexedAt)}
+                  {project.status === 'indexed' ? 'Indexed' : project.status === 'failed' ? 'Failed' : 'Indexing'} · {project.fileCount.toLocaleString()} files · {formatBytes(project.totalBytes)} · {formatIndexedAt(project.lastIndexedAt)}
+                  {project.error ? ` · ${project.error}` : ''}
                 </div>
               </div>
-              <button
-                className="code-folder-remove"
-                type="button"
-                onClick={() => patchIndexing({
-                  indexedFolders: codeSettings.indexing.indexedFolders.filter((item) => item.id !== folder.id)
-                })}
-              >
-                Remove
-              </button>
+              <div className="code-index-folder-actions">
+                <button className="code-folder-remove" type="button" onClick={() => indexPath(project.path)} disabled={Boolean(indexingPath)}>
+                  <RefreshCw size={14} />
+                  <span>Reindex</span>
+                </button>
+                <button className="code-folder-remove" type="button" onClick={() => removeProject(project.id)} disabled={Boolean(indexingPath)}>
+                  <Trash2 size={14} />
+                  <span>Remove</span>
+                </button>
+              </div>
             </div>
           ))}
         </div>
+      ) : isLoadingProjects ? (
+        <p className="code-empty-copy">Loading indexed folders...</p>
       ) : (
         <p className="code-empty-copy">No folders have been initialized yet.</p>
       )}
@@ -265,7 +379,8 @@ export function EditorCodeReviewSection() {
   );
 }
 
-function formatIndexedAt(value: string) {
+function formatIndexedAt(value?: string | null) {
+  if (!value) return 'never';
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) {
     return 'just now';
@@ -277,4 +392,16 @@ function formatIndexedAt(value: string) {
     hour: '2-digit',
     minute: '2-digit'
   });
+}
+
+function formatBytes(value: number) {
+  if (!Number.isFinite(value) || value <= 0) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB'];
+  let size = value;
+  let unitIndex = 0;
+  while (size >= 1024 && unitIndex < units.length - 1) {
+    size /= 1024;
+    unitIndex += 1;
+  }
+  return `${size >= 10 || unitIndex === 0 ? Math.round(size) : size.toFixed(1)} ${units[unitIndex]}`;
 }

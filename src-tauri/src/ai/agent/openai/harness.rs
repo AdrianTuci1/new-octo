@@ -1,13 +1,14 @@
-use std::{fs, time::Duration};
 use futures_util::StreamExt;
 use reqwest::header::{HeaderMap, HeaderValue, CONTENT_TYPE};
 use serde_json::{json, Value};
+use std::{fs, time::Duration};
 
 use crate::ai::agent::harness::{
     AgentCancellation, AgentEventSink, AgentHarness, AgentHarnessContext, AgentHarnessError,
     AgentHarnessOutcome,
 };
 use crate::ai::agent::types::{AgentInputMessage, AgentRunStatus, AgentToolCall, AgentUsage};
+use crate::{ai::mcp, code_index};
 
 use super::config::{OpenAiCompatibleConfig, OPENROUTER_URL};
 use super::guardian::run_guardian_check;
@@ -45,7 +46,8 @@ impl AgentHarness for OpenAiCompatibleHarness {
         context: AgentHarnessContext,
         sink: AgentEventSink,
         cancellation: AgentCancellation,
-    ) -> impl std::future::Future<Output = Result<AgentHarnessOutcome, AgentHarnessError>> + Send {
+    ) -> impl std::future::Future<Output = Result<AgentHarnessOutcome, AgentHarnessError>> + Send
+    {
         stream_chat_completion(self.config.clone(), context, sink, cancellation)
     }
 }
@@ -91,7 +93,17 @@ async fn stream_chat_completion(
             }
         }
 
-        let tools = tools::build_tool_definitions();
+        let mut tools = tools::build_tool_definitions();
+        match mcp::mcp_build_openai_tool_definitions().await {
+            Ok(mcp_tools) => {
+                if let Some(tool_array) = tools.as_array_mut() {
+                    tool_array.extend(mcp_tools);
+                }
+            }
+            Err(error) => {
+                eprintln!("[MCP] Failed to build MCP tool definitions: {error}");
+            }
+        }
 
         let mut updated_context = context.clone();
         updated_context.messages = negotiation_messages.clone();
@@ -146,6 +158,7 @@ async fn stream_chat_completion(
         let mut sse_buffer = String::new();
         let mut byte_stream = response.bytes_stream();
         let mut guardian_rejection_reason: Option<String> = None;
+        let mut mcp_tool_result: Option<(String, String, String, String)> = None;
 
         while let Some(next_chunk) = byte_stream.next().await {
             if cancellation.is_cancelled() {
@@ -217,7 +230,8 @@ async fn stream_chat_completion(
 
             if current_tool_call_id.is_some() && !current_tool_args.is_empty() {
                 if let Ok(args_value) = serde_json::from_str::<Value>(&current_tool_args) {
-                    if current_tool_name == "propose_plan" && !prompt_supports_plan(&context.prompt) {
+                    if current_tool_name == "propose_plan" && !prompt_supports_plan(&context.prompt)
+                    {
                         println!(
                             "[AI] Ignoring propose_plan for non-plan prompt: '{}'",
                             context.prompt
@@ -243,13 +257,20 @@ async fn stream_chat_completion(
                                 break;
                             }
 
-                            let guardian_model = context.terminal_model_id.as_deref()
+                            let guardian_model = context
+                                .terminal_model_id
+                                .as_deref()
                                 .filter(|m| !m.trim().is_empty())
                                 .unwrap_or(&context.model_id);
 
-                            match run_guardian_check(&config, guardian_model, cmd, &context.prompt).await {
+                            match run_guardian_check(&config, guardian_model, cmd, &context.prompt)
+                                .await
+                            {
                                 Ok(Some(reason)) => {
-                                    println!("[GUARDIAN] Rejected command: '{}'. Reason: {}", cmd, reason);
+                                    println!(
+                                        "[GUARDIAN] Rejected command: '{}'. Reason: {}",
+                                        cmd, reason
+                                    );
                                     let rejected_command = cmd.to_string();
                                     guardian_rejection_reason = Some(reason);
                                     current_tool_args = rejected_command;
@@ -261,6 +282,28 @@ async fn stream_chat_completion(
                                 }
                             }
                         }
+                    }
+
+                    if current_tool_name.starts_with("mcp__") {
+                        let tool_call_id =
+                            current_tool_call_id.take().expect("tool id should exist");
+                        let tool_name = current_tool_name.clone();
+                        let raw_args = current_tool_args.clone();
+
+                        sink.status(
+                            AgentRunStatus::Running,
+                            Some(format!("Rulez tool-ul MCP `{tool_name}`.")),
+                        );
+
+                        let result = match mcp::call_openai_mcp_tool(&tool_name, args_value).await {
+                            Ok(result) => result,
+                            Err(error) => json!({ "error": error }).to_string(),
+                        };
+
+                        mcp_tool_result = Some((tool_call_id, tool_name, raw_args, result));
+                        current_tool_name.clear();
+                        current_tool_args.clear();
+                        break;
                     }
 
                     if guardian_rejection_reason.is_none() {
@@ -278,6 +321,32 @@ async fn stream_chat_completion(
                     }
                 }
             }
+        }
+
+        if let Some((tool_call_id, tool_name, raw_args, result)) = mcp_tool_result {
+            negotiation_messages.push(AgentInputMessage {
+                role: "assistant".to_string(),
+                content: String::new(),
+                tool_call_id: None,
+                tool_calls: Some(json!([
+                    {
+                        "id": tool_call_id.clone(),
+                        "type": "function",
+                        "function": {
+                            "name": tool_name,
+                            "arguments": raw_args
+                        }
+                    }
+                ])),
+            });
+            negotiation_messages.push(AgentInputMessage {
+                role: "tool".to_string(),
+                content: result,
+                tool_call_id: Some(tool_call_id),
+                tool_calls: None,
+            });
+            attempt += 1;
+            continue;
         }
 
         if let Some(reason) = guardian_rejection_reason {
@@ -324,7 +393,11 @@ async fn stream_chat_completion(
 
         let visible_response = streamed.trim();
         let reasoning_response = streamed_reasoning.trim();
-        if should_retry_follow_up_only(visible_response, emitted_follow_up_tool_call, forced_follow_up_retry_used) {
+        if should_retry_follow_up_only(
+            visible_response,
+            emitted_follow_up_tool_call,
+            forced_follow_up_retry_used,
+        ) {
             negotiation_messages.push(AgentInputMessage {
                 role: "system".to_string(),
                 content: format!(
@@ -360,7 +433,9 @@ async fn stream_chat_completion(
         return Ok(done_outcome(&context.prompt, &streamed, usage));
     }
 
-    Err(AgentHarnessError::new("Guardian negotiation loop exceeded maximum attempts (3)."))
+    Err(AgentHarnessError::new(
+        "Guardian negotiation loop exceeded maximum attempts (3).",
+    ))
 }
 
 struct DeltaToolCall {
@@ -525,7 +600,9 @@ fn prompt_supports_terminal_command(prompt: &str) -> bool {
         "find",
     ];
 
-    terminal_keywords.iter().any(|keyword| prompt.contains(keyword))
+    terminal_keywords
+        .iter()
+        .any(|keyword| prompt.contains(keyword))
 }
 
 fn prompt_supports_plan(prompt: &str) -> bool {
@@ -663,7 +740,9 @@ fn build_chat_messages(context: &AgentHarnessContext) -> Vec<Value> {
 
     let mut system_prompt = prompt::build_system_prompt(cwd);
     if !injected_skills_text.is_empty() {
-        system_prompt.push_str("\n\n[INFORMATIE INVIZIBILA PENTRU UTILIZATOR - SKILL-URI INVOCATE SI ACTIVE]");
+        system_prompt.push_str(
+            "\n\n[INFORMATIE INVIZIBILA PENTRU UTILIZATOR - SKILL-URI INVOCATE SI ACTIVE]",
+        );
         system_prompt.push_str("\nUrmatoarele instructiuni de specialitate sunt active deoarece utilizatorul a invocat skill-ul respectiv:");
         system_prompt.push_str(&injected_skills_text);
     }
@@ -684,6 +763,13 @@ fn build_chat_messages(context: &AgentHarnessContext) -> Vec<Value> {
         messages.push(json!({
             "role": "system",
             "content": workspace_context
+        }));
+    }
+
+    if let Some(index_context) = code_index::code_index_context_for_cwd(cwd, &context.prompt, 10) {
+        messages.push(json!({
+            "role": "system",
+            "content": index_context
         }));
     }
 
@@ -844,7 +930,10 @@ fn sanitize_message(message: &AgentInputMessage) -> Option<AgentInputMessage> {
         role,
         content: message.content.to_string(),
         tool_call_id: message.tool_call_id.clone(),
-        tool_calls: message.tool_calls.as_ref().map(normalize_outbound_tool_calls),
+        tool_calls: message
+            .tool_calls
+            .as_ref()
+            .map(normalize_outbound_tool_calls),
     })
 }
 
@@ -881,7 +970,10 @@ fn normalize_outbound_tool_call(tool_call: &Value) -> Value {
     };
 
     let mut normalized = object.clone();
-    if let Some(function) = normalized.get_mut("function").and_then(Value::as_object_mut) {
+    if let Some(function) = normalized
+        .get_mut("function")
+        .and_then(Value::as_object_mut)
+    {
         if let Some(arguments) = function.get_mut("arguments") {
             if !arguments.is_string() {
                 *arguments = Value::String(
@@ -912,9 +1004,8 @@ fn cancelled_outcome(prompt: &str, streamed: &str) -> AgentHarnessOutcome {
 #[cfg(test)]
 mod tests {
     use super::{
-        guardian_intercepted_tool_calls, longest_tag_suffix_len,
-        normalize_outbound_tool_calls, prompt_supports_terminal_command,
-        should_retry_follow_up_only,
+        guardian_intercepted_tool_calls, longest_tag_suffix_len, normalize_outbound_tool_calls,
+        prompt_supports_terminal_command, should_retry_follow_up_only,
     };
     use serde_json::json;
 
