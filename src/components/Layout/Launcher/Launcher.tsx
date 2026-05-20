@@ -47,8 +47,9 @@ export function Launcher(props: LauncherProps) {
               messages={launcher.ui.activeMessages}
               pendingApproval={launcher.ui.resolvedPendingApproval}
               showEmptyTopbar={launcher.ui.variant === 'workspace' && launcher.store.composerSurface !== 'terminal' && launcher.ui.composerMode !== 'shell'}
-              onRefinePendingApproval={launcher.actions.handlePendingApprovalRefine}
               onEditPendingApproval={launcher.actions.handlePendingApprovalEdit}
+              onSaveEditPendingApproval={launcher.actions.handlePendingApprovalSaveEdit}
+              onRejectPendingApproval={launcher.actions.handlePendingApprovalReject}
               onAcceptPendingApproval={launcher.actions.handlePendingApprovalAccept}
               onAutoApprovePendingApproval={launcher.actions.handlePendingApprovalAutoApprove}
               onStartNewConversationPendingApproval={launcher.actions.handlePendingTopicChangeStartNewConversation}
@@ -62,6 +63,7 @@ export function Launcher(props: LauncherProps) {
               selectedTerminalBlockId={launcher.store.composerSurface === 'agent' ? launcher.terminal.agentTerminal.selectedBlockId : launcher.terminal.terminal.selectedBlockId}
               terminalBlocks={launcher.terminal.activeTimelineBlocks}
               terminalError={launcher.terminal.activeTimelineError}
+              workingDirectory={launcher.ui.workingDirectory.currentPath}
               title={props.title}
             />
           </div>

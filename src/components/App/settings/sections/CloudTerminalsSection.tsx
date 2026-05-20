@@ -1,10 +1,12 @@
 import { Plus } from 'lucide-react';
-import { useUIStore } from '../../../../stores';
-import { cloudConnectionMethodLabels, defaultCloudProfiles } from '../cloudProfiles';
+import { useMemoryStore, useUIStore } from '../../../../stores';
+import { cloudConnectionMethodLabels, normalizeCloudProfiles } from '../cloudProfiles';
 
 export function CloudTerminalsSection() {
   const setIsCloudProfileDrawerOpen = useUIStore((state) => state.setIsCloudProfileDrawerOpen);
   const setSelectedCloudProfileIdForEdit = useUIStore((state) => state.setSelectedCloudProfileIdForEdit);
+  const settings = useMemoryStore((state) => state.settings);
+  const cloudProfiles = normalizeCloudProfiles(settings?.values);
 
   const openCloudProfileDrawer = (profileId: string | null) => {
     setSelectedCloudProfileIdForEdit(profileId);
@@ -18,7 +20,8 @@ export function CloudTerminalsSection() {
       </div>
 
       <p className="settings-panel-description">
-        Configure cloud profiles for Custom VM and Modal runtimes, then open the drawer to define bootstrap SSH access and provider auth.
+        Configure real cloud terminal profiles for Custom VM and Modal runtimes. Secrets are stored by the OS secure store and profiles only keep references.
+        Durable agent work also needs the Octomus CLI runner installed on the cloud instance so sessions can continue after the desktop window closes.
       </p>
 
       <div className="settings-group">
@@ -27,7 +30,17 @@ export function CloudTerminalsSection() {
         </div>
 
         <div className="settings-models-list">
-          {defaultCloudProfiles.map((profile) => (
+          {cloudProfiles.length === 0 ? (
+            <div className="settings-model-card">
+              <div className="settings-model-card-info">
+                <div className="settings-model-card-name">No cloud profiles configured</div>
+                <div className="settings-model-card-provider">Add a Custom VM or Modal profile to launch cloud terminals.</div>
+              </div>
+              <div className="settings-model-card-status">Setup</div>
+            </div>
+          ) : null}
+
+          {cloudProfiles.map((profile) => (
             <div
               key={profile.id}
               className="settings-model-card"
@@ -38,6 +51,7 @@ export function CloudTerminalsSection() {
                 <div className="settings-model-card-provider">
                   {profile.provider === 'custom-vm' ? 'Custom VM' : 'Modal'}
                   {profile.connectionMethod ? ` · ${cloudConnectionMethodLabels[profile.connectionMethod]}` : ''}
+                  {profile.runtime ? ` · ${profile.runtime}` : ''}
                 </div>
               </div>
               <div className={`settings-model-card-status ${profile.status === 'Ready' ? 'active' : ''}`}>

@@ -110,6 +110,13 @@ pub fn terminal_get_git_context(request: fs::PathRequest) -> Result<Option<git::
 }
 
 #[tauri::command]
+pub fn terminal_get_worktree_diff(
+    request: git::GitWorktreeDiffRequest,
+) -> Result<git::GitWorktreeDiff, String> {
+    git::terminal_get_worktree_diff(request)
+}
+
+#[tauri::command]
 pub fn terminal_switch_git_branch(
     request: git::GitBranchSwitchRequest,
 ) -> Result<Option<git::GitRepoContext>, String> {

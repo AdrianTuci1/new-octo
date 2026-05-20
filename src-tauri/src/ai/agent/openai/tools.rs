@@ -256,7 +256,51 @@ pub(super) fn build_tool_definitions() -> Value {
                                     },
                                     "diffType": {
                                         "type": "object",
-                                        "description": "Diff object. For new files use { kind: 'create', delta: { replacement_line_range: { start: 1, end: 1 }, insertion: 'full file content' } }. For edits use kind 'update' with deltas."
+                                        "description": "Diff object. For new files use kind=create with one delta. For edits use kind=update with deltas.",
+                                        "properties": {
+                                            "kind": {
+                                                "type": "string",
+                                                "enum": ["create", "update", "delete"]
+                                            },
+                                            "delta": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "replacement_line_range": {
+                                                        "type": "object",
+                                                        "properties": {
+                                                            "start": { "type": "number" },
+                                                            "end": { "type": "number" }
+                                                        },
+                                                        "required": ["start", "end"]
+                                                    },
+                                                    "insertion": {
+                                                        "type": "string",
+                                                        "description": "Full file content for create/delete, or replacement text for a single delta."
+                                                    }
+                                                },
+                                                "required": ["replacement_line_range", "insertion"]
+                                            },
+                                            "deltas": {
+                                                "type": "array",
+                                                "items": {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "replacement_line_range": {
+                                                            "type": "object",
+                                                            "properties": {
+                                                                "start": { "type": "number" },
+                                                                "end": { "type": "number" }
+                                                            },
+                                                            "required": ["start", "end"]
+                                                        },
+                                                        "insertion": { "type": "string" }
+                                                    },
+                                                    "required": ["replacement_line_range", "insertion"]
+                                                }
+                                            },
+                                            "rename": { "type": "string" }
+                                        },
+                                        "required": ["kind"]
                                     },
                                     "originalContent": {
                                         "type": "string",

@@ -724,6 +724,13 @@
   white-space: pre-wrap;
 }
 
+.command-approval-command-editor {
+  width: 100%;
+  border: 0;
+  outline: none;
+  resize: vertical;
+}
+
 @media (max-width: 720px) {
   .command-approval-top {
     gap: 8px;

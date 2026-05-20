@@ -61,6 +61,13 @@ export function ProfilesSection() {
     setIsProfileDrawerOpen(true);
   };
 
+  const handleUseProfile = (profileId: string) => {
+    void saveSettings(buildAgentSettingsValues({
+      ...agentSettings,
+      activeProfileId: profileId
+    }), true);
+  };
+
   return (
     <section className="settings-panel">
       <div className="settings-panel-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -85,14 +92,25 @@ export function ProfilesSection() {
         <div key={profile.id} className="profile-card">
           <div className="profile-card-header">
             <h2 className="profile-card-title">{profile.name}</h2>
-            <button
-              className="profile-card-edit"
-              type="button"
-              onClick={() => handleEditProfile(profile.name)}
-            >
-              <Pencil size={14} />
-              Edit
-            </button>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              <button
+                className="profile-card-edit"
+                type="button"
+                onClick={() => handleUseProfile(profile.id)}
+                disabled={agentSettings.activeProfileId === profile.id}
+              >
+                <Check size={14} />
+                {agentSettings.activeProfileId === profile.id ? 'Active' : 'Use'}
+              </button>
+              <button
+                className="profile-card-edit"
+                type="button"
+                onClick={() => handleEditProfile(profile.name)}
+              >
+                <Pencil size={14} />
+                Edit
+              </button>
+            </div>
           </div>
 
           <div className="profile-card-section">

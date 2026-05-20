@@ -122,8 +122,7 @@ pub fn terminal_create_session(
     let spawned = match target.resolved_kind() {
         TerminalSessionKind::Local => transport::local::create_session(rows, cols, cwd)?,
         TerminalSessionKind::Cloud => {
-            transport::cloud::create_session(rows, cols, cwd, &target)?;
-            unreachable!("cloud transport create_session returns early on success or error")
+            transport::cloud::create_session(rows, cols, cwd, &target)?
         }
     };
     let session = spawned.session;

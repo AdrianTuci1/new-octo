@@ -7,7 +7,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { CodeDiffView } from './CodeDiffView';
 import { ImplementationPlanBlock, ThinkingBlock, WebSearchBlock } from './blocks';
-import { visibleChatMessageBody } from '../../hooks/useChat';
+import { extractInlineFileChangeApproval, visibleChatMessageBody } from '../../hooks/useChat';
 import type { ChatMessage, ExecutionPlanArtifact } from '../../types/chat';
 import type { CommandApproval } from '../../types/terminal';
 import type { FileDiff } from '../../types/diff';
@@ -136,6 +136,11 @@ export function MessageBubble({ message, onRequestCommandApproval }: MessageBubb
   const rawVisibleBodyWithArtifacts = message.role === 'assistant'
     ? visibleChatMessageBody(message.body)
     : message.body;
+  const inlineFileChangeApproval = useMemo(() => (
+    message.role === 'assistant' && !message.isStreaming
+      ? extractInlineFileChangeApproval(message.body).approval
+      : undefined
+  ), [message.body, message.isStreaming, message.role]);
   const extractedFileProposal = useMemo(() => (
     message.role === 'assistant' && !message.isStreaming
       ? extractFileProposalFromMarkdown(rawVisibleBodyWithArtifacts)
@@ -153,8 +158,15 @@ export function MessageBubble({ message, onRequestCommandApproval }: MessageBubb
     if (!onRequestCommandApproval) return;
     if (message.role !== 'assistant' || message.isStreaming) return;
     if (message.fileDiffs?.length) return;
-    if (extractedFileProposal.fileDiffs.length === 0) return;
     if (emittedFileProposalIdsRef.current.has(message.id)) return;
+
+    if (inlineFileChangeApproval) {
+      emittedFileProposalIdsRef.current.add(message.id);
+      onRequestCommandApproval(inlineFileChangeApproval);
+      return;
+    }
+
+    if (extractedFileProposal.fileDiffs.length === 0) return;
 
     emittedFileProposalIdsRef.current.add(message.id);
     onRequestCommandApproval({
@@ -164,6 +176,7 @@ export function MessageBubble({ message, onRequestCommandApproval }: MessageBubb
     });
   }, [
     extractedFileProposal.fileDiffs,
+    inlineFileChangeApproval,
     message.fileDiffs?.length,
     message.id,
     message.isStreaming,
@@ -314,6 +327,8 @@ export function MessageBubble({ message, onRequestCommandApproval }: MessageBubb
                     })()}
                   </div>
                 )
+            : message.toolKind === 'file-change' && message.fileDiffs?.length
+              ? null
             : (
                 <MarkdownBody
                   body={message.body}
@@ -332,7 +347,7 @@ export function MessageBubble({ message, onRequestCommandApproval }: MessageBubb
 
         {message.fileDiffs && message.fileDiffs.length > 0 && (
           <div className="message-diffs">
-            <CodeDiffView diffs={message.fileDiffs} />
+            <CodeDiffView diffs={message.fileDiffs} status={message.toolKind === 'file-change' ? 'accepted' : 'pending'} />
           </div>
         )}
       </div>

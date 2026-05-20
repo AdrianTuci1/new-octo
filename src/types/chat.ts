@@ -19,7 +19,7 @@ export type ChatMessage = {
   thinkingDurationSeconds?: number;
   hasNativeThinking?: boolean;
   parentMessageId?: string;
-  toolKind?: 'command' | 'web-search' | 'plan';
+  toolKind?: 'command' | 'web-search' | 'plan' | 'file-change';
   webSearchStatus?: 'searching' | 'success' | 'error';
   webSearchQuery?: string;
   webSearchResults?: WebSearchResult[];
@@ -132,6 +132,7 @@ export type AgentRunRequest = {
   prompt: string;
   cwd?: string | null;
   modelId?: string | null;
+  terminalModelId?: string | null;
   messages?: AgentInputMessage[];
   terminalBlocks?: import('./terminal').TerminalCommandBlock[];
 };
@@ -142,6 +143,7 @@ export type AgentContinueRequest = {
   assistantMessageId?: string | null;
   cwd?: string | null;
   modelId?: string | null;
+  terminalModelId?: string | null;
   messages?: AgentInputMessage[];
   terminalBlocks?: import('./terminal').TerminalCommandBlock[];
 };

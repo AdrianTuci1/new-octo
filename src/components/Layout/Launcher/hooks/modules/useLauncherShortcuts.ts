@@ -54,7 +54,7 @@ export function useLauncherShortcuts({
       clearTerminalSurface,
       'user'
     ),
-    isShellMode: store.composerSurface === 'terminal' || store.modeLock === 'shell',
+    isShellMode: store.composerSurface === 'terminal' || store.modeLock === 'shell' || ui.composerMode === 'shell',
     isManualShellMode: store.composerSurface !== 'terminal' && store.modeLock === 'shell',
     hasPrediction: Boolean(ui.activeShellPrediction?.completionText),
     onAcceptPrediction: () => {

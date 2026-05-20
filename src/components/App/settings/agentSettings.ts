@@ -52,6 +52,7 @@ export type AgentThirdPartyCliSettings = {
 
 export type AgentSettings = {
   enabled: boolean;
+  activeProfileId: string;
   activeAi: {
     nextCommand: boolean;
     promptSuggestions: boolean;
@@ -91,7 +92,7 @@ export type AgentSettings = {
 export const DEFAULT_PROFILE: AgentProfileSettings = {
   id: 'default',
   name: 'Default',
-  baseModel: 'minimax 2.7',
+  baseModel: 'Auto',
   terminalModel: 'Auto',
   applyDiffs: 'Agent decides',
   readFiles: 'Agent decides',
@@ -112,6 +113,7 @@ export const DEFAULT_THIRD_PARTY_RIGHT_CHIP_IDS = ['desktop', 'git_branch', 'set
 
 export const DEFAULT_AGENT_SETTINGS: AgentSettings = {
   enabled: true,
+  activeProfileId: DEFAULT_PROFILE.id,
   activeAi: {
     nextCommand: true,
     promptSuggestions: true,
@@ -263,6 +265,7 @@ export function normalizeAgentSettings(values?: MemorySettingsValues | null): Ag
 
   return {
     enabled: booleanValue(rawAgent.enabled, DEFAULT_AGENT_SETTINGS.enabled),
+    activeProfileId: stringValue(rawAgent.activeProfileId, DEFAULT_AGENT_SETTINGS.activeProfileId),
     activeAi: {
       nextCommand: booleanValue(rawActiveAi.nextCommand, DEFAULT_AGENT_SETTINGS.activeAi.nextCommand),
       promptSuggestions: booleanValue(rawActiveAi.promptSuggestions, DEFAULT_AGENT_SETTINGS.activeAi.promptSuggestions),
@@ -337,7 +340,7 @@ export function createNewAgentProfile(name = 'New Profile'): AgentProfileSetting
     ...DEFAULT_PROFILE,
     id,
     name,
-    baseModel: 'minimax 2.7 (us-hosted)',
-    terminalModel: 'kimi k2.6 (us-hosted)'
+    baseModel: 'Auto',
+    terminalModel: 'Auto'
   };
 }

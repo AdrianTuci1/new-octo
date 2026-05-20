@@ -1,6 +1,6 @@
 import type { ChatMessage } from '../../../types/chat';
 import type { TerminalCommandBlock } from '../../../types/terminal';
-import { visibleChatMessageBody } from '../../../hooks/useChat';
+import { extractInlineFileChangeApproval, visibleChatMessageBody } from '../../../hooks/useChat';
 
 export type TimelineItem =
   | { id: string; kind: 'message'; at: number; order: number; message: ChatMessage }
@@ -53,8 +53,9 @@ export function buildTimelineItems(
       if (m.role === 'assistant') {
         const visibleBody = visibleChatMessageBody(m.body);
         const isStreamingHint = m.isStreaming && !visibleBody.trim();
+        const hasInlineFileChangeApproval = Boolean(extractInlineFileChangeApproval(m.body).approval);
         const hasDiffs = m.fileDiffs && m.fileDiffs.length > 0;
-        if (!visibleBody.trim() && !isStreamingHint && !hasDiffs) {
+        if (!visibleBody.trim() && !isStreamingHint && !hasDiffs && !hasInlineFileChangeApproval) {
           return false;
         }
       }

@@ -10,6 +10,7 @@ export type UseChatOptions = {
   onRequireModelSetup?: () => void;
   cwd?: string | null;
   modelId?: string | null;
+  terminalModelId?: string | null;
   requiresModelSetup?: boolean;
   conversationId?: string | null;
   terminalBlocks?: TerminalCommandBlock[];

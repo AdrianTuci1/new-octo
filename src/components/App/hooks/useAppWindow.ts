@@ -8,6 +8,7 @@ import { formatCompactPathLabel } from '../../../lib/pathLabels';
 import { useUIStore } from '../../../stores';
 import { useMemoryStore } from '../../../stores/memoryStore';
 import { normalizeAgentSettings } from '../settings/agentSettings';
+import { getDefaultReadyCloudProfile, toTerminalTarget } from '../settings/cloudProfiles';
 import type { FilesystemPathContext } from '../../../types/filesystem';
 import type { CommandApproval, TerminalBlockSharedMeta, TerminalCommandBlock } from '../../../types/terminal';
 import type { WorkspaceChromeTab, WorkspaceConversation, WorkspacePaneLayout } from '../chrome';
@@ -128,6 +129,32 @@ export function useAppWindow() {
     [dedupedOrderedConversationIds, openPastConversationBaselineById]
   );
   const openConversationIdSet = useMemo(() => new Set(openConversationIds), [openConversationIds]);
+
+  const openSettingsSectionInternal = useCallback((sectionId?: string) => {
+    setTabs((current) => {
+      const hasSettingsTab = current.some((tab) => tab.id === SETTINGS_TAB_ID);
+      if (hasSettingsTab) {
+        return current;
+      }
+
+      const settingsTab = initialWorkspaceChromeTabs.find((tab) => tab.id === SETTINGS_TAB_ID) ?? {
+        id: SETTINGS_TAB_ID,
+        label: 'Settings',
+        kind: 'settings' as const
+      };
+
+      const nextTabs = [...current];
+      const insertAt = Math.min(1, nextTabs.length);
+      nextTabs.splice(insertAt, 0, settingsTab);
+      return nextTabs;
+    });
+
+    if (sectionId) {
+      setActiveSectionId(sectionId);
+    }
+
+    setSelectedTabId(SETTINGS_TAB_ID);
+  }, []);
 
   const workspaceConversations = useMemo(() => [
     // First, map the active conversations (the ones in tabs)
@@ -397,9 +424,12 @@ export function useAppWindow() {
     openConversationIdSet
   ]);
 
-  const createTerminalTab = useCallback(() => {
+  const createTerminalTab = useCallback((options: {
+    label?: string;
+    terminalSession?: TerminalSessionState;
+  } = {}) => {
     const nextTab = {
-      ...Utils.buildTerminalTab(nextTerminalIndex, '~'),
+      ...Utils.buildTerminalTab(nextTerminalIndex, options.label ?? '~'),
       tintColor: preserveActiveTabColor ? selectedTab.tintColor ?? null : null
     };
     setTabs((current) => [...current, nextTab]);
@@ -409,7 +439,7 @@ export function useAppWindow() {
     }));
     setTerminalSessions((current) => ({
       ...current,
-      [nextTab.id]: Utils.createEmptyTerminalSession(pathContext?.homeDir ?? null)
+      [nextTab.id]: options.terminalSession ?? Utils.createEmptyTerminalSession(pathContext?.homeDir ?? null)
     }));
     setNextTerminalIndex((value) => value + 1);
     return nextTab;
@@ -482,6 +512,33 @@ export function useAppWindow() {
     const nextTab = createTerminalTab();
     setSelectedTabId(nextTab.id);
   }, [createTerminalTab]);
+
+  const onNewCloudTerminalTab = useCallback(() => {
+    const profile = getDefaultReadyCloudProfile(memorySettings?.values);
+    if (!profile) {
+      openSettingsSectionInternal('cloud-platform/cloud');
+      setIsCloudProfileDrawerOpen(true);
+      setSelectedCloudProfileIdForEdit(null);
+      return;
+    }
+
+    const session = {
+      ...Utils.createEmptyTerminalSession(pathContext?.homeDir ?? null),
+      terminalTarget: toTerminalTarget(profile)
+    };
+    const nextTab = createTerminalTab({
+      label: profile.title || 'Cloud',
+      terminalSession: session
+    });
+    setSelectedTabId(nextTab.id);
+  }, [
+    createTerminalTab,
+    memorySettings?.values,
+    openSettingsSectionInternal,
+    pathContext?.homeDir,
+    setIsCloudProfileDrawerOpen,
+    setSelectedCloudProfileIdForEdit
+  ]);
 
   const onSelectConversation = useCallback((conversationId: string) => {
     const existingPaneId = Object.entries(terminalSessions).find(([, session]) => (
@@ -1125,30 +1182,8 @@ export function useAppWindow() {
   }, []);
 
   const onOpenSettingsSection = useCallback((sectionId?: string) => {
-    setTabs((current) => {
-      const hasSettingsTab = current.some((tab) => tab.id === SETTINGS_TAB_ID);
-      if (hasSettingsTab) {
-        return current;
-      }
-
-      const settingsTab = initialWorkspaceChromeTabs.find((tab) => tab.id === SETTINGS_TAB_ID) ?? {
-        id: SETTINGS_TAB_ID,
-        label: 'Settings',
-        kind: 'settings' as const
-      };
-
-      const nextTabs = [...current];
-      const insertAt = Math.min(1, nextTabs.length);
-      nextTabs.splice(insertAt, 0, settingsTab);
-      return nextTabs;
-    });
-
-    if (sectionId) {
-      setActiveSectionId(sectionId);
-    }
-
-    setSelectedTabId(SETTINGS_TAB_ID);
-  }, []);
+    openSettingsSectionInternal(sectionId);
+  }, [openSettingsSectionInternal]);
 
   useEffect(() => {
     if (!(window as any).__TAURI_INTERNALS__) {
@@ -1206,6 +1241,8 @@ export function useAppWindow() {
     initialComposerSurface: terminalSessions[paneId]?.composerSurface ?? ((terminalSessions[paneId]?.activeConversationId ?? null) ? 'agent' as const : 'terminal' as const),
     initialTerminalSessionId: terminalSessions[paneId]?.terminalSessionId ?? null,
     initialAgentTerminalSessionId: terminalSessions[paneId]?.agentTerminalSessionId ?? null,
+    terminalTarget: terminalSessions[paneId]?.terminalTarget ?? null,
+    agentTerminalTarget: terminalSessions[paneId]?.agentTerminalTarget ?? null,
     initialWorkingDirectory: terminalSessions[paneId]?.workingDirectory ?? pathContext?.homeDir ?? null,
     onComposerSurfaceChange: (composerSurface: 'agent' | 'terminal') => handleTerminalComposerSurfaceChange(paneId, composerSurface),
     onConversationChange: (conversationId: string | null) => handleTerminalConversationChange(paneId, conversationId),
@@ -1289,6 +1326,7 @@ export function useAppWindow() {
       onClosePane,
       onNewConversation,
       onNewConversationInNewTab,
+      onNewCloudTerminalTab,
       onNewTerminalTab,
       onFocusPane,
       onSplitTerminal,

@@ -63,6 +63,7 @@ async fn stream_chat_completion(
     let mut attempt = 0;
     let mut forced_final_answer_retry_used = false;
     let mut forced_follow_up_retry_used = false;
+    let mut forced_action_retry_used = false;
 
     while attempt < 3 {
         sink.status(
@@ -108,13 +109,14 @@ async fn stream_chat_completion(
         let mut updated_context = context.clone();
         updated_context.messages = negotiation_messages.clone();
 
-        let request = json!({
+        let mut request = json!({
             "model": context.model_id,
             "messages": build_chat_messages(&updated_context),
             "stream": true,
             "tools": tools,
             "tool_choice": "auto"
         });
+        apply_low_reasoning_effort(&mut request, &config, &context.model_id);
 
         if cancellation.is_cancelled() {
             return Ok(cancelled_outcome(&context.prompt, ""));
@@ -154,6 +156,8 @@ async fn stream_chat_completion(
         let mut current_tool_name = String::new();
         let mut current_tool_args = String::new();
         let mut emitted_follow_up_tool_call = false;
+        let mut emitted_action_tool_call = false;
+        let mut ignored_plan_tool_call = false;
         let mut usage = None;
         let mut sse_buffer = String::new();
         let mut byte_stream = response.bytes_stream();
@@ -236,6 +240,7 @@ async fn stream_chat_completion(
                             "[AI] Ignoring propose_plan for non-plan prompt: '{}'",
                             context.prompt
                         );
+                        ignored_plan_tool_call = true;
                         current_tool_call_id = None;
                         current_tool_name.clear();
                         current_tool_args.clear();
@@ -244,7 +249,8 @@ async fn stream_chat_completion(
 
                     if current_tool_name == "propose_terminal_command" {
                         if let Some(cmd) = args_value.get("command").and_then(Value::as_str) {
-                            if !prompt_supports_terminal_command(&context.prompt) {
+                            let guardian_intent = guardian_intent_context(&context);
+                            if !context_supports_terminal_command(&context) {
                                 println!(
                                     "[GUARDIAN] Rejected terminal command for non-terminal prompt: '{}'",
                                     cmd
@@ -263,7 +269,7 @@ async fn stream_chat_completion(
                                 .filter(|m| !m.trim().is_empty())
                                 .unwrap_or(&context.model_id);
 
-                            match run_guardian_check(&config, guardian_model, cmd, &context.prompt)
+                            match run_guardian_check(&config, guardian_model, cmd, &guardian_intent)
                                 .await
                             {
                                 Ok(Some(reason)) => {
@@ -309,6 +315,8 @@ async fn stream_chat_completion(
                     if guardian_rejection_reason.is_none() {
                         if current_tool_name == "suggest_follow_up" {
                             emitted_follow_up_tool_call = true;
+                        } else {
+                            emitted_action_tool_call = true;
                         }
 
                         sink.tool_call(AgentToolCall {
@@ -393,6 +401,30 @@ async fn stream_chat_completion(
 
         let visible_response = streamed.trim();
         let reasoning_response = streamed_reasoning.trim();
+        let pseudo_plan_response = is_pseudo_plan_response(visible_response);
+        if (visible_response.is_empty() || pseudo_plan_response)
+            && !emitted_action_tool_call
+            && (ignored_plan_tool_call || pseudo_plan_response || reasoning_response.is_empty())
+            && !forced_action_retry_used
+        {
+            negotiation_messages.push(AgentInputMessage {
+                role: "system".to_string(),
+                content: format!(
+                    "Răspunsul anterior nu a produs o acțiune utilă pentru cererea utilizatorului. \
+                    Nu mai propune plan. Dacă sarcina cere creare/modificare fișier, emite `propose_file_change`. \
+                    Dacă sarcina cere rulare/verificare/test, emite `propose_terminal_command`. \
+                    Dacă deja există un fișier sau un rezultat în context, continuă concret următorul pas. \
+                    Cererea curentă este: {}",
+                    context.prompt
+                ),
+                tool_call_id: None,
+                tool_calls: None,
+            });
+            forced_action_retry_used = true;
+            attempt += 1;
+            continue;
+        }
+
         if should_retry_follow_up_only(
             visible_response,
             emitted_follow_up_tool_call,
@@ -433,9 +465,9 @@ async fn stream_chat_completion(
         return Ok(done_outcome(&context.prompt, &streamed, usage));
     }
 
-    Err(AgentHarnessError::new(
-        "Guardian negotiation loop exceeded maximum attempts (3).",
-    ))
+    let fallback = "Nu pot continua automat cu o comandă sigură după mai multe încercări. Am nevoie de o comandă mai precisă sau de o clarificare scurtă despre ce pas vrei să verific.";
+    sink.token(fallback);
+    Ok(done_outcome(&context.prompt, fallback, None))
 }
 
 struct DeltaToolCall {
@@ -605,6 +637,125 @@ fn prompt_supports_terminal_command(prompt: &str) -> bool {
         .any(|keyword| prompt.contains(keyword))
 }
 
+fn context_supports_terminal_command(context: &AgentHarnessContext) -> bool {
+    if prompt_supports_terminal_command(&context.prompt) {
+        return true;
+    }
+
+    if is_continuation_prompt(&context.prompt) {
+        return recent_context_supports_terminal_command(context);
+    }
+
+    false
+}
+
+fn is_continuation_prompt(prompt: &str) -> bool {
+    let normalized = prompt
+        .to_lowercase()
+        .replace(['.', '!', '?'], "")
+        .trim()
+        .to_string();
+    matches!(
+        normalized.as_str(),
+        "continua"
+            | "continuă"
+            | "continue"
+            | "go on"
+            | "mai departe"
+            | "next"
+            | "ok continua"
+            | "ok continuă"
+            | "da continua"
+            | "da continuă"
+    )
+}
+
+fn recent_context_supports_terminal_command(context: &AgentHarnessContext) -> bool {
+    if context.terminal_blocks.iter().rev().take(3).any(|block| {
+        !block.command.trim().is_empty()
+            || block.exit_code.is_some()
+            || block.output.to_lowercase().contains("traceback")
+    }) {
+        return true;
+    }
+
+    context.messages.iter().rev().take(8).any(|message| {
+        let content = message.content.to_lowercase();
+        content.contains("[invisible harness instruction]")
+            || content.contains("propose_terminal_command")
+            || content.contains("applied file changes successfully")
+            || content.contains("file changes")
+            || content.contains("comanda s-a executat")
+            || content.contains("failed")
+            || content.contains("traceback")
+            || content.contains("test")
+            || content.contains("verific")
+            || content.contains("rulez")
+            || content.contains("run")
+    })
+}
+
+fn guardian_intent_context(context: &AgentHarnessContext) -> String {
+    let mut parts = vec![format!("Prompt curent: {}", context.prompt)];
+
+    let recent_messages = context
+        .messages
+        .iter()
+        .rev()
+        .take(6)
+        .filter(|message| !message.content.trim().is_empty())
+        .map(|message| {
+            format!(
+                "{}: {}",
+                message.role,
+                truncate_for_guardian(&message.content, 700)
+            )
+        })
+        .collect::<Vec<_>>();
+
+    if !recent_messages.is_empty() {
+        parts.push(format!(
+            "Context conversație recentă:\n{}",
+            recent_messages.into_iter().rev().collect::<Vec<_>>().join("\n")
+        ));
+    }
+
+    let recent_terminal = context
+        .terminal_blocks
+        .iter()
+        .rev()
+        .take(3)
+        .map(|block| {
+            format!(
+                "command={} exit={:?} output={}",
+                block.command,
+                block.exit_code,
+                truncate_for_guardian(&block.output, 500)
+            )
+        })
+        .collect::<Vec<_>>();
+
+    if !recent_terminal.is_empty() {
+        parts.push(format!(
+            "Context terminal recent:\n{}",
+            recent_terminal.into_iter().rev().collect::<Vec<_>>().join("\n")
+        ));
+    }
+
+    parts.join("\n\n")
+}
+
+fn truncate_for_guardian(value: &str, max_chars: usize) -> String {
+    let normalized = value.replace('\n', " ");
+    let mut chars = normalized.chars();
+    let clipped = chars.by_ref().take(max_chars).collect::<String>();
+    if chars.next().is_some() {
+        format!("{clipped}...")
+    } else {
+        clipped
+    }
+}
+
 fn prompt_supports_plan(prompt: &str) -> bool {
     let prompt = prompt.to_lowercase();
     let plan_keywords = [
@@ -647,6 +798,13 @@ fn should_retry_follow_up_only(
     forced_follow_up_retry_used: bool,
 ) -> bool {
     visible_response.is_empty() && emitted_follow_up_tool_call && !forced_follow_up_retry_used
+}
+
+fn is_pseudo_plan_response(visible_response: &str) -> bool {
+    visible_response
+        .trim_start()
+        .to_lowercase()
+        .starts_with("propose_plan{")
 }
 
 fn handle_stream_payload(
@@ -730,6 +888,29 @@ fn handle_stream_payload(
 
 fn should_use_synthetic_thinking(model_id: &str) -> bool {
     model_id.to_lowercase().contains("gemma")
+}
+
+fn apply_low_reasoning_effort(request: &mut Value, config: &OpenAiCompatibleConfig, model_id: &str) {
+    if !is_openai_reasoning_model(model_id) {
+        return;
+    }
+
+    let is_openai_endpoint = config.base_url.contains("api.openai.com");
+    if !is_openai_endpoint {
+        return;
+    }
+
+    if let Some(object) = request.as_object_mut() {
+        object.insert("reasoning_effort".to_string(), json!("low"));
+    }
+}
+
+fn is_openai_reasoning_model(model_id: &str) -> bool {
+    let model = model_id.to_lowercase();
+    model.starts_with("o1")
+        || model.starts_with("o3")
+        || model.starts_with("o4")
+        || model.starts_with("gpt-5")
 }
 
 fn build_chat_messages(context: &AgentHarnessContext) -> Vec<Value> {

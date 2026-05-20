@@ -15,7 +15,8 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use octomus_launcher_prototype::{
-    ai, app_updates, code_index, keybindings, memory, octomus_paths, shell_signatures, terminal,
+    ai, app_updates, code_index, keybindings, memory, octomus_paths, secure_store,
+    shell_signatures, terminal,
 };
 use serde::Serialize;
 use std::sync::Mutex;
@@ -313,6 +314,7 @@ fn main() {
             terminal::terminal_get_runtime_context,
             terminal::terminal_list_directory_entries,
             terminal::terminal_get_git_context,
+            terminal::terminal_get_worktree_diff,
             terminal::terminal_switch_git_branch,
             terminal::terminal_get_recent_history,
             terminal::terminal_get_prediction,
@@ -327,6 +329,9 @@ fn main() {
             memory::memory_list_conversations,
             memory::memory_delete_conversation,
             keybindings::keybindings_list_definitions,
+            secure_store::cloud_store_profile_secret,
+            secure_store::cloud_profile_secret_status,
+            secure_store::cloud_delete_profile_secret,
             memory::memory_put_cloud_object,
             memory::memory_get_cloud_object,
             memory::memory_list_cloud_object_index,

@@ -1,30 +1,41 @@
 import { useEffect, useRef, useState } from 'react';
-import { ChevronDown, CornerDownLeft, Sparkles, PencilLine, Check } from 'lucide-react';
+import { ChevronDown, CornerDownLeft, PencilLine, Check, X, Save } from 'lucide-react';
 import { CodeDiffView } from '../Chat/CodeDiffView';
 import type { CommandApproval } from '../../types/terminal';
 import './ComposerBar.css';
 
 type CommandApprovalComposerProps = {
   approval: CommandApproval;
-  onRefine: () => void;
   onEdit: () => void;
-  onAccept: () => void;
-  onAutoApprove?: () => void;
+  onSaveEdit?: (approval: CommandApproval) => void;
+  onReject?: (approval: CommandApproval) => void;
+  onAccept: (approval: CommandApproval) => void;
+  onAutoApprove?: (approval: CommandApproval) => void;
   onStartNewConversation?: () => void;
   onContinueCurrentConversation?: () => void;
 };
 
 export function CommandApprovalComposer({
   approval,
-  onRefine,
   onEdit,
+  onSaveEdit,
+  onReject,
   onAccept,
   onAutoApprove,
   onStartNewConversation,
   onContinueCurrentConversation
 }: CommandApprovalComposerProps) {
   const [isAcceptMenuOpen, setIsAcceptMenuOpen] = useState(false);
+  const [isEditingCommand, setIsEditingCommand] = useState(false);
+  const [draftCommand, setDraftCommand] = useState('command' in approval ? approval.command : '');
   const acceptMenuRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if ('command' in approval) {
+      setDraftCommand(approval.command);
+    }
+    setIsEditingCommand(false);
+  }, [approval]);
 
   useEffect(() => {
     if (!isAcceptMenuOpen) return;
@@ -97,12 +108,9 @@ export function CommandApprovalComposer({
           </div>
 
           <div className="command-approval-actions">
-            <button type="button" className="command-approval-text-btn" onClick={onRefine}>
-              Refine
-              <span className="keycap">
-                <CornerDownLeft size={10} />
-              </span>
-              <span className="keycap">C</span>
+            <button type="button" className="command-approval-text-btn" onClick={() => onReject?.(approval)}>
+              <X size={12} />
+              Reject
             </button>
             <button type="button" className="command-approval-text-btn" onClick={onEdit}>
               Edit
@@ -110,7 +118,7 @@ export function CommandApprovalComposer({
               <span className="keycap">E</span>
             </button>
             <div ref={acceptMenuRef} className="command-approval-accept-group">
-              <button type="button" className="command-approval-accept" onClick={onAccept}>
+              <button type="button" className="command-approval-accept" onClick={() => onAccept(approval)}>
                 Accept
                 <span className="keycap">
                   <CornerDownLeft size={10} />
@@ -132,7 +140,7 @@ export function CommandApprovalComposer({
                     className="command-approval-accept-menu-item primary"
                     onClick={() => {
                       setIsAcceptMenuOpen(false);
-                      onAccept();
+                      onAccept(approval);
                     }}
                   >
                     Accept
@@ -142,7 +150,7 @@ export function CommandApprovalComposer({
                     className="command-approval-accept-menu-item"
                     onClick={() => {
                       setIsAcceptMenuOpen(false);
-                      (onAutoApprove ?? onAccept)();
+                      (onAutoApprove ?? onAccept)(approval);
                     }}
                   >
                     Auto-approve
@@ -163,6 +171,20 @@ export function CommandApprovalComposer({
   }
 
   const summary = approval.reason ?? 'Am cerut accesul pentru a rula această comandă și a verifica rezultatul.';
+  const editedApproval = 'command' in approval
+    ? { ...approval, command: draftCommand.trim() || approval.command }
+    : approval;
+  const handleEditOrSave = () => {
+    if (!isEditingCommand) {
+      setDraftCommand(approval.command);
+      setIsEditingCommand(true);
+      onEdit();
+      return;
+    }
+
+    onSaveEdit?.(editedApproval);
+    setIsEditingCommand(false);
+  };
 
   return (
     <section className="command-approval-shell" aria-label="Approval">
@@ -173,22 +195,21 @@ export function CommandApprovalComposer({
         </div>
 
         <div className="command-approval-actions">
-          <button type="button" className="command-approval-text-btn" onClick={onRefine}>
-            <Sparkles size={12} />
-            Refine
-            <span className="keycap">
-              <CornerDownLeft size={10} />
-            </span>
-            <span className="keycap">C</span>
+          <button type="button" className="command-approval-text-btn" onClick={() => onReject?.(editedApproval)}>
+            <X size={12} />
+            Reject
           </button>
-          <button type="button" className="command-approval-text-btn" onClick={onEdit}>
-            <PencilLine size={12} />
-            Edit
+          <button type="button" className="command-approval-text-btn" onClick={handleEditOrSave}>
+            {isEditingCommand ? <Save size={12} /> : <PencilLine size={12} />}
+            {isEditingCommand ? 'Save' : 'Edit'}
             <span className="keycap">⌘</span>
             <span className="keycap">E</span>
           </button>
           <div ref={acceptMenuRef} className="command-approval-accept-group">
-            <button type="button" className="command-approval-accept" onClick={onAccept}>
+            <button type="button" className="command-approval-accept" onClick={() => {
+              onSaveEdit?.(editedApproval);
+              onAccept(editedApproval);
+            }}>
               <Check size={12} />
               Accept
             </button>
@@ -208,7 +229,8 @@ export function CommandApprovalComposer({
                   className="command-approval-accept-menu-item primary"
                   onClick={() => {
                     setIsAcceptMenuOpen(false);
-                    onAccept();
+                    onSaveEdit?.(editedApproval);
+                    onAccept(editedApproval);
                   }}
                 >
                   Accept
@@ -218,7 +240,8 @@ export function CommandApprovalComposer({
                   className="command-approval-accept-menu-item"
                   onClick={() => {
                     setIsAcceptMenuOpen(false);
-                    (onAutoApprove ?? onAccept)();
+                    onSaveEdit?.(editedApproval);
+                    (onAutoApprove ?? onAccept)(editedApproval);
                   }}
                 >
                   Auto-approve
@@ -230,7 +253,17 @@ export function CommandApprovalComposer({
       </div>
 
       <div className="command-approval-preview">
-        <pre className="command-approval-command">{approval.command}</pre>
+        {isEditingCommand ? (
+          <textarea
+            className="command-approval-command command-approval-command-editor"
+            value={draftCommand}
+            onChange={(event) => setDraftCommand(event.target.value)}
+            rows={Math.max(2, draftCommand.split('\n').length)}
+            autoFocus
+          />
+        ) : (
+          <pre className="command-approval-command">{approval.command}</pre>
+        )}
       </div>
     </section>
   );

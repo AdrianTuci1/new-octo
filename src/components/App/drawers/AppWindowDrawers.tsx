@@ -7,22 +7,26 @@ import { KeyboardShortcutsDrawer } from './KeyboardShortcutsDrawer';
 import { EditorDrawer } from './EditorDrawer';
 import { ProfileEditorDrawer } from './ProfileEditorDrawer';
 import { RulesDrawer } from './RulesDrawer';
+import { CodeReviewDrawer } from './CodeReviewDrawer';
 
 type AppWindowDrawersProps = {
   isEditorOpen: boolean;
   isKeyboardShortcutsDrawerOpen: boolean;
+  activeWorkingDirectory: string | null;
   onCloseKeyboardShortcutsDrawer: () => void;
 };
 
 export function AppWindowDrawers({
   isEditorOpen,
   isKeyboardShortcutsDrawerOpen,
+  activeWorkingDirectory,
   onCloseKeyboardShortcutsDrawer
 }: AppWindowDrawersProps) {
   const isModelDrawerOpen = useUIStore((state) => state.isModelDrawerOpen);
   const isCloudProfileDrawerOpen = useUIStore((state) => state.isCloudProfileDrawerOpen);
   const isProfileDrawerOpen = useUIStore((state) => state.isProfileDrawerOpen);
   const isRulesDrawerOpen = useUIStore((state) => state.isRulesDrawerOpen);
+  const isCodeReviewDrawerOpen = useUIStore((state) => state.isCodeReviewDrawerOpen);
 
   const { width: editorWidth, isResizing: isResizingEditorState, startResizing: startResizingEditor } = useAppResize({
     initialWidth: 600,
@@ -66,7 +70,14 @@ export function AppWindowDrawers({
     direction: 'right'
   });
 
-  if (!isEditorOpen && !isModelDrawerOpen && !isCloudProfileDrawerOpen && !isKeyboardShortcutsDrawerOpen && !isProfileDrawerOpen && !isRulesDrawerOpen) {
+  const { width: codeReviewDrawerWidth, isResizing: isResizingCodeReviewDrawerState, startResizing: startResizingCodeReviewDrawer } = useAppResize({
+    initialWidth: 620,
+    minWidth: 420,
+    maxWidth: Math.max(420, window.innerWidth * 0.86),
+    direction: 'right'
+  });
+
+  if (!isEditorOpen && !isModelDrawerOpen && !isCloudProfileDrawerOpen && !isKeyboardShortcutsDrawerOpen && !isProfileDrawerOpen && !isRulesDrawerOpen && !isCodeReviewDrawerOpen) {
     return null;
   }
 
@@ -125,6 +136,18 @@ export function AppWindowDrawers({
           zIndex={24}
         >
           <RulesDrawer />
+        </DrawerFrame>
+      )}
+
+      {isCodeReviewDrawerOpen && (
+        <DrawerFrame
+          className="code-review-drawer-wrapper"
+          width={codeReviewDrawerWidth}
+          isResizing={isResizingCodeReviewDrawerState}
+          onResizeStart={startResizingCodeReviewDrawer}
+          zIndex={24}
+        >
+          <CodeReviewDrawer workingDirectory={activeWorkingDirectory} />
         </DrawerFrame>
       )}
 

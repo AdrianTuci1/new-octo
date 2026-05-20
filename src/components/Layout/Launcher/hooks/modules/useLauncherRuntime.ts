@@ -17,6 +17,8 @@ export function useLauncherRuntime(props: LauncherProps, store: any, tray: any) 
     initialTerminalSessionId = null,
     persistTerminalSession = false,
     initialAgentTerminalSessionId = null,
+    terminalTarget = null,
+    agentTerminalTarget = null,
     active = true,
   } = props;
 
@@ -25,7 +27,8 @@ export function useLauncherRuntime(props: LauncherProps, store: any, tray: any) 
   const memoryStore = useMemoryStore();
   const agentSettings = useMemo(() => normalizeAgentSettings(memoryStore.settings?.values), [memoryStore.settings?.values]);
   const codeSettings = useMemo(() => normalizeCodeSettings(memoryStore.settings?.values), [memoryStore.settings?.values]);
-  const defaultProfileCallWebTools = agentSettings.profiles[0]?.callWebTools !== false;
+  const activeAgentProfile = agentSettings.profiles.find((profile) => profile.id === agentSettings.activeProfileId) ?? agentSettings.profiles[0];
+  const activeProfileCallWebTools = activeAgentProfile?.callWebTools !== false;
   const autoIndexedPathsRef = useRef(new Set<string>());
   const setLocalConversationId = useLauncherStore(state => state.setLocalConversationId);
   const setLocalPendingApproval = useLauncherStore(state => state.setLocalPendingApproval);
@@ -83,6 +86,8 @@ export function useLauncherRuntime(props: LauncherProps, store: any, tray: any) 
     modelSelectionRaw.isConfigured,
     modelSelectionRaw.requiresModelSetup
   ]);
+  const profileBaseModelId = resolveProfileModelId(activeAgentProfile?.baseModel, modelSelectionRaw.selectedModelApiId);
+  const profileTerminalModelId = resolveProfileModelId(activeAgentProfile?.terminalModel, null);
 
   const availableShellCommands = Hooks.useShellCommandIndex();
   const chatApiRef = useRef<any>(null);
@@ -115,6 +120,7 @@ export function useLauncherRuntime(props: LauncherProps, store: any, tray: any) 
   const terminalRaw = Hooks.useTerminalCommandBlocks({
     cwd: workingDirectory.currentPath,
     initialSessionId: initialTerminalSessionId,
+    target: terminalTarget,
     persistSession: persistTerminalSession,
     sharedBlockMetaById: props.sharedTerminalBlockMetaById,
     sharedSyntheticBlocks: props.sharedSyntheticBlocks,
@@ -144,6 +150,7 @@ export function useLauncherRuntime(props: LauncherProps, store: any, tray: any) 
   const agentTerminalRaw = Hooks.useTerminalCommandBlocks({
     cwd: workingDirectory.currentPath,
     initialSessionId: initialAgentTerminalSessionId,
+    target: agentTerminalTarget,
     persistSession: persistTerminalSession,
     sharedBlockMetaById: props.sharedAgentTerminalBlockMetaById,
     onBlockMetaChange: props.onAgentTerminalBlockMetaChange,
@@ -170,7 +177,7 @@ export function useLauncherRuntime(props: LauncherProps, store: any, tray: any) 
   ]);
 
   const requestWebSearch = useCallback(async (request: WebSearchRequest) => {
-    if (!agentSettings.enabled || !agentSettings.permissions.webSearch || !defaultProfileCallWebTools) {
+    if (!agentSettings.enabled || !agentSettings.permissions.webSearch || !activeProfileCallWebTools) {
       void chatApiRef.current?.submitToolResult(
         request.toolCallId,
         'Web search is disabled in Agent settings.',
@@ -219,7 +226,7 @@ export function useLauncherRuntime(props: LauncherProps, store: any, tray: any) 
         { webSearchStatus: 'error' }
       );
     }
-  }, [agentSettings.enabled, agentSettings.permissions.webSearch, defaultProfileCallWebTools]);
+  }, [agentSettings.enabled, agentSettings.permissions.webSearch, activeProfileCallWebTools]);
 
   const onConversationCreated = useCallback((nextId: string) => {
     setLocalConversationId(nextId);
@@ -241,7 +248,8 @@ export function useLauncherRuntime(props: LauncherProps, store: any, tray: any) 
   const chatRaw = Hooks.useChat({
     conversationId: resolvedConversationId,
     cwd: workingDirectory.currentPath,
-    modelId: modelSelection.selectedModelApiId,
+    modelId: profileBaseModelId,
+    terminalModelId: profileTerminalModelId,
     requiresModelSetup: modelSelection.requiresModelSetup,
     onRequireModelSetup: () => {
       tray.closeTray();
@@ -323,4 +331,13 @@ export function useLauncherRuntime(props: LauncherProps, store: any, tray: any) 
     hasControlledConversation,
     hasControlledPendingApproval,
   ]);
+}
+
+function resolveProfileModelId(profileModel: string | null | undefined, fallback: string | null) {
+  const value = profileModel?.trim();
+  if (!value || value.toLowerCase() === 'auto') {
+    return fallback;
+  }
+
+  return value;
 }

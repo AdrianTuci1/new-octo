@@ -11,7 +11,7 @@ import type {
   WorkspacePaneNode
 } from '../chrome';
 import type { MemoryConversationSummary, MemoryWorkspaceSnapshot } from '../../../types';
-import type { CommandApproval, TerminalBlockSharedMeta, TerminalCommandBlock } from '../../../types';
+import type { CommandApproval, TerminalBlockSharedMeta, TerminalCommandBlock, TerminalSessionTarget } from '../../../types';
 
 export type TerminalSessionState = {
   activeConversationId: string | null;
@@ -19,6 +19,8 @@ export type TerminalSessionState = {
   workingDirectory: string | null;
   terminalSessionId: string | null;
   agentTerminalSessionId: string | null;
+  terminalTarget: TerminalSessionTarget | null;
+  agentTerminalTarget: TerminalSessionTarget | null;
   pendingApproval: CommandApproval | null;
   terminalBlockMetaById: Record<string, TerminalBlockSharedMeta>;
   agentTerminalBlockMetaById: Record<string, TerminalBlockSharedMeta>;
@@ -42,6 +44,8 @@ export function createEmptyTerminalSession(
     workingDirectory,
     terminalSessionId: null,
     agentTerminalSessionId: null,
+    terminalTarget: null,
+    agentTerminalTarget: null,
     pendingApproval: null,
     terminalBlockMetaById: {},
     agentTerminalBlockMetaById: {},
@@ -148,6 +152,8 @@ export function mergeTerminalSessions(
     workingDirectory?: string | null;
     terminalSessionId?: string | null;
     agentTerminalSessionId?: string | null;
+    terminalTarget?: TerminalSessionTarget | null;
+    agentTerminalTarget?: TerminalSessionTarget | null;
     pendingApproval?: CommandApproval | null;
     terminalBlockMetaById?: Record<string, TerminalBlockSharedMeta>;
     agentTerminalBlockMetaById?: Record<string, TerminalBlockSharedMeta>;
@@ -170,6 +176,8 @@ export function mergeTerminalSessions(
         workingDirectory: current[paneId]?.workingDirectory ?? defaultWorkingDirectory,
         terminalSessionId: current[paneId]?.terminalSessionId ?? null,
         agentTerminalSessionId: current[paneId]?.agentTerminalSessionId ?? null,
+        terminalTarget: current[paneId]?.terminalTarget ?? null,
+        agentTerminalTarget: current[paneId]?.agentTerminalTarget ?? null,
         pendingApproval: current[paneId]?.pendingApproval ?? null,
         terminalBlockMetaById: current[paneId]?.terminalBlockMetaById ?? {},
         agentTerminalBlockMetaById: current[paneId]?.agentTerminalBlockMetaById ?? {},

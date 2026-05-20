@@ -9,6 +9,7 @@ interface UIState {
   isCloudProfileDrawerOpen: boolean;
   isProfileDrawerOpen: boolean;
   isRulesDrawerOpen: boolean;
+  isCodeReviewDrawerOpen: boolean;
   activeProfileName: string;
   selectedModelIdForEdit: string | null;
   selectedCloudProfileIdForEdit: string | null;
@@ -31,6 +32,10 @@ interface UIState {
   setIsRulesDrawerOpen: (open: boolean) => void;
   openRulesDrawer: () => void;
   closeRulesDrawer: () => void;
+  setIsCodeReviewDrawerOpen: (open: boolean) => void;
+  openCodeReviewDrawer: () => void;
+  closeCodeReviewDrawer: () => void;
+  toggleCodeReviewDrawer: () => void;
   setActiveProfileName: (name: string) => void;
 }
 
@@ -42,6 +47,7 @@ export const useUIStore = create<UIState>((set) => ({
   isCloudProfileDrawerOpen: false,
   isProfileDrawerOpen: false,
   isRulesDrawerOpen: false,
+  isCodeReviewDrawerOpen: false,
   activeProfileName: 'Default',
   selectedModelIdForEdit: null,
   selectedCloudProfileIdForEdit: null,
@@ -81,5 +87,9 @@ export const useUIStore = create<UIState>((set) => ({
   setIsRulesDrawerOpen: (open) => set({ isRulesDrawerOpen: open }),
   openRulesDrawer: () => set({ isRulesDrawerOpen: true }),
   closeRulesDrawer: () => set({ isRulesDrawerOpen: false }),
+  setIsCodeReviewDrawerOpen: (open) => set({ isCodeReviewDrawerOpen: open }),
+  openCodeReviewDrawer: () => set({ isCodeReviewDrawerOpen: true }),
+  closeCodeReviewDrawer: () => set({ isCodeReviewDrawerOpen: false }),
+  toggleCodeReviewDrawer: () => set((state) => ({ isCodeReviewDrawerOpen: !state.isCodeReviewDrawerOpen })),
   setActiveProfileName: (name) => set({ activeProfileName: name })
 }));

@@ -10,6 +10,7 @@ type TerminalBlockCardProps = {
   onExpand: (blockId: string) => void;
   onSelect: (blockId: string | null) => void;
   onOpenConversation?: (conversationId: string) => void;
+  workingDirectory?: string | null;
 };
 
 export function TerminalBlockCard({
@@ -19,7 +20,8 @@ export function TerminalBlockCard({
   onCollapse,
   onExpand,
   onSelect,
-  onOpenConversation
+  onOpenConversation,
+  workingDirectory
 }: TerminalBlockCardProps) {
   if (block.presentation === 'conversation-link' && block.conversationId) {
     return <TerminalBlockSummary block={block} onOpen={() => onOpenConversation?.(block.conversationId!)} />;
@@ -41,6 +43,7 @@ export function TerminalBlockCard({
       isSelected={isSelected}
       onClose={() => onCollapse(block.id)}
       onSelect={() => onSelect(block.id)}
+      workingDirectory={workingDirectory}
     />
   );
 }

@@ -33,6 +33,11 @@ export function CodeDiffView({
 
   const activeDiff = diffs[activeIndex];
   const activeFileName = activeDiff.filePath.split('/').pop() || activeDiff.filePath;
+  const titlePrefix = status === 'accepted'
+    ? 'Applied changes across'
+    : status === 'rejected'
+      ? 'Rejected changes across'
+      : 'Proposed changes across';
 
   const handleNext = () => {
     if (activeIndex < diffs.length - 1) setActiveIndex(activeIndex + 1);
@@ -53,7 +58,7 @@ export function CodeDiffView({
                   <Check size={14} strokeWidth={3} className="opacity-50" />}
             </div>
             <div className="modern-diff-title">
-              Proposed changes across {diffs.length} {diffs.length === 1 ? 'file' : 'files'}
+              {titlePrefix} {diffs.length} {diffs.length === 1 ? 'file' : 'files'}
             </div>
             {totalAdditions > 0 && (
               <div className="modern-diff-badge count-additions">

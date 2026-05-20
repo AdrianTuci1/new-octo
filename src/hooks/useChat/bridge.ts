@@ -5,7 +5,8 @@ import type {
   AgentReasoningEvent,
   AgentStatusEvent,
   AgentTokenEvent,
-  AgentToolCallEvent
+  AgentToolCallEvent,
+  AgentToolCall
 } from '../../types/chat';
 import { dispatchToolCall } from './toolCalls';
 import type { AssistantMessageRegistration } from './types';
@@ -14,6 +15,7 @@ let agentBridgeReady: Promise<void> | null = null;
 export const pendingTokenText: Record<string, string> = {};
 const assistantMessageRegistry = new Map<string, Map<symbol, AssistantMessageRegistration>>();
 export const pendingFollowUpPayloads: Record<string, string> = {};
+const pendingToolCalls: Record<string, AgentToolCall[]> = {};
 
 export function assistantRegistrations(assistantMessageId: string) {
   return Array.from(assistantMessageRegistry.get(assistantMessageId)?.values() ?? []);
@@ -23,10 +25,29 @@ export function setAssistantRegistration(assistantMessageId: string, registratio
   const existingRegistrations = assistantMessageRegistry.get(assistantMessageId);
   if (existingRegistrations) {
     existingRegistrations.set(registration.owner, registration);
+    flushPendingToolCalls(assistantMessageId);
     return;
   }
 
   assistantMessageRegistry.set(assistantMessageId, new Map([[registration.owner, registration]]));
+  flushPendingToolCalls(assistantMessageId);
+}
+
+function flushPendingToolCalls(assistantMessageId: string) {
+  const queuedToolCalls = pendingToolCalls[assistantMessageId];
+  if (!queuedToolCalls?.length) return;
+
+  const registrations = assistantRegistrations(assistantMessageId);
+  if (registrations.length === 0) return;
+
+  delete pendingToolCalls[assistantMessageId];
+  queuedToolCalls.forEach((toolCall) => {
+    dispatchToolCall({
+      assistantMessageId,
+      toolCall,
+      registrations
+    });
+  });
 }
 
 export function deleteOwnerRegistrations(owner: symbol) {
@@ -66,7 +87,14 @@ export function ensureAgentEventBridge(): Promise<void> {
       const { assistantMessageId, toolCall } = event.payload;
       const registrations = assistantRegistrations(assistantMessageId);
 
-      if (!toolCall || registrations.length === 0) return;
+      if (!toolCall) return;
+      if (registrations.length === 0) {
+        pendingToolCalls[assistantMessageId] = [
+          ...(pendingToolCalls[assistantMessageId] ?? []),
+          toolCall
+        ];
+        return;
+      }
       dispatchToolCall({
         assistantMessageId,
         toolCall,

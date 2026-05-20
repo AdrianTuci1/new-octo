@@ -31,8 +31,8 @@ export function ProfileEditorDrawer() {
 
   // Form State
   const [profileName, setProfileName] = useState(activeProfileName);
-  const [baseModel, setBaseModel] = useState('minimax 2.7 (us-hosted)');
-  const [terminalModel, setTerminalModel] = useState('kimi k2.6 (us-hosted)');
+  const [baseModel, setBaseModel] = useState('Auto');
+  const [terminalModel, setTerminalModel] = useState('Auto');
   
   const [applyDiffs, setApplyDiffs] = useState<AgentPermissionMode>('Agent decides');
   const [readFiles, setReadFiles] = useState<AgentPermissionMode>('Agent decides');
@@ -52,6 +52,10 @@ export function ProfileEditorDrawer() {
     agentSettings.profiles.find((profile) => profile.name === activeProfileName)
       ?? agentSettings.profiles[0]
   ), [activeProfileName, agentSettings]);
+  const modelOptions = useMemo(
+    () => buildModelOptions(settings?.values.configuredModels, [activeProfile.baseModel, activeProfile.terminalModel]),
+    [activeProfile.baseModel, activeProfile.terminalModel, settings?.values.configuredModels]
+  );
 
   useEffect(() => {
     setProfileName(activeProfile.name);
@@ -102,6 +106,7 @@ export function ProfileEditorDrawer() {
 
     void saveSettings(buildAgentSettingsValues({
       ...agentSettings,
+      activeProfileId: agentSettings.activeProfileId === activeProfile.id ? 'default' : agentSettings.activeProfileId,
       profiles: agentSettings.profiles.filter((profile) => profile.id !== activeProfile.id)
     }), true);
     setIsProfileDrawerOpen(false);
@@ -170,11 +175,9 @@ export function ProfileEditorDrawer() {
                 onChange={(e) => setBaseModel(e.target.value)}
                 className="profile-editor-select"
               >
-                <option value="minimax 2.7 (us-hosted)">minimax 2.7 (us-hosted)</option>
-                <option value="minimax 2.7">minimax 2.7</option>
-                <option value="gpt-4o-mini">gpt-4o-mini (us-hosted)</option>
-                <option value="claude-3-5-sonnet">claude-3-5-sonnet (us-hosted)</option>
-                <option value="gemini-1.5-pro">gemini-1.5-pro (us-hosted)</option>
+                {modelOptions.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
               </select>
               <ChevronDown size={14} className="select-chevron" />
             </div>
@@ -191,10 +194,9 @@ export function ProfileEditorDrawer() {
                 onChange={(e) => setTerminalModel(e.target.value)}
                 className="profile-editor-select"
               >
-                <option value="kimi k2.6 (us-hosted)">kimi k2.6 (us-hosted)</option>
-                <option value="Auto">Auto</option>
-                <option value="gpt-4o">gpt-4o (us-hosted)</option>
-                <option value="claude-3-5-sonnet">claude-3-5-sonnet (us-hosted)</option>
+                {modelOptions.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
               </select>
               <ChevronDown size={14} className="select-chevron" />
             </div>
@@ -464,4 +466,41 @@ function splitList(value: string) {
     .split(',')
     .map((entry) => entry.trim())
     .filter(Boolean);
+}
+
+function buildModelOptions(rawConfiguredModels: unknown, selectedValues: Array<string | null | undefined>) {
+  const options = new Map<string, string>();
+  options.set('Auto', 'Auto');
+
+  if (Array.isArray(rawConfiguredModels)) {
+    for (const model of rawConfiguredModels) {
+      if (!model || typeof model !== 'object' || Array.isArray(model)) {
+        continue;
+      }
+
+      const record = model as Record<string, unknown>;
+      const value = typeof record.modelId === 'string' && record.modelId.trim()
+        ? record.modelId.trim()
+        : typeof record.id === 'string' && record.id.trim()
+          ? record.id.trim()
+          : null;
+      if (!value) {
+        continue;
+      }
+
+      const label = typeof record.friendlyName === 'string' && record.friendlyName.trim()
+        ? record.friendlyName.trim()
+        : value;
+      options.set(value, label);
+    }
+  }
+
+  for (const selectedValue of selectedValues) {
+    const value = selectedValue?.trim();
+    if (value && !options.has(value)) {
+      options.set(value, value);
+    }
+  }
+
+  return Array.from(options, ([value, label]) => ({ value, label }));
 }

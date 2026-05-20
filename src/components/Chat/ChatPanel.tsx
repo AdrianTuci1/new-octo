@@ -128,6 +128,7 @@ export type ChatPanelProps = {
   messages: ChatMessage[];
   terminalBlocks?: TerminalCommandBlock[];
   terminalError?: string | null;
+  workingDirectory?: string | null;
   expandedTerminalBlockIds?: string[];
   selectedTerminalBlockId?: string | null;
   isOpen: boolean;
@@ -135,8 +136,9 @@ export type ChatPanelProps = {
   showEmptyTopbar?: boolean;
   pendingApproval?: CommandApproval | null;
   onRequestCommandApproval?: (approval: CommandApproval) => void;
-  onRefinePendingApproval?: (approval: CommandApproval) => void;
   onEditPendingApproval?: (approval: CommandApproval) => void;
+  onSaveEditPendingApproval?: (approval: CommandApproval) => void;
+  onRejectPendingApproval?: (approval: CommandApproval) => void;
   onAcceptPendingApproval?: (approval: CommandApproval) => void;
   onAutoApprovePendingApproval?: (approval: CommandApproval) => void;
   onStartNewConversationPendingApproval?: () => void;
@@ -152,6 +154,7 @@ export function ChatPanel({
   messages,
   terminalBlocks = [],
   terminalError,
+  workingDirectory,
   expandedTerminalBlockIds = [],
   selectedTerminalBlockId,
   isOpen,
@@ -159,8 +162,9 @@ export function ChatPanel({
   showEmptyTopbar = false,
   pendingApproval,
   onRequestCommandApproval,
-  onRefinePendingApproval,
   onEditPendingApproval,
+  onSaveEditPendingApproval,
+  onRejectPendingApproval,
   onAcceptPendingApproval,
   onAutoApprovePendingApproval,
   onStartNewConversationPendingApproval,
@@ -398,6 +402,7 @@ export function ChatPanel({
                     onExpand={(blockId) => onExpandTerminalBlock?.(blockId)}
                     onOpenConversation={onOpenConversationBlock}
                     onSelect={(blockId) => onSelectTerminalBlock?.(blockId)}
+                    workingDirectory={workingDirectory}
                   />
                 </div>
               );
@@ -427,10 +432,11 @@ export function ChatPanel({
             <div className="command-approval-row">
               <CommandApprovalComposer
                 approval={activePendingApproval}
-                onRefine={() => onRefinePendingApproval?.(activePendingApproval)}
                 onEdit={() => onEditPendingApproval?.(activePendingApproval)}
-                onAccept={() => onAcceptPendingApproval?.(activePendingApproval)}
-                onAutoApprove={() => onAutoApprovePendingApproval?.(activePendingApproval)}
+                onSaveEdit={(approval) => onSaveEditPendingApproval?.(approval)}
+                onReject={(approval) => onRejectPendingApproval?.(approval)}
+                onAccept={(approval) => onAcceptPendingApproval?.(approval)}
+                onAutoApprove={(approval) => onAutoApprovePendingApproval?.(approval)}
                 onStartNewConversation={activePendingApproval.kind === 'topic-change' ? onStartNewConversationPendingApproval : undefined}
                 onContinueCurrentConversation={activePendingApproval.kind === 'topic-change' ? onContinueCurrentConversationPendingApproval : undefined}
               />

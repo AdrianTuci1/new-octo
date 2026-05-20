@@ -1,5 +1,7 @@
 import { Cloud, KeyRound, LockKeyhole, MonitorCog, Plus, ShieldCheck } from 'lucide-react';
 import { useState } from 'react';
+import { useMemoryStore } from '../../../../stores';
+import { cloudConnectionMethodLabels, normalizeCloudProfiles } from '../cloudProfiles';
 
 function SettingsToggle({ checked = false, onChange }: { checked?: boolean; onChange?: () => void }) {
   return (
@@ -15,39 +17,39 @@ function SettingsToggle({ checked = false, onChange }: { checked?: boolean; onCh
   );
 }
 
-const credentialSources = [
-  {
-    title: 'Custom VM credentials',
-    description: 'Store SSH material, bootstrap env values, and profile-level auth references for your own machines.',
-    status: '1 configured',
-    icon: MonitorCog
-  },
-  {
-    title: 'Modal credentials',
-    description: 'Register provider tokens and runtime secrets used to start Modal-backed cloud terminals.',
-    status: 'Needs setup',
-    icon: Cloud
-  }
-];
-
-const mappings = [
-  {
-    title: 'dev-vm-ssh',
-    subtitle: 'Mapped to Core Dev VM',
-    status: 'Active',
-    tags: ['SSH key pair', 'Custom VM']
-  },
-  {
-    title: 'modal-default-token',
-    subtitle: 'Available for Modal Sandbox',
-    status: 'Draft',
-    tags: ['API token', 'Modal']
-  }
-];
-
 export function CloudCredentialsSection() {
   const [encryptLocally, setEncryptLocally] = useState(true);
   const [shareAcrossProfiles, setShareAcrossProfiles] = useState(true);
+  const settings = useMemoryStore((state) => state.settings);
+  const profiles = normalizeCloudProfiles(settings?.values);
+  const customVmCount = profiles.filter((profile) => profile.provider === 'custom-vm' && profile.hasSecret).length;
+  const modalCount = profiles.filter((profile) => profile.provider === 'modal' && profile.hasSecret).length;
+  const credentialSources = [
+    {
+      title: 'Custom VM credentials',
+      description: 'Store SSH material, bootstrap env values, and profile-level auth references for your own machines.',
+      status: customVmCount > 0 ? `${customVmCount} configured` : 'Needs setup',
+      icon: MonitorCog
+    },
+    {
+      title: 'Modal credentials',
+      description: 'Register provider tokens and runtime secrets used to start Modal-backed cloud terminals.',
+      status: modalCount > 0 ? `${modalCount} configured` : 'Needs setup',
+      icon: Cloud
+    }
+  ];
+  const mappings = profiles
+    .filter((profile) => profile.hasSecret)
+    .map((profile) => ({
+      title: profile.secretRef ?? profile.id,
+      subtitle: `Mapped to ${profile.title}`,
+      status: profile.status === 'Ready' ? 'Active' : 'Draft',
+      tags: [
+        profile.provider === 'custom-vm' ? 'SSH key pair' : 'API token',
+        profile.provider === 'custom-vm' ? 'Custom VM' : 'Modal',
+        profile.connectionMethod ? cloudConnectionMethodLabels[profile.connectionMethod] : null
+      ].filter((tag): tag is string => Boolean(tag))
+    }));
 
   return (
     <section className="settings-panel">
@@ -131,6 +133,18 @@ export function CloudCredentialsSection() {
         </div>
 
         <div className="settings-cloud-profile-list">
+          {mappings.length === 0 ? (
+            <div className="settings-cloud-profile-card">
+              <div className="settings-cloud-profile-header">
+                <div className="settings-cloud-title-stack">
+                  <div className="settings-cloud-profile-title">No mapped credentials</div>
+                  <div className="settings-cloud-profile-subtitle">Credentials appear here after a cloud profile stores a secret.</div>
+                </div>
+                <span className="settings-cloud-badge soft">Setup</span>
+              </div>
+            </div>
+          ) : null}
+
           {mappings.map((mapping) => (
             <div key={mapping.title} className="settings-cloud-profile-card">
               <div className="settings-cloud-profile-header">

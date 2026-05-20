@@ -18,7 +18,8 @@ import type {
   TerminalSessionCwdEvent,
   TerminalSessionStateEvent,
   TerminalRunCommandResponse,
-  TerminalSessionInfo
+  TerminalSessionInfo,
+  TerminalSessionTarget
 } from '../types/terminal';
 
 type RunCommandOptions = {
@@ -28,6 +29,7 @@ type RunCommandOptions = {
 type UseTerminalCommandBlocksOptions = {
   cwd?: string | null;
   initialSessionId?: string | null;
+  target?: TerminalSessionTarget | null;
   sharedBlockMetaById?: Record<string, TerminalBlockSharedMeta>;
   sharedSyntheticBlocks?: TerminalCommandBlock[];
   persistSession?: boolean;
@@ -70,6 +72,7 @@ function sortTimelineBlocks(blocks: TerminalCommandBlock[]) {
 export function useTerminalCommandBlocks(options: UseTerminalCommandBlocksOptions = {}) {
   const cwd = options.cwd ?? null;
   const initialSessionId = options.initialSessionId ?? null;
+  const target = options.target ?? null;
   const sharedBlockMetaById = options.sharedBlockMetaById ?? EMPTY_META;
   const sharedSyntheticBlocks = options.sharedSyntheticBlocks ?? EMPTY_SYNTHETIC_BLOCKS;
   const persistSession = options.persistSession ?? false;
@@ -197,7 +200,8 @@ export function useTerminalCommandBlocks(options: UseTerminalCommandBlocksOption
         sessionId: persistedSessionIdRef.current,
         rows: 24,
         cols: 120,
-        cwd: cwd ?? null
+        cwd: cwd ?? null,
+        target: target ?? undefined
       }
     })
       .then((session) => {
@@ -216,7 +220,7 @@ export function useTerminalCommandBlocks(options: UseTerminalCommandBlocksOption
       });
 
     return sessionPromiseRef.current;
-  }, [cwd, onSessionChange]);
+  }, [cwd, onSessionChange, target]);
 
   const upsertBlock = useCallback((block: TerminalBlock) => {
     setBlocks((currentBlocks) => {
@@ -320,7 +324,8 @@ export function useTerminalCommandBlocks(options: UseTerminalCommandBlocksOption
           sessionId: requestedSessionId,
           rows: 24,
           cols: 120,
-          cwd: cwd ?? null
+          cwd: cwd ?? null,
+          target: target ?? undefined
         }
       }),
       invoke<TerminalBlock[]>('terminal_get_blocks', {
@@ -356,7 +361,7 @@ export function useTerminalCommandBlocks(options: UseTerminalCommandBlocksOption
     return () => {
       cancelled = true;
     };
-  }, [cwd, initialSessionId, onSessionChange, replaceBlocks]);
+  }, [cwd, initialSessionId, onSessionChange, replaceBlocks, target]);
 
   useEffect(() => {
     commitTimeline(commandBlocksRef.current, syntheticBlocksRef.current);

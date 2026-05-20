@@ -1,5 +1,5 @@
 
-import type { CommandApproval, TerminalBlockSharedMeta } from '../../../../types';
+import type { CommandApproval, TerminalBlockSharedMeta, TerminalSessionTarget } from '../../../../types';
 
 export type LauncherVariant = 'panel' | 'workspace';
 
@@ -9,6 +9,8 @@ export type LauncherProps = {
   initialWorkingDirectory?: string | null;
   initialTerminalSessionId?: string | null;
   initialAgentTerminalSessionId?: string | null;
+  terminalTarget?: TerminalSessionTarget | null;
+  agentTerminalTarget?: TerminalSessionTarget | null;
   persistWorkingDirectory?: boolean;
   persistTerminalSession?: boolean;
   chatMode?: 'auto' | 'always-open';

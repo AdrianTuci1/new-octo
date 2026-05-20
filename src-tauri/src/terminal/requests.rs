@@ -9,6 +9,9 @@ pub struct CreateTerminalSessionTargetRequest {
     pub kind: Option<TerminalSessionKind>,
     pub provider: Option<TerminalSessionProvider>,
     pub profile_id: Option<String>,
+    pub host: Option<String>,
+    pub username: Option<String>,
+    pub connection_method: Option<String>,
 }
 
 impl CreateTerminalSessionTargetRequest {
