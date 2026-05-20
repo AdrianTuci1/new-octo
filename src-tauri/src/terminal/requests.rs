@@ -20,10 +20,12 @@ impl CreateTerminalSessionTargetRequest {
     }
 
     pub fn resolved_provider(&self) -> TerminalSessionProvider {
-        self.provider.clone().unwrap_or_else(|| match self.resolved_kind() {
-            TerminalSessionKind::Local => TerminalSessionProvider::Local,
-            TerminalSessionKind::Cloud => TerminalSessionProvider::CustomVm,
-        })
+        self.provider
+            .clone()
+            .unwrap_or_else(|| match self.resolved_kind() {
+                TerminalSessionKind::Local => TerminalSessionProvider::Local,
+                TerminalSessionKind::Cloud => TerminalSessionProvider::CustomVm,
+            })
     }
 }
 

@@ -26,8 +26,11 @@ impl Default for OctomusMemoryManager {
         }
     }
 }
-
-#[derive(Debug)]
+impl OctomusMemoryManager {
+    pub fn conversation_index_path(&self) -> std::path::PathBuf {
+        self.paths.conversation_index_path()
+    }
+}
 pub(crate) struct MemoryPaths {
     pub(crate) root: PathBuf,
 }

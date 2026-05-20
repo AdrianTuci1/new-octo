@@ -8,11 +8,11 @@ pub mod web_search;
 
 use tauri::{AppHandle, State};
 
+use agent::loop_contract::AgentLoopContract;
 use agent::types::{
     AgentContinueRequest, AgentProviderConfigRequest, AgentProviderStatus, AgentRunLookupRequest,
     AgentRunRequest, AgentRunSnapshot, AgentStartResponse,
 };
-use agent::loop_contract::AgentLoopContract;
 pub use agent_management::AgentHarnessManager;
 
 #[tauri::command]

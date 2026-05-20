@@ -1,3 +1,4 @@
+import { isMacPlatform } from './platform';
 import type { ComposerMode, ShellModeSource } from '../types/ui';
 
 export type ShellPrediction = {
@@ -32,8 +33,7 @@ export function consumeShellModeActivator(value: string): { consumed: boolean; v
 }
 
 export function getShellToggleShortcutTokens() {
-  const platform = typeof navigator === 'undefined' ? '' : navigator.platform.toLowerCase();
-  if (platform.includes('mac')) {
+  if (isMacPlatform()) {
     return ['⌘', 'I'];
   }
 

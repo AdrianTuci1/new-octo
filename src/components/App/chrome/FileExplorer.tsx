@@ -9,14 +9,16 @@ import {
   FileCode,
   FileJson,
   FileText,
-  FileImage,
-  RefreshCw,
-  AlertCircle
+  AlertCircle,
+  Search,
+  X
 } from 'lucide-react';
 import type { 
   FilesystemEntry, 
   FilesystemDirectoryListing, 
-  FilesystemPathContext 
+  FilesystemPathContext,
+  FilesystemSearchEntry,
+  FilesystemSearchListing
 } from '../../../types/filesystem';
 import './FileExplorer.css';
 
@@ -49,10 +51,18 @@ export function FileExplorer({
   onOpenInNewPane 
 }: FileExplorerProps) {
   const [tree, setTree] = useState<TreeEntry[]>([]);
+  const [rootPath, setRootPath] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchTree, setSearchTree] = useState<TreeEntry[] | null>(null);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const [searchRetryCount, setSearchRetryCount] = useState(0);
   const [contextMenu, setContextMenu] = useState<ContextMenuState>({ x: 0, y: 0, visible: false, node: null });
   const menuRef = useRef<HTMLDivElement>(null);
+  const directoryCacheRef = useRef(new Map<string, FilesystemEntry[]>());
+  const searchRequestIdRef = useRef(0);
 
   const fetchEntries = useCallback(async (path: string | null = null): Promise<FilesystemEntry[]> => {
     try {
@@ -69,9 +79,26 @@ export function FileExplorer({
     }
   }, []);
 
+  const rememberEntries = useCallback((path: string, entries: FilesystemEntry[]) => {
+    directoryCacheRef.current.set(normalizePath(path), entries.map((entry) => ({ ...entry })));
+  }, []);
+
+  const mapSearchEntryToTreeEntry = useCallback((entry: FilesystemSearchEntry): TreeEntry => {
+    return {
+      name: entry.name,
+      path: entry.path,
+      isDirectory: entry.isDirectory,
+      isOpen: true,
+      children: entry.children.map((child) => mapSearchEntryToTreeEntry(child))
+    };
+  }, []);
+
   const init = useCallback(async () => {
     setLoading(true);
     setError(null);
+    setSearchTree(null);
+    setSearchError(null);
+    setSearchRetryCount(0);
     let path = initialPath;
     
     try {
@@ -82,6 +109,9 @@ export function FileExplorer({
 
       const resolvedPath = path ?? '.';
       const entries = await fetchEntries(resolvedPath);
+      directoryCacheRef.current.clear();
+      rememberEntries(resolvedPath, entries);
+      setRootPath(resolvedPath);
       
       const rootName = resolvedPath.split('/').pop() || 'Project';
       const rootNode: TreeEntry = {
@@ -98,6 +128,9 @@ export function FileExplorer({
       setError(err.toString());
       try {
         const entries = await fetchEntries('.');
+        directoryCacheRef.current.clear();
+        rememberEntries('.', entries);
+        setRootPath('.');
         setTree([{
           name: 'Project',
           path: '.',
@@ -116,6 +149,49 @@ export function FileExplorer({
   useEffect(() => {
     init();
   }, [init]);
+
+  useEffect(() => {
+    const query = searchQuery.trim().toLowerCase();
+    const requestId = searchRequestIdRef.current + 1;
+    searchRequestIdRef.current = requestId;
+
+    if (!query) {
+      setSearchTree(null);
+      setSearchLoading(false);
+      setSearchError(null);
+      return;
+    }
+
+    const searchRootPath = rootPath ?? initialPath ?? '.';
+    setSearchLoading(true);
+    setSearchError(null);
+
+    void (async () => {
+      try {
+        const results = await invoke<FilesystemSearchListing>('terminal_search_directory_entries', {
+          request: {
+            path: searchRootPath,
+            query
+          }
+        });
+        if (searchRequestIdRef.current !== requestId) {
+          return;
+        }
+        setSearchTree(results.entries.map((entry) => mapSearchEntryToTreeEntry(entry)));
+      } catch (err) {
+        if (searchRequestIdRef.current !== requestId) {
+          return;
+        }
+        console.error('[FileExplorer] Search failed:', err);
+        setSearchError(err instanceof Error ? err.message : String(err));
+        setSearchTree([]);
+      } finally {
+        if (searchRequestIdRef.current === requestId) {
+          setSearchLoading(false);
+        }
+      }
+    })();
+  }, [initialPath, mapSearchEntryToTreeEntry, rootPath, searchQuery, searchRetryCount]);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -158,6 +234,7 @@ export function FileExplorer({
     if (shouldFetch) {
       try {
         const children = await fetchEntries(path);
+        rememberEntries(path, children);
         setTree(prev => {
           const setChildren = (nodes: TreeEntry[]): TreeEntry[] => {
             return nodes.map(node => {
@@ -297,6 +374,28 @@ export function FileExplorer({
 
   return (
     <div className="file-explorer">
+      <div className="file-explorer-toolbar">
+        <div className="file-explorer-search">
+          <Search size={14} className="file-explorer-search-icon" />
+          <input
+            type="text"
+            className="file-explorer-search-input"
+            placeholder="Search files and folders"
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
+          />
+          {searchQuery.trim() && (
+            <button
+              type="button"
+              className="file-explorer-search-clear"
+              onClick={() => setSearchQuery('')}
+              aria-label="Clear search"
+            >
+              <X size={12} />
+            </button>
+          )}
+        </div>
+      </div>
       <div className="file-explorer-content">
         {error && (
           <div className="file-explorer-error">
@@ -305,7 +404,23 @@ export function FileExplorer({
             <button onClick={init}>Retry</button>
           </div>
         )}
-        {loading && tree.length === 0 ? (
+        {searchQuery.trim() ? (
+          searchLoading ? (
+            <div className="file-explorer-loading">Searching subdirectories...</div>
+          ) : searchError ? (
+            <div className="file-explorer-error">
+              <AlertCircle size={16} />
+              <span>{searchError}</span>
+              <button onClick={() => setSearchRetryCount((current) => current + 1)}>Retry</button>
+            </div>
+          ) : searchTree && searchTree.length > 0 ? (
+            <div className="file-tree">
+              {renderTree(searchTree)}
+            </div>
+          ) : (
+            <div className="file-explorer-empty">No matches found.</div>
+          )
+        ) : loading && tree.length === 0 ? (
           <div className="file-explorer-loading">Loading files...</div>
         ) : (
           <div className="file-tree">

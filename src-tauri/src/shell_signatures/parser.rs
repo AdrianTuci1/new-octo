@@ -43,8 +43,15 @@ pub fn parse_shell_input(input: &str) -> ParsedShellInput {
         }
 
         if !in_single && !in_double {
-            if ch.is_whitespace() || matches!(ch, '|' | '&' | ';' | '(' | ')' | '{' | '}' | '<' | '>') {
-                push_current(&mut tokens, &mut token_starts, &mut current, &mut current_start);
+            if ch.is_whitespace()
+                || matches!(ch, '|' | '&' | ';' | '(' | ')' | '{' | '}' | '<' | '>')
+            {
+                push_current(
+                    &mut tokens,
+                    &mut token_starts,
+                    &mut current,
+                    &mut current_start,
+                );
                 continue;
             }
         }
@@ -84,7 +91,12 @@ pub fn parse_shell_input(input: &str) -> ParsedShellInput {
         current.push('\\');
     }
 
-    push_current(&mut tokens, &mut token_starts, &mut current, &mut current_start);
+    push_current(
+        &mut tokens,
+        &mut token_starts,
+        &mut current,
+        &mut current_start,
+    );
 
     ParsedShellInput {
         tokens,
@@ -105,7 +117,10 @@ mod tests {
     #[test]
     fn parses_quoted_words_and_keeps_token_starts() {
         let parsed = parse_shell_input(r#"modal run "modal training.py" --flag"#);
-        assert_eq!(parsed.tokens, vec!["modal", "run", "modal training.py", "--flag"]);
+        assert_eq!(
+            parsed.tokens,
+            vec!["modal", "run", "modal training.py", "--flag"]
+        );
         assert_eq!(parsed.token_starts, vec![0, 6, 10, 30]);
         assert!(!parsed.has_trailing_whitespace);
         assert_eq!(parsed.current_token_start(), Some(30));

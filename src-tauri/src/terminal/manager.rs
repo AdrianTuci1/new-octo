@@ -1,10 +1,4 @@
-use std::{
-    collections::HashMap,
-    io::Read,
-    process::Command,
-    sync::Mutex,
-    thread,
-};
+use std::{collections::HashMap, io::Read, process::Command, sync::Mutex, thread};
 
 use tauri::{AppHandle, Emitter, State};
 
@@ -16,15 +10,16 @@ use super::events::{
     TerminalCompletionUpdateEvent, TerminalCompletionsFinishedEvent,
     TerminalCompletionsPromptEvent, TerminalCompletionsStartedEvent, TerminalDataEvent,
     TerminalExitEvent, TerminalSessionCwdEvent, EVENT_BLOCK, EVENT_BLOCK_OUTPUT,
-    EVENT_COMPLETION_RESULT, EVENT_COMPLETION_UPDATE, EVENT_COMPLETIONS_FINISHED,
-    EVENT_COMPLETIONS_PROMPT, EVENT_COMPLETIONS_STARTED, EVENT_DATA, EVENT_EXIT,
-    EVENT_SESSION_CWD,
+    EVENT_COMPLETIONS_FINISHED, EVENT_COMPLETIONS_PROMPT, EVENT_COMPLETIONS_STARTED,
+    EVENT_COMPLETION_RESULT, EVENT_COMPLETION_UPDATE, EVENT_DATA, EVENT_EXIT, EVENT_SESSION_CWD,
 };
 use super::requests::{
-    CreateTerminalSessionRequest, RunTerminalCommandRequest, TerminalRunCommandResponse,
-    TerminalSessionRequest, WriteTerminalSessionRequest, ResizeTerminalSessionRequest,
+    CreateTerminalSessionRequest, ResizeTerminalSessionRequest, RunTerminalCommandRequest,
+    TerminalRunCommandResponse, TerminalSessionRequest, WriteTerminalSessionRequest,
 };
-use super::session::{SharedTerminalSession, TerminalSessionInfo, TerminalSessionKind, TerminalSessionStatus};
+use super::session::{
+    SharedTerminalSession, TerminalSessionInfo, TerminalSessionKind, TerminalSessionStatus,
+};
 use super::transport;
 
 #[derive(Clone)]
@@ -121,9 +116,7 @@ pub fn terminal_create_session(
     let cwd = request.cwd.clone();
     let spawned = match target.resolved_kind() {
         TerminalSessionKind::Local => transport::local::create_session(rows, cols, cwd)?,
-        TerminalSessionKind::Cloud => {
-            transport::cloud::create_session(rows, cols, cwd, &target)?
-        }
+        TerminalSessionKind::Cloud => transport::cloud::create_session(rows, cols, cwd, &target)?,
     };
     let session = spawned.session;
     let info = session.info();
@@ -344,7 +337,9 @@ fn spawn_reader_thread(
                                             },
                                         );
                                     }
-                                    super::ansi::ShellHook::CompletionUpdateDescription { value } => {
+                                    super::ansi::ShellHook::CompletionUpdateDescription {
+                                        value,
+                                    } => {
                                         session.update_last_completion_result(value.clone());
                                         let _ = app.emit(
                                             EVENT_COMPLETION_UPDATE,

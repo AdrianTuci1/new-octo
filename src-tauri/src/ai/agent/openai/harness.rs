@@ -716,7 +716,11 @@ fn guardian_intent_context(context: &AgentHarnessContext) -> String {
     if !recent_messages.is_empty() {
         parts.push(format!(
             "Context conversație recentă:\n{}",
-            recent_messages.into_iter().rev().collect::<Vec<_>>().join("\n")
+            recent_messages
+                .into_iter()
+                .rev()
+                .collect::<Vec<_>>()
+                .join("\n")
         ));
     }
 
@@ -738,7 +742,11 @@ fn guardian_intent_context(context: &AgentHarnessContext) -> String {
     if !recent_terminal.is_empty() {
         parts.push(format!(
             "Context terminal recent:\n{}",
-            recent_terminal.into_iter().rev().collect::<Vec<_>>().join("\n")
+            recent_terminal
+                .into_iter()
+                .rev()
+                .collect::<Vec<_>>()
+                .join("\n")
         ));
     }
 
@@ -890,7 +898,11 @@ fn should_use_synthetic_thinking(model_id: &str) -> bool {
     model_id.to_lowercase().contains("gemma")
 }
 
-fn apply_low_reasoning_effort(request: &mut Value, config: &OpenAiCompatibleConfig, model_id: &str) {
+fn apply_low_reasoning_effort(
+    request: &mut Value,
+    config: &OpenAiCompatibleConfig,
+    model_id: &str,
+) {
     if !is_openai_reasoning_model(model_id) {
         return;
     }

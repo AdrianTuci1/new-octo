@@ -1,5 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { useEffect, useState } from 'react';
+import { isMacPlatform } from '../lib/platform';
 import {
   keyboardShortcutRows as fallbackShortcutRows,
   type KeyboardShortcutBinding,
@@ -10,22 +11,25 @@ import type { BackendKeybindingDefinition } from '../types/keybindings';
 
 function toShortcutKey(label: string): KeyboardShortcutKey {
   const normalized = label.trim().toLowerCase();
+  const isMac = isMacPlatform();
 
   switch (normalized) {
+    case 'cmdorctrl':
+      return { label: isMac ? '⌘' : 'Ctrl', accent: true };
     case 'cmd':
     case 'command':
     case 'meta':
-      return { label: '⌘', accent: true };
+      return { label: isMac ? '⌘' : 'Ctrl', accent: true };
     case 'ctrl':
     case 'control':
-      return { label: '⌃', accent: true };
+      return { label: isMac ? '⌃' : 'Ctrl', accent: true };
     case 'alt':
     case 'option':
-      return { label: '⌥', accent: true };
+      return { label: isMac ? '⌥' : 'Alt', accent: true };
     case 'shift':
       return { label: '⇧', accent: true };
     case 'enter':
-      return { label: '↵', accent: true };
+      return { label: isMac ? '↵' : 'Enter', accent: true };
     case 'up':
       return { label: '↑' };
     case 'down':

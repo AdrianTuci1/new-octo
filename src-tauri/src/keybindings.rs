@@ -1,8 +1,7 @@
 use serde::Serialize;
-use tauri::{
-    menu::{MenuBuilder, MenuEvent, MenuItemBuilder, SubmenuBuilder},
-    AppHandle, Emitter, Manager, Runtime,
-};
+use tauri::{menu::MenuEvent, AppHandle, Emitter, Manager, Runtime};
+
+include!(concat!(env!("OUT_DIR"), "/menu_shortcuts.rs"));
 
 pub const EVENT_SHORTCUT_COMMAND: &str = "keybinding:command";
 
@@ -46,63 +45,63 @@ const KEYBINDING_SPECS: &[KeybindingSpec] = &[
         title: "Open Workspace Window",
         category: "App",
         scope: "global",
-        shortcut: Some("Cmd+,"),
+        shortcut: Some("CmdOrCtrl+,"),
     },
     KeybindingSpec {
         command_id: COMMAND_NEW_TERMINAL_TAB,
         title: "New Terminal Tab",
         category: "Workspace",
         scope: "workspace",
-        shortcut: Some("Cmd+T"),
+        shortcut: Some("CmdOrCtrl+T"),
     },
     KeybindingSpec {
         command_id: COMMAND_NEW_CONVERSATION_TAB,
         title: "New Conversation Tab",
         category: "Workspace",
         scope: "workspace",
-        shortcut: Some("Cmd+Shift+N"),
+        shortcut: Some("CmdOrCtrl+Shift+N"),
     },
     KeybindingSpec {
         command_id: COMMAND_SPLIT_TERMINAL_RIGHT,
         title: "Split Terminal Right",
         category: "Workspace",
         scope: "workspace",
-        shortcut: Some("Cmd+\\"),
+        shortcut: Some("CmdOrCtrl+\\"),
     },
     KeybindingSpec {
         command_id: COMMAND_SPLIT_TERMINAL_UP,
         title: "Split Terminal Up",
         category: "Workspace",
         scope: "workspace",
-        shortcut: Some("Cmd+Shift+\\"),
+        shortcut: Some("CmdOrCtrl+Shift+\\"),
     },
     KeybindingSpec {
         command_id: COMMAND_CLOSE_ACTIVE_TAB,
         title: "Close Active Tab",
         category: "Workspace",
         scope: "workspace",
-        shortcut: Some("Cmd+W"),
+        shortcut: Some("CmdOrCtrl+W"),
     },
     KeybindingSpec {
         command_id: COMMAND_TOGGLE_SIDEBAR,
         title: "Toggle Sidebar",
         category: "View",
         scope: "workspace",
-        shortcut: Some("Cmd+B"),
+        shortcut: Some("CmdOrCtrl+B"),
     },
     KeybindingSpec {
         command_id: COMMAND_TOGGLE_AGENTS,
         title: "Toggle Agents Overlay",
         category: "View",
         scope: "workspace",
-        shortcut: Some("Cmd+Shift+A"),
+        shortcut: Some("CmdOrCtrl+Shift+A"),
     },
     KeybindingSpec {
         command_id: COMMAND_SHOW_KEYBOARD_SHORTCUTS,
         title: "Show Keyboard Shortcuts",
         category: "Help",
         scope: "workspace",
-        shortcut: Some("Cmd+/"),
+        shortcut: Some("CmdOrCtrl+/"),
     },
 ];
 
@@ -163,103 +162,38 @@ pub fn handle_menu_event<R: Runtime>(app: &AppHandle<R>, event: MenuEvent) {
         COMMAND_CLOSE_ACTIVE_TAB => emit_shortcut_command(app, COMMAND_CLOSE_ACTIVE_TAB),
         COMMAND_TOGGLE_SIDEBAR => emit_shortcut_command(app, COMMAND_TOGGLE_SIDEBAR),
         COMMAND_TOGGLE_AGENTS => emit_shortcut_command(app, COMMAND_TOGGLE_AGENTS),
-        COMMAND_SHOW_KEYBOARD_SHORTCUTS => emit_shortcut_command(app, COMMAND_SHOW_KEYBOARD_SHORTCUTS),
+        COMMAND_SHOW_KEYBOARD_SHORTCUTS => {
+            emit_shortcut_command(app, COMMAND_SHOW_KEYBOARD_SHORTCUTS)
+        }
         _ => {}
     }
 }
 
 pub fn install<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
-    let app_submenu = {
-        let open_workspace_item = MenuItemBuilder::with_id(
-            COMMAND_OPEN_WORKSPACE_WINDOW,
-            "Open Workspace Window",
-        )
-        .accelerator("CmdOrCtrl+,")
-        .build(app)?;
-
-        SubmenuBuilder::new(app, "App")
-            .item(&open_workspace_item)
-            .build()?
-    };
-
-    let workspace_submenu = {
-        let new_terminal_tab = MenuItemBuilder::with_id(COMMAND_NEW_TERMINAL_TAB, "New Terminal Tab")
-            .accelerator("CmdOrCtrl+T")
-            .build(app)?;
-        let new_conversation_tab = MenuItemBuilder::with_id(
-            COMMAND_NEW_CONVERSATION_TAB,
-            "New Conversation Tab",
-        )
-        .accelerator("CmdOrCtrl+Shift+N")
-        .build(app)?;
-        let split_right = MenuItemBuilder::with_id(
-            COMMAND_SPLIT_TERMINAL_RIGHT,
-            "Split Terminal Right",
-        )
-        .accelerator("CmdOrCtrl+\\")
-        .build(app)?;
-        let split_up = MenuItemBuilder::with_id(COMMAND_SPLIT_TERMINAL_UP, "Split Terminal Up")
-            .accelerator("CmdOrCtrl+Shift+\\")
-            .build(app)?;
-        let close_active_tab = MenuItemBuilder::with_id(
-            COMMAND_CLOSE_ACTIVE_TAB,
-            "Close Active Tab",
-        )
-        .accelerator("CmdOrCtrl+W")
-        .build(app)?;
-
-        SubmenuBuilder::new(app, "Workspace")
-            .item(&new_terminal_tab)
-            .item(&new_conversation_tab)
-            .item(&split_right)
-            .item(&split_up)
-            .item(&close_active_tab)
-            .build()?
-    };
-
-    let view_submenu = {
-        let toggle_sidebar = MenuItemBuilder::with_id(COMMAND_TOGGLE_SIDEBAR, "Toggle Sidebar")
-            .accelerator("CmdOrCtrl+B")
-            .build(app)?;
-        let toggle_agents = MenuItemBuilder::with_id(
-            COMMAND_TOGGLE_AGENTS,
-            "Toggle Agents Overlay",
-        )
-        .accelerator("CmdOrCtrl+Shift+A")
-        .build(app)?;
-
-        SubmenuBuilder::new(app, "View")
-            .item(&toggle_sidebar)
-            .item(&toggle_agents)
-            .build()?
-    };
-
-    let help_submenu = {
-        let show_shortcuts = MenuItemBuilder::with_id(
-            COMMAND_SHOW_KEYBOARD_SHORTCUTS,
-            "Show Keyboard Shortcuts",
-        )
-        .accelerator("CmdOrCtrl+/")
-        .build(app)?;
-
-        SubmenuBuilder::new(app, "Help")
-            .item(&show_shortcuts)
-            .build()?
-    };
-
-    let menu = MenuBuilder::new(app)
-        .item(&app_submenu)
-        .item(&workspace_submenu)
-        .item(&view_submenu)
-        .item(&help_submenu)
-        .build()?;
-
-    let _ = menu.set_as_app_menu()?;
     app.on_menu_event(|app, event| handle_menu_event(app, event));
     Ok(())
 }
 
 #[tauri::command]
 pub fn keybindings_list_definitions() -> Vec<KeybindingDefinition> {
-    KEYBINDING_SPECS.iter().map(to_definition).collect()
+    let mut catalog = std::collections::BTreeMap::<String, KeybindingDefinition>::new();
+
+    for definition in KEYBINDING_SPECS.iter().map(to_definition) {
+        catalog.insert(definition.command_id.clone(), definition);
+    }
+
+    for &(command_id, title, category, scope, shortcut) in MENU_SHORTCUT_SPECS {
+        catalog.insert(
+            command_id.to_string(),
+            KeybindingDefinition {
+                command_id: command_id.to_string(),
+                title: title.to_string(),
+                category: category.to_string(),
+                scope: scope.to_string(),
+                shortcut: shortcut.map(|value| value.to_string()),
+            },
+        );
+    }
+
+    catalog.into_values().collect()
 }

@@ -24,8 +24,8 @@ use crate::memory::{
 };
 
 pub use paths::OctomusMemoryManager;
-pub(crate) use storage::read_json_or_default;
-pub(crate) use types::{MemoryConversationIndex, MemoryConversationRecord};
+pub use storage::read_json_or_default;
+pub use types::{MemoryConversationIndex, MemoryConversationRecord, MemoryConversationSummary};
 
 const EVENT_WORKSPACE_UPDATED: &str = "memory:workspace-updated";
 const EVENT_CONVERSATION_UPDATED: &str = "memory:conversation-updated";

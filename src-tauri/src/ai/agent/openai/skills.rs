@@ -97,9 +97,19 @@ fn detect_mentioned_skills<'a>(
     loaded_skills
 }
 
-fn is_skill_invoked(prompt: &str, skill_name: &str, reserved_slash_commands: &HashSet<&'static str>) -> bool {
-    let explicit_patterns = [format!("@{}", skill_name), format!("@skills/{}", skill_name)];
-    if explicit_patterns.iter().any(|pattern| prompt.contains(pattern)) {
+fn is_skill_invoked(
+    prompt: &str,
+    skill_name: &str,
+    reserved_slash_commands: &HashSet<&'static str>,
+) -> bool {
+    let explicit_patterns = [
+        format!("@{}", skill_name),
+        format!("@skills/{}", skill_name),
+    ];
+    if explicit_patterns
+        .iter()
+        .any(|pattern| prompt.contains(pattern))
+    {
         return true;
     }
 
@@ -133,7 +143,10 @@ fn reserved_slash_commands() -> HashSet<&'static str> {
 
 #[cfg(test)]
 mod tests {
-    use super::{detect_mentioned_skills, insert_skill_directories, is_skill_invoked, reserved_slash_commands};
+    use super::{
+        detect_mentioned_skills, insert_skill_directories, is_skill_invoked,
+        reserved_slash_commands,
+    };
     use crate::ai::agent::types::AgentInputMessage;
     use std::{
         collections::BTreeMap,
@@ -189,7 +202,11 @@ mod tests {
         let reserved = reserved_slash_commands();
 
         assert!(is_skill_invoked("/alpha", "alpha", &reserved));
-        assert!(is_skill_invoked("rulează /alpha pentru mine", "alpha", &reserved));
+        assert!(is_skill_invoked(
+            "rulează /alpha pentru mine",
+            "alpha",
+            &reserved
+        ));
         assert!(is_skill_invoked("/skills/alpha", "alpha", &reserved));
     }
 

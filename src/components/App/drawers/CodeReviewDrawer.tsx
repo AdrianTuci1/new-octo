@@ -1,6 +1,8 @@
 import { invoke } from '@tauri-apps/api/core';
 import { ChevronDown, ChevronRight, Copy, FileCode2, RefreshCcw, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useMonacoColorizedLines } from '../../../hooks/useMonacoColorizedLines';
+import { getLanguageFromPath } from '../../../lib/fileLanguage';
 import { useUIStore } from '../../../stores';
 import type { GitWorktreeDiff, GitWorktreeDiffFile } from '../../../types/gitDiff';
 import { DrawerHeader } from './DrawerHeader';
@@ -9,16 +11,6 @@ import './CodeReviewDrawer.css';
 type CodeReviewDrawerProps = {
   workingDirectory: string | null;
 };
-
-type RenderedDiffLine = {
-  key: string;
-  kind: 'addition' | 'deletion' | 'context' | 'hunk' | 'meta';
-  lineNumber: string;
-  prefix: string;
-  content: string;
-};
-
-const MAX_DEFAULT_RENDERED_LINES = 260;
 
 export function CodeReviewDrawer({ workingDirectory }: CodeReviewDrawerProps) {
   const closeCodeReviewDrawer = useUIStore((state) => state.closeCodeReviewDrawer);
@@ -165,10 +157,15 @@ function DiffFileSection({
   isOpen: boolean;
   onToggle: () => void;
 }) {
-  const lines = useMemo(() => parseUnifiedDiff(file.patch), [file.patch]);
-  const [showFullDiff, setShowFullDiff] = useState(false);
-  const renderedLines = showFullDiff ? lines : lines.slice(0, MAX_DEFAULT_RENDERED_LINES);
-  const isTruncated = !showFullDiff && lines.length > MAX_DEFAULT_RENDERED_LINES;
+  const patch = file.patch ?? '';
+  const language = useMemo(() => getLanguageFromPath(file.path), [file.path]);
+  const patchLines = useMemo(() => patch.split('\n'), [patch]);
+  const parsedLines = useMemo(() => patchLines.map(parsePatchLine), [patchLines]);
+  const syntaxLineInputs = useMemo(
+    () => parsedLines.map((line) => (line.kind === 'addition' || line.kind === 'deletion' || line.kind === 'context' ? line.content : line.raw)),
+    [parsedLines]
+  );
+  const highlightedLines = useMonacoColorizedLines(language, syntaxLineInputs);
 
   const copyPatch = () => {
     if (!file.patch) return;
@@ -206,115 +203,82 @@ function DiffFileSection({
         </span>
       </button>
       {isOpen ? (
-        <div className="code-review-file-diff">
-          {renderedLines.length > 0 ? renderedLines.map((line) => (
-            <div key={line.key} className={`code-review-diff-line ${line.kind}`}>
-              <span className="code-review-diff-gutter">{line.lineNumber}</span>
-              <span className="code-review-diff-prefix">{line.prefix}</span>
-              <code className="code-review-diff-content">{line.content || ' '}</code>
+        patch.trim() ? (
+          <div className="code-review-file-diff">
+            <div className="code-review-diff-lines">
+              {parsedLines.map((line, index) => {
+                const isSyntaxLine = line.kind === 'addition' || line.kind === 'deletion' || line.kind === 'context';
+                const highlighted = highlightedLines?.[index] ?? escapeHtml(line.content);
+                return (
+                  <div key={`${file.path}:${index}:${line.raw}`} className={`code-review-diff-line ${line.kind}`}>
+                    <div className="code-review-diff-gutter">{index + 1}</div>
+                    <div className={`code-review-diff-prefix ${line.kind}`}>{line.prefix}</div>
+                    <div
+                      className={`code-review-diff-content ${isSyntaxLine ? 'syntax' : ''}`}
+                      dangerouslySetInnerHTML={{ __html: isSyntaxLine ? highlighted : escapeHtml(line.raw) }}
+                    />
+                  </div>
+                );
+              })}
             </div>
-          )) : (
+          </div>
+        ) : (
+          <div className="code-review-file-diff">
             <div className="code-review-empty-file">No text diff available for this file.</div>
-          )}
-          {isTruncated ? (
-            <button
-              className="code-review-show-full"
-              type="button"
-              onClick={() => setShowFullDiff(true)}
-            >
-              Show full diff ({lines.length - MAX_DEFAULT_RENDERED_LINES} more lines)
-            </button>
-          ) : null}
-        </div>
+          </div>
+        )
       ) : null}
     </section>
   );
 }
 
-function parseUnifiedDiff(patch: string): RenderedDiffLine[] {
-  if (!patch.trim()) return [];
+type PatchLineKind = 'addition' | 'deletion' | 'context' | 'hunk' | 'meta';
 
-  let oldLine = 0;
-  let newLine = 0;
-  let sequence = 0;
+type ParsedPatchLine = {
+  kind: PatchLineKind;
+  raw: string;
+  prefix: string;
+  content: string;
+};
 
-  return patch
-    .split('\n')
-    .flatMap<RenderedDiffLine>((line) => {
-      sequence += 1;
+function parsePatchLine(line: string): ParsedPatchLine {
+  if (line.startsWith('@@')) {
+    return { kind: 'hunk', raw: line, prefix: '', content: line };
+  }
 
-      if (line.startsWith('diff --git') || line.startsWith('index ') || line.startsWith('new file mode') || line.startsWith('deleted file mode')) {
-        return [];
-      }
+  if (
+    line.startsWith('--- ') ||
+    line.startsWith('+++ ') ||
+    line.startsWith('diff --git') ||
+    line.startsWith('index ') ||
+    line.startsWith('new file mode') ||
+    line.startsWith('deleted file mode') ||
+    line.startsWith('\\')
+  ) {
+    return { kind: 'meta', raw: line, prefix: '', content: line };
+  }
 
-      if (line.startsWith('--- ') || line.startsWith('+++ ')) {
-        return [{
-          key: `${sequence}:meta`,
-          kind: 'meta' as const,
-          lineNumber: '',
-          prefix: '',
-          content: line
-        }];
-      }
+  if (line.startsWith('+')) {
+    return { kind: 'addition', raw: line, prefix: '+', content: line.slice(1) };
+  }
 
-      if (line.startsWith('@@')) {
-        const match = line.match(/^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
-        if (match) {
-          oldLine = Number(match[1]);
-          newLine = Number(match[2]);
-        }
-        return [{
-          key: `${sequence}:hunk`,
-          kind: 'hunk' as const,
-          lineNumber: '',
-          prefix: '',
-          content: line
-        }];
-      }
+  if (line.startsWith('-')) {
+    return { kind: 'deletion', raw: line, prefix: '-', content: line.slice(1) };
+  }
 
-      if (line.startsWith('+')) {
-        const rendered = {
-          key: `${sequence}:add`,
-          kind: 'addition' as const,
-          lineNumber: String(newLine),
-          prefix: '+',
-          content: line.slice(1)
-        };
-        newLine += 1;
-        return [rendered];
-      }
+  if (line.startsWith(' ')) {
+    return { kind: 'context', raw: line, prefix: ' ', content: line.slice(1) };
+  }
 
-      if (line.startsWith('-')) {
-        const rendered = {
-          key: `${sequence}:del`,
-          kind: 'deletion' as const,
-          lineNumber: String(oldLine),
-          prefix: '-',
-          content: line.slice(1)
-        };
-        oldLine += 1;
-        return [rendered];
-      }
+  return { kind: 'context', raw: line, prefix: ' ', content: line };
+}
 
-      if (line.startsWith('\\')) {
-        return [{
-          key: `${sequence}:meta-note`,
-          kind: 'meta' as const,
-          lineNumber: '',
-          prefix: '',
-          content: line
-        }];
-      }
-
-      const rendered = {
-        key: `${sequence}:ctx`,
-        kind: 'context' as const,
-        lineNumber: newLine > 0 ? String(newLine) : oldLine > 0 ? String(oldLine) : '',
-        prefix: ' ',
-        content: line.startsWith(' ') ? line.slice(1) : line
-      };
-      oldLine += oldLine > 0 ? 1 : 0;
-      newLine += newLine > 0 ? 1 : 0;
-      return [rendered];
-    });
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+    .replace(/`/g, '&#96;');
 }

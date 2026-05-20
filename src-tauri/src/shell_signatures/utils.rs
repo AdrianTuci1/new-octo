@@ -4,8 +4,8 @@ use std::{
     sync::OnceLock,
 };
 
-use crate::terminal::ShellHistoryEntry;
 use super::{CommandScope, ScopeMetadata};
+use crate::terminal::ShellHistoryEntry;
 
 pub fn collect_history_prefix_candidates(
     input: &str,

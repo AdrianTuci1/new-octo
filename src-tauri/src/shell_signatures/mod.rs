@@ -5,14 +5,14 @@ use std::{
     sync::{Mutex, OnceLock},
 };
 
-pub mod protocols;
-pub mod scripts;
+pub mod context;
 pub mod help;
 pub mod lookup;
-pub mod registry;
-pub mod context;
 pub mod parser;
 pub mod path_engine;
+pub mod protocols;
+pub mod registry;
+pub mod scripts;
 pub mod signature_engine;
 pub mod utils;
 
@@ -109,11 +109,7 @@ impl ShellSignatureRegistry {
             return Vec::new();
         }
         let parsed = parser::parse_shell_input(trimmed);
-        let token_refs = parsed
-            .tokens
-            .iter()
-            .map(String::as_str)
-            .collect::<Vec<_>>();
+        let token_refs = parsed.tokens.iter().map(String::as_str).collect::<Vec<_>>();
         let normalized_input = parsed.tokens.join(" ");
 
         let mut candidates = Vec::new();
@@ -226,10 +222,9 @@ impl ShellSignatureRegistry {
         };
 
         let mut scopes = Vec::new();
-        if let Some((matched_scope, _)) = lookup::get_matching_signature_for_input(
-            &tokens.join(" "),
-            &self.command_registry,
-        ) {
+        if let Some((matched_scope, _)) =
+            lookup::get_matching_signature_for_input(&tokens.join(" "), &self.command_registry)
+        {
             scopes.push(matched_scope);
         }
 
@@ -264,10 +259,11 @@ impl ShellSignatureRegistry {
                 .entry(scope.clone())
                 .or_insert_with(|| loaded.clone());
         }
-        self.command_registry.register_signature(registry::CommandSignature {
-            scope: scope.clone(),
-            metadata: loaded.clone(),
-        });
+        self.command_registry
+            .register_signature(registry::CommandSignature {
+                scope: scope.clone(),
+                metadata: loaded.clone(),
+            });
         loaded
     }
 
@@ -287,8 +283,11 @@ impl ShellSignatureRegistry {
         for scope in self.relevant_scopes(tokens) {
             let metadata = self.ensure_scope_loaded(&scope);
             for protocol in &metadata.completion_protocols {
-                for fragment in protocols::run_completion_protocol(protocol, &scope, input, tokens) {
-                    if let Some(completed) = protocols::compose_completion_candidate(input, &fragment) {
+                for fragment in protocols::run_completion_protocol(protocol, &scope, input, tokens)
+                {
+                    if let Some(completed) =
+                        protocols::compose_completion_candidate(input, &fragment)
+                    {
                         push(completed);
                     }
                 }
@@ -467,9 +466,11 @@ PYTHONHASHSEED: if this variable is set to 'random', a random value is used
             return;
         }
 
-        let fragments =
-            protocols::run_python_pip_completion("python3 -m pip i", &["python3", "-m", "pip", "i"])
-                .expect("pip completion should be available");
+        let fragments = protocols::run_python_pip_completion(
+            "python3 -m pip i",
+            &["python3", "-m", "pip", "i"],
+        )
+        .expect("pip completion should be available");
 
         assert!(fragments.iter().any(|fragment| fragment == "install"));
         assert!(fragments.iter().any(|fragment| fragment == "index"));

@@ -1,8 +1,6 @@
 use crate::{
     ai::predict::model::{self, CommandPrediction},
-    terminal::{
-        ShellHistoryEntry,
-    },
+    terminal::ShellHistoryEntry,
 };
 
 use super::{parser::parse_shell_input, path_engine, signature_engine};
@@ -84,11 +82,7 @@ impl<'a> TerminalCompletionContext<'a> {
     }
 
     fn predict_signature_completion(&self) -> Option<CommandPrediction> {
-        signature_engine::predict_signature_completion(
-            self.input,
-            self.cwd,
-            self.history_entries,
-        )
+        signature_engine::predict_signature_completion(self.input, self.cwd, self.history_entries)
     }
 
     fn predict_from_executables(&self) -> Option<CommandPrediction> {

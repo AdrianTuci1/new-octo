@@ -282,7 +282,7 @@ export function EditorCodeReviewSection() {
           )}
           action={(
             <SettingsSelect
-              minWidth={250}
+              minWidth={220}
               value={codeSettings.editor.fileLinksEditor}
               options={[
                 { value: 'Default App', label: 'Default App' },
@@ -302,7 +302,7 @@ export function EditorCodeReviewSection() {
           )}
           action={(
             <SettingsSelect
-              minWidth={250}
+              minWidth={220}
               value={codeSettings.editor.codeReviewEditor}
               options={[
                 { value: 'Warp', label: 'Warp' },
@@ -317,7 +317,7 @@ export function EditorCodeReviewSection() {
           title="Choose a layout to open files in Warp"
           action={(
             <SettingsSelect
-              minWidth={250}
+              minWidth={220}
               value={codeSettings.editor.warpOpenLayout}
               options={[
                 { value: 'Split Pane', label: 'Split Pane' },

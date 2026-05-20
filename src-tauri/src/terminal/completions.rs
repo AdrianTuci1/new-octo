@@ -43,12 +43,8 @@ impl ShellCompletion {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum ShellData {
-    Raw {
-        output: String,
-    },
-    IncrementallyTyped {
-        output: Vec<ShellCompletion>,
-    },
+    Raw { output: String },
+    IncrementallyTyped { output: Vec<ShellCompletion> },
 }
 
 impl ShellData {
@@ -57,9 +53,9 @@ impl ShellData {
             ShellCompletionFormat::Raw => Some(Self::Raw {
                 output: String::new(),
             }),
-            ShellCompletionFormat::IncrementallyTyped => Some(Self::IncrementallyTyped {
-                output: Vec::new(),
-            }),
+            ShellCompletionFormat::IncrementallyTyped => {
+                Some(Self::IncrementallyTyped { output: Vec::new() })
+            }
         }
     }
 }
@@ -90,9 +86,9 @@ impl CompletionTracker {
             ShellCompletionFormat::Raw => ShellData::Raw {
                 output: String::new(),
             },
-            ShellCompletionFormat::IncrementallyTyped => ShellData::IncrementallyTyped {
-                output: Vec::new(),
-            },
+            ShellCompletionFormat::IncrementallyTyped => {
+                ShellData::IncrementallyTyped { output: Vec::new() }
+            }
         });
     }
 

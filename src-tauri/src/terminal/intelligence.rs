@@ -161,7 +161,13 @@ fn predict_terminal_ghost_from_history(
     last_command: Option<&str>,
     history_entries: &[ShellHistoryEntry],
 ) -> Option<crate::ai::predict::CommandPrediction> {
-    predict_terminal_ghost_from_history_with_commands(input, cwd, last_command, history_entries, &[])
+    predict_terminal_ghost_from_history_with_commands(
+        input,
+        cwd,
+        last_command,
+        history_entries,
+        &[],
+    )
 }
 
 fn predict_terminal_ghost_from_history_with_commands(
@@ -808,12 +814,9 @@ mod tests {
         if let Ok(mut state) = registry.state.lock() {
             state.scopes.insert(scope.clone(), metadata.clone());
         }
-        registry
-            .command_registry
-            .register_signature(crate::shell_signatures::registry::CommandSignature {
-                scope,
-                metadata,
-            });
+        registry.command_registry.register_signature(
+            crate::shell_signatures::registry::CommandSignature { scope, metadata },
+        );
 
         let prediction = predict_terminal_ghost_from_history("python3 -", Some("/tmp"), None, &[])
             .expect("python3 signature completion should exist");

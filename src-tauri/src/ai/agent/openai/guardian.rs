@@ -1,9 +1,9 @@
-use std::time::Duration;
-use serde_json::{json, Value};
-use reqwest::header::{HeaderMap, HeaderValue, CONTENT_TYPE};
-use crate::ai::agent::harness::AgentHarnessError;
 use super::config::OpenAiCompatibleConfig;
 use super::utils;
+use crate::ai::agent::harness::AgentHarnessError;
+use reqwest::header::{HeaderMap, HeaderValue, CONTENT_TYPE};
+use serde_json::{json, Value};
+use std::time::Duration;
 
 pub async fn run_guardian_check(
     config: &OpenAiCompatibleConfig,
@@ -60,7 +60,8 @@ pub async fn run_guardian_check(
 
     if response.status().is_success() {
         let body: Value = response.json().await.unwrap_or(json!({}));
-        if let Some(content) = body.get("choices")
+        if let Some(content) = body
+            .get("choices")
             .and_then(|c| c.as_array())
             .and_then(|a| a.first())
             .and_then(|f| f.get("message"))

@@ -16,11 +16,17 @@ use tauri::{AppHandle, State};
 
 // Re-export core types
 pub use block::TerminalBlock;
-pub use manager::TerminalManager;
 pub use completions::{CompletionTracker, ShellCompletion, ShellCompletionFormat, ShellData};
-pub use fs::{FilesystemDirectoryListing, FilesystemEntry, FilesystemPathContext, ListDirectoryEntriesRequest, home_dir};
+pub use fs::{
+    home_dir, FilesystemDirectoryListing, FilesystemEntry, FilesystemPathContext,
+    FilesystemSearchEntry, FilesystemSearchListing, ListDirectoryEntriesRequest,
+    SearchDirectoryEntriesRequest,
+};
 pub use git::GitRepoContext;
-pub use intelligence::{ShellHistoryEntry, TerminalRuntimeContext, sort_history_entries_by_recency};
+pub use intelligence::{
+    sort_history_entries_by_recency, ShellHistoryEntry, TerminalRuntimeContext,
+};
+pub use manager::TerminalManager;
 
 #[tauri::command]
 pub fn terminal_create_session(
@@ -105,7 +111,16 @@ pub fn terminal_list_directory_entries(
 }
 
 #[tauri::command]
-pub fn terminal_get_git_context(request: fs::PathRequest) -> Result<Option<git::GitRepoContext>, String> {
+pub fn terminal_search_directory_entries(
+    request: fs::SearchDirectoryEntriesRequest,
+) -> Result<fs::FilesystemSearchListing, String> {
+    fs::terminal_search_directory_entries(request)
+}
+
+#[tauri::command]
+pub fn terminal_get_git_context(
+    request: fs::PathRequest,
+) -> Result<Option<git::GitRepoContext>, String> {
     git::terminal_get_git_context(request)
 }
 

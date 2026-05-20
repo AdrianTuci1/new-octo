@@ -1234,6 +1234,35 @@ export function useAppWindow() {
     };
   }, [onOpenSettingsSection, setIsCloudProfileDrawerOpen, setSelectedCloudProfileIdForEdit]);
 
+  useEffect(() => {
+    if (!(window as any).__TAURI_INTERNALS__) {
+      return;
+    }
+
+    let cancelled = false;
+    let unlistenPromise: Promise<(() => void) | void> | null = null;
+
+    const setupListener = async () => {
+      unlistenPromise = listen<{ conversationId: string }>('octomus:select-conversation', (event) => {
+        if (cancelled) {
+          return;
+        }
+        if (event.payload?.conversationId) {
+          onSelectConversation(event.payload.conversationId);
+        }
+      });
+    };
+
+    void setupListener().catch((error) => {
+      console.warn('[AppWindow] failed to subscribe to select conversation event', error);
+    });
+
+    return () => {
+      cancelled = true;
+      void unlistenPromise?.then((unlisten) => unlisten?.());
+    };
+  }, [onSelectConversation]);
+
   const getLauncherProps = useCallback((tabId: string, paneId: string) => ({
     active: tabId === selectedTab.id && paneId === activePaneId,
     chatMode: 'always-open' as const,

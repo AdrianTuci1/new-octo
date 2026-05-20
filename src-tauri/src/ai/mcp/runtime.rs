@@ -47,7 +47,9 @@ impl RuntimeServerConfig {
     }
 
     fn is_cli(&self) -> bool {
-        self.command.as_deref().is_some_and(|command| !command.trim().is_empty())
+        self.command
+            .as_deref()
+            .is_some_and(|command| !command.trim().is_empty())
     }
 }
 
@@ -509,7 +511,10 @@ fn load_runtime_server_configs() -> Result<Vec<RuntimeServerConfig>, String> {
                 .get("command")
                 .and_then(Value::as_str)
                 .map(str::to_string);
-            let url = object.get("url").and_then(Value::as_str).map(str::to_string);
+            let url = object
+                .get("url")
+                .and_then(Value::as_str)
+                .map(str::to_string);
             let args = object
                 .get("args")
                 .and_then(Value::as_array)
@@ -636,7 +641,11 @@ fn truncate_tool_name(input: &str) -> String {
 
 fn truncate_tool_name_with_suffix(input: &str, suffix: &str) -> String {
     let max_base_len = 64usize.saturating_sub(suffix.len());
-    format!("{}{}", input.chars().take(max_base_len).collect::<String>(), suffix)
+    format!(
+        "{}{}",
+        input.chars().take(max_base_len).collect::<String>(),
+        suffix
+    )
 }
 
 fn spawn_stderr_logger(server_name: String, stderr: ChildStderr) {
@@ -664,7 +673,10 @@ mod tests {
     #[test]
     fn sanitizes_openai_tool_names() {
         assert_eq!(sanitize_tool_name("GitHub MCP"), "github_mcp");
-        assert_eq!(sanitize_tool_name("repo.search/issues"), "repo_search_issues");
+        assert_eq!(
+            sanitize_tool_name("repo.search/issues"),
+            "repo_search_issues"
+        );
     }
 
     #[test]

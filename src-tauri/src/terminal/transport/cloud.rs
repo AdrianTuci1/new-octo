@@ -1,9 +1,4 @@
-use std::{
-    fs,
-    io::Read,
-    path::PathBuf,
-    sync::Arc,
-};
+use std::{fs, io::Read, path::PathBuf, sync::Arc};
 
 use portable_pty::{native_pty_system, CommandBuilder, PtySize};
 use uuid::Uuid;
@@ -66,8 +61,9 @@ fn create_custom_vm_session(
 
     if connection_method == "ssh-key" {
         let account = format!("cloud-profile:{profile_id}:ssh-private-key");
-        let private_key = secure_store::load_secret(&account)?
-            .ok_or_else(|| "SSH private key is missing from secure storage for this cloud profile".to_string())?;
+        let private_key = secure_store::load_secret(&account)?.ok_or_else(|| {
+            "SSH private key is missing from secure storage for this cloud profile".to_string()
+        })?;
         let key_path = write_ephemeral_private_key(&profile_id, &private_key)?;
         command.arg("-i");
         command.arg(key_path.to_string_lossy().to_string());
@@ -157,7 +153,11 @@ fn clean_required(value: &Option<String>, label: &str) -> Result<String, String>
 
 fn write_ephemeral_private_key(profile_id: &str, private_key: &str) -> Result<PathBuf, String> {
     let mut path = std::env::temp_dir();
-    path.push(format!("octomus-cloud-key-{}-{}", sanitize_filename(profile_id), Uuid::new_v4()));
+    path.push(format!(
+        "octomus-cloud-key-{}-{}",
+        sanitize_filename(profile_id),
+        Uuid::new_v4()
+    ));
     fs::write(&path, private_key).map_err(|error| format!("failed to prepare SSH key: {error}"))?;
 
     #[cfg(unix)]
@@ -173,7 +173,13 @@ fn write_ephemeral_private_key(profile_id: &str, private_key: &str) -> Result<Pa
 fn sanitize_filename(value: &str) -> String {
     value
         .chars()
-        .map(|ch| if ch.is_ascii_alphanumeric() || ch == '-' || ch == '_' { ch } else { '_' })
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() || ch == '-' || ch == '_' {
+                ch
+            } else {
+                '_'
+            }
+        })
         .collect()
 }
 

@@ -205,7 +205,11 @@ fn collect_worktree_diff_paths(root: &Path) -> Result<Vec<String>, String> {
         ["ls-files", "--others", "--exclude-standard"].as_slice(),
     ] {
         let output = run_git_capture(root, args)?;
-        for line in output.lines().map(str::trim).filter(|line| !line.is_empty()) {
+        for line in output
+            .lines()
+            .map(str::trim)
+            .filter(|line| !line.is_empty())
+        {
             paths.insert(line.to_string());
         }
     }
@@ -260,8 +264,14 @@ fn diff_numstat_for_path(root: &Path, path: &str, is_untracked: bool) -> (usize,
         let stdout = String::from_utf8_lossy(&output.stdout);
         for line in stdout.lines() {
             let mut parts = line.split_whitespace();
-            additions += parts.next().and_then(|value| value.parse::<usize>().ok()).unwrap_or(0);
-            deletions += parts.next().and_then(|value| value.parse::<usize>().ok()).unwrap_or(0);
+            additions += parts
+                .next()
+                .and_then(|value| value.parse::<usize>().ok())
+                .unwrap_or(0);
+            deletions += parts
+                .next()
+                .and_then(|value| value.parse::<usize>().ok())
+                .unwrap_or(0);
         }
     }
 
@@ -274,7 +284,8 @@ fn diff_patch_for_path(root: &Path, path: &str, is_untracked: bool) -> Result<St
     }
 
     let mut patch = run_git_capture_with_path(root, &["diff", "--unified=8", "--"], path)?;
-    let cached_patch = run_git_capture_with_path(root, &["diff", "--cached", "--unified=8", "--"], path)?;
+    let cached_patch =
+        run_git_capture_with_path(root, &["diff", "--cached", "--unified=8", "--"], path)?;
 
     if !patch.is_empty() && !cached_patch.is_empty() {
         patch.push_str("\n");
@@ -310,7 +321,9 @@ fn synthesize_untracked_patch(root: &Path, path: &str) -> Result<String, String>
         .map_err(|error| format!("failed to inspect untracked file {path}: {error}"))?;
 
     if !metadata.is_file() {
-        return Ok(format!("diff --git a/{path} b/{path}\nnew file mode 100644\n--- /dev/null\n+++ b/{path}\n"));
+        return Ok(format!(
+            "diff --git a/{path} b/{path}\nnew file mode 100644\n--- /dev/null\n+++ b/{path}\n"
+        ));
     }
 
     if metadata.len() > 512 * 1024 {
@@ -326,7 +339,11 @@ fn synthesize_untracked_patch(root: &Path, path: &str) -> Result<String, String>
             "diff --git a/{path} b/{path}\nnew file mode 100644\n--- /dev/null\n+++ b/{path}\n@@ -0,0 +1 @@\n+Binary file omitted from preview.\n"
         ));
     };
-    let line_count = if content.is_empty() { 0 } else { content.lines().count() };
+    let line_count = if content.is_empty() {
+        0
+    } else {
+        content.lines().count()
+    };
     let mut patch = format!(
         "diff --git a/{path} b/{path}\nnew file mode 100644\n--- /dev/null\n+++ b/{path}\n@@ -0,0 +1,{line_count} @@\n"
     );
@@ -342,6 +359,12 @@ fn synthesize_untracked_patch(root: &Path, path: &str) -> Result<String, String>
 
 fn count_file_lines(path: &Path) -> usize {
     fs::read_to_string(path)
-        .map(|content| if content.is_empty() { 0 } else { content.lines().count() })
+        .map(|content| {
+            if content.is_empty() {
+                0
+            } else {
+                content.lines().count()
+            }
+        })
         .unwrap_or(0)
 }

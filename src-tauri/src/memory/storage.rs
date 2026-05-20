@@ -5,7 +5,7 @@ use serde::{de::DeserializeOwned, Serialize};
 use serde_json::Value;
 use uuid::Uuid;
 
-pub(crate) fn read_json_or_default<T>(path: &Path) -> Option<T>
+pub fn read_json_or_default<T>(path: &Path) -> Option<T>
 where
     T: DeserializeOwned,
 {

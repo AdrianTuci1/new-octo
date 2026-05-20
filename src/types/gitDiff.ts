@@ -4,6 +4,8 @@ export type GitWorktreeDiffFile = {
   additions: number;
   deletions: number;
   patch: string;
+  originalContent?: string | null;
+  modifiedContent?: string | null;
 };
 
 export type GitWorktreeDiff = {

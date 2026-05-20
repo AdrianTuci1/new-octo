@@ -1171,7 +1171,7 @@ fn collect_history_prefix_matches(
     let mut same_dir_matches = Vec::new();
     let mut other_matches = Vec::new();
 
-    // Warp-like behavior: promote matches from the exact current working
+    // Octomus-like behavior: promote matches from the exact current working
     // directory before falling back to commands from other directories.
     for entry in history_entries.iter() {
         let value = entry.value.trim();

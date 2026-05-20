@@ -126,12 +126,10 @@ fn parse_payload(payload: &[u8]) -> Option<ShellHook> {
                 "A" => Some(ShellHook::CompletionsStart { format: value }),
                 "B" => Some(ShellHook::CompletionsEnd),
                 "C" => Some(ShellHook::CompletionResult { completion: value }),
-                action if action.starts_with("D?") => {
-                    match &action[2..] {
-                        "description" => Some(ShellHook::CompletionUpdateDescription { value }),
-                        _ => None,
-                    }
-                }
+                action if action.starts_with("D?") => match &action[2..] {
+                    "description" => Some(ShellHook::CompletionUpdateDescription { value }),
+                    _ => None,
+                },
                 "P" => Some(ShellHook::CompletionsPrompt),
                 _ => None,
             }
@@ -181,7 +179,10 @@ fn partial_marker_suffix_len(bytes: &[u8]) -> usize {
     let max_len = max_len.saturating_sub(1).min(bytes.len());
 
     for len in (1..=max_len).rev() {
-        if markers.iter().any(|marker| bytes.ends_with(&marker[..len.min(marker.len())])) {
+        if markers
+            .iter()
+            .any(|marker| bytes.ends_with(&marker[..len.min(marker.len())]))
+        {
             return len;
         }
     }
@@ -340,9 +341,8 @@ mod tests {
     #[test]
     fn parses_completion_start_and_result_hooks() {
         let mut parser = HookParser::default();
-        let hooks = parser.push(
-            b"\x1b]9280;completions;A;raw\x07\x1b]9280;completions;C;git status\x07",
-        );
+        let hooks =
+            parser.push(b"\x1b]9280;completions;A;raw\x07\x1b]9280;completions;C;git status\x07");
 
         assert_eq!(hooks.len(), 2);
         assert!(matches!(

@@ -1,11 +1,7 @@
-use std::{
-    fs,
-    path::Path,
-    process::Command,
-};
+use std::{fs, path::Path, process::Command};
 
-use super::CommandScope;
 use super::utils::command_exists_in_path;
+use super::CommandScope;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum CompletionProtocol {

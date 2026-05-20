@@ -4,10 +4,7 @@ use crate::{
 };
 
 use super::{
-    command_argument_expects_path,
-    parser::parse_shell_input,
-    utils,
-    CommandScope,
+    command_argument_expects_path, parser::parse_shell_input, utils, CommandScope,
     ShellSignatureRegistry,
 };
 
@@ -135,7 +132,10 @@ fn push_scope_candidates(
 
     for option in metadata.option_names.iter() {
         let option_template = format!("{} {} ", scope.label(), option);
-        if option_template.to_lowercase().starts_with(&normalized_lower) {
+        if option_template
+            .to_lowercase()
+            .starts_with(&normalized_lower)
+        {
             push(option_template);
         }
     }
@@ -171,10 +171,7 @@ mod tests {
         }
         registry
             .command_registry
-            .register_signature(super::super::registry::CommandSignature {
-                scope,
-                metadata,
-            });
+            .register_signature(super::super::registry::CommandSignature { scope, metadata });
 
         let prediction = predict_signature_completion("python3 -", Some("/tmp"), &[])
             .expect("python3 should have signature-driven completions");
