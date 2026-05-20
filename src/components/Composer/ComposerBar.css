@@ -135,6 +135,29 @@
   flex: 1;
 }
 
+.composer-input-highlight {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  padding: 10px 12px 8px;
+  color: var(--text-main);
+  font-size: 12px;
+  font-family: var(--font-mono);
+  line-height: 1.35;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow: hidden;
+}
+
+.composer-input-highlight-command {
+  color: #a881ff;
+}
+
+.composer-input-highlight-rest {
+  color: var(--text-main);
+}
+
 .chat-input:disabled {
   opacity: 0.7;
   cursor: not-allowed;
@@ -524,6 +547,8 @@
   resize: none;
   min-height: 34px;
   overflow: hidden;
+  position: relative;
+  z-index: 1;
 }
 
 .shell-mode .chat-input {
@@ -532,6 +557,16 @@
 
 .manual-shell-mode .chat-input {
   padding-left: 4px;
+}
+
+.manual-shell-mode .composer-input-highlight {
+  padding-left: 4px;
+}
+
+.chat-input.has-slash-command-highlight {
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  caret-color: var(--text-main);
 }
 
 .chat-input.has-recommendation {
@@ -600,6 +635,21 @@
   gap: 10px;
   flex: 0 0 auto;
   white-space: nowrap;
+}
+
+.command-approval-actions .keycap {
+  border: none;
+  box-shadow: none;
+}
+
+.command-approval-accept .keycap {
+  background: transparent;
+  border: 1px solid #000;
+  color: #000;
+}
+
+.command-approval-accept .keycap svg {
+  color: #000 !important;
 }
 
 .command-approval-text-btn,
@@ -808,7 +858,8 @@
 }
 
 .command-approval-file-shell {
-  padding-bottom: 14px;
+  max-height: min(72vh, 680px);
+  padding-bottom: 0;
 }
 
 .command-approval-file-meta {
@@ -828,13 +879,29 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .command-approval-diffs {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  padding: 0 14px 14px;
+  min-height: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+.command-approval-diffs .modern-diff-view {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.command-approval-diffs .modern-diff-body {
+  max-height: min(52vh, 420px);
 }
 
 .command-approval-accept-group {

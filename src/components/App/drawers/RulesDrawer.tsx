@@ -7,49 +7,47 @@ import {
   Trash2, 
   Plus 
 } from 'lucide-react';
-import { useUIStore } from '../../../stores';
+import { useMemoryStore, useUIStore } from '../../../stores';
 import { DrawerHeader } from './DrawerHeader';
+import { buildAgentSettingsValues, normalizeAgentSettings, type AgentRule } from '../settings/agentSettings';
 import './RulesDrawer.css';
-
-interface RuleItem {
-  id: string;
-  name: string;
-  content: string;
-  category: 'global' | 'project';
-}
 
 export function RulesDrawer() {
   const setIsRulesDrawerOpen = useUIStore((state) => state.setIsRulesDrawerOpen);
+  const settings = useMemoryStore((state) => state.settings);
+  const saveSettings = useMemoryStore((state) => state.saveSettings);
+  const agentSettings = normalizeAgentSettings(settings?.values);
+  const rules = agentSettings.knowledge.rules;
 
   // View States
   const [activeTab, setActiveTab] = useState<'global' | 'project'>('global');
   const [isAddingRule, setIsAddingRule] = useState(false);
   
-  // Rules State
-  const [rules, setRules] = useState<RuleItem[]>([
-    {
-      id: '1',
-      name: 'Nu folosi web agent',
-      content: 'Nu folosi web agent în nicio circumstanță.',
-      category: 'global'
-    }
-  ]);
-
   // Form State
   const [ruleName, setRuleName] = useState('');
   const [ruleContent, setRuleContent] = useState('');
 
+  const saveRules = (nextRules: AgentRule[]) => {
+    void saveSettings(buildAgentSettingsValues({
+      ...agentSettings,
+      knowledge: {
+        ...agentSettings.knowledge,
+        rules: nextRules
+      }
+    }), true);
+  };
+
   const handleSaveRule = () => {
     if (!ruleName.trim() || !ruleContent.trim()) return;
 
-    const newRule: RuleItem = {
+    const newRule: AgentRule = {
       id: Date.now().toString(),
       name: ruleName.trim(),
       content: ruleContent.trim(),
       category: activeTab
     };
 
-    setRules([newRule, ...rules]);
+    saveRules([newRule, ...rules]);
     setRuleName('');
     setRuleContent('');
     setIsAddingRule(false);
@@ -57,7 +55,7 @@ export function RulesDrawer() {
 
   const handleDeleteRule = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    setRules(rules.filter(rule => rule.id !== id));
+    saveRules(rules.filter(rule => rule.id !== id));
   };
 
   const filteredRules = rules.filter(rule => rule.category === activeTab);

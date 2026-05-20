@@ -11,8 +11,11 @@ pub struct AgentRunRequest {
     pub prompt: String,
     pub cwd: Option<String>,
     pub model_id: Option<String>,
+    pub terminal_model_id: Option<String>,
     #[serde(default)]
     pub messages: Vec<AgentInputMessage>,
+    #[serde(default)]
+    pub terminal_blocks: Vec<TerminalBlockContext>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -23,8 +26,24 @@ pub struct AgentContinueRequest {
     pub assistant_message_id: Option<String>,
     pub cwd: Option<String>,
     pub model_id: Option<String>,
+    pub terminal_model_id: Option<String>,
     #[serde(default)]
     pub messages: Vec<AgentInputMessage>,
+    #[serde(default)]
+    pub terminal_blocks: Vec<TerminalBlockContext>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TerminalBlockContext {
+    pub id: String,
+    pub command: String,
+    pub output: String,
+    pub started_at: String,
+    pub finished_at: Option<String>,
+    pub exit_code: Option<i32>,
+    pub duration_ms: Option<i64>,
+    pub status: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

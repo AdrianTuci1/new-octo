@@ -12,6 +12,9 @@ pub async fn apply_file_diff(file_path: String, diff: DiffType) -> Result<(), St
     let path = Path::new(&file_path);
     if !path.exists() {
         if let DiffType::Create { delta } = diff {
+            if let Some(parent) = path.parent() {
+                fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+            }
             fs::write(path, delta.insertion).map_err(|e| e.to_string())?;
             return Ok(());
         }

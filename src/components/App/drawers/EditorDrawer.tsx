@@ -1,7 +1,6 @@
 import type { MouseEvent as ReactMouseEvent } from 'react';
 import { EditorWorkspace } from '../../Editor/EditorWorkspace';
 import { DrawerFrame } from './DrawerFrame';
-import { DrawerHeader } from './DrawerHeader';
 
 type EditorDrawerProps = {
   width: number;
@@ -18,7 +17,6 @@ export function EditorDrawer({ width, isResizing, onResizeStart }: EditorDrawerP
       onResizeStart={onResizeStart}
     >
       <div className="editor-drawer">
-        <DrawerHeader title="Editor" />
         <div className="editor-drawer-body">
           <EditorWorkspace />
         </div>

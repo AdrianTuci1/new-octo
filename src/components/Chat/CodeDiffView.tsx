@@ -1,54 +1,142 @@
-import { FileText, Check, X, ChevronRight } from 'lucide-react';
+import { useState } from 'react';
+import { Check, X, ChevronDown, Plus, ArrowUp, ArrowDown } from 'lucide-react';
 import './CodeDiffView.css';
 import type { FileDiff } from '../../types/diff';
 
 type CodeDiffViewProps = {
-  diff: FileDiff;
-  onAccept?: (diff: FileDiff) => void;
-  onReject?: (diff: FileDiff) => void;
-  showActions?: boolean;
+  diffs: FileDiff[];
+  onAccept?: () => void;
+  onReject?: () => void;
+  status?: 'pending' | 'accepted' | 'rejected';
+  showHeader?: boolean;
 };
 
-export function CodeDiffView({ diff, onAccept, onReject, showActions = true }: CodeDiffViewProps) {
-  const fileName = diff.filePath.split('/').pop() || diff.filePath;
+export function CodeDiffView({
+  diffs,
+  status = 'pending',
+  showHeader = true
+}: CodeDiffViewProps) {
+  const [activeIndex, setActiveIndex] = useState(0);
+  const [isExpanded, setIsExpanded] = useState(true);
+
+  if (!diffs || diffs.length === 0) return null;
+
+  const totalAdditions = diffs.reduce((sum, diff) => {
+    if (diff.diffType.kind === 'create') {
+      return sum + diff.diffType.delta.insertion.split('\n').length;
+    }
+    if (diff.diffType.kind === 'update') {
+      return sum + diff.diffType.deltas.reduce((s, d) => s + d.insertion.split('\n').length, 0);
+    }
+    return sum;
+  }, 0);
+
+  const activeDiff = diffs[activeIndex];
+  const activeFileName = activeDiff.filePath.split('/').pop() || activeDiff.filePath;
+
+  const handleNext = () => {
+    if (activeIndex < diffs.length - 1) setActiveIndex(activeIndex + 1);
+  };
+
+  const handlePrev = () => {
+    if (activeIndex > 0) setActiveIndex(activeIndex - 1);
+  };
 
   return (
-    <div className="code-diff-view">
-      <div className="code-diff-header">
-        <div className="code-diff-file-info">
-          <FileText size={14} className="code-diff-file-icon" />
-          <span className="code-diff-file-path">{fileName}</span>
-          <ChevronRight size={12} style={{ opacity: 0.3 }} />
-          <span style={{ opacity: 0.5, fontSize: '11px' }}>{diff.filePath}</span>
-        </div>
-        {showActions && (
-          <div className="code-diff-actions">
-            <button className="code-diff-btn reject" onClick={() => onReject?.(diff)}>
-              <X size={12} />
-              Reject
+    <div className={`modern-diff-view ${status}`}>
+      {showHeader && (
+        <div className="modern-diff-header">
+          <div className="modern-diff-header-left">
+            <div className={`status-indicator ${status}`}>
+              {status === 'accepted' ? <Check size={14} strokeWidth={3} /> :
+                status === 'rejected' ? <X size={14} strokeWidth={3} /> :
+                  <Check size={14} strokeWidth={3} className="opacity-50" />}
+            </div>
+            <div className="modern-diff-title">
+              Proposed changes across {diffs.length} {diffs.length === 1 ? 'file' : 'files'}
+            </div>
+            {totalAdditions > 0 && (
+              <div className="modern-diff-badge count-additions">
+                +{totalAdditions}
+              </div>
+            )}
+          </div>
+
+          <div className="modern-diff-header-right">
+            <button className="header-action-icon">
+              <Plus size={16} />
             </button>
-            <button className="code-diff-btn accept" onClick={() => onAccept?.(diff)}>
-              <Check size={12} />
-              Accept
+            <button
+              className={`header-action-icon collapse-toggle ${isExpanded ? 'expanded' : ''}`}
+              onClick={() => setIsExpanded(!isExpanded)}
+            >
+              <ChevronDown size={16} />
             </button>
           </div>
-        )}
-      </div>
-      <div className="code-diff-content">
-        {renderDiffLines(diff)}
-      </div>
+        </div>
+      )}
+
+      {isExpanded && (
+        <>
+          {/* File Tabs */}
+          {diffs.length > 0 && (
+            <div className="modern-diff-tabs">
+              {diffs.map((diff, index) => {
+                const fname = diff.filePath.split('/').pop() || diff.filePath;
+                return (
+                  <button
+                    key={index}
+                    className={`diff-tab-item ${activeIndex === index ? 'active' : ''}`}
+                    onClick={() => setActiveIndex(index)}
+                  >
+                    {fname}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Code Area */}
+          <div className="modern-diff-body">
+            <div className="code-diff-content">
+              {renderDiffLines(activeDiff)}
+            </div>
+          </div>
+
+          {/* Footer */}
+          <div className="modern-diff-footer">
+            <div className="hunk-indicator">
+              File: {activeIndex + 1}/{diffs.length}
+            </div>
+            <div className="footer-nav-actions">
+              <button
+                className="footer-nav-btn"
+                onClick={handlePrev}
+                disabled={activeIndex === 0}
+              >
+                <ArrowUp size={14} />
+                <span>Previous</span>
+              </button>
+              <button
+                className="footer-nav-btn"
+                onClick={handleNext}
+                disabled={activeIndex === diffs.length - 1}
+              >
+                <ArrowDown size={14} />
+                <span>Next</span>
+              </button>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }
 
 function renderDiffLines(diff: FileDiff) {
-  // This is a simplified renderer for demonstration.
-  // In a real app, you'd use the computed deltas to show exactly what changed.
-  
   if (diff.diffType.kind === 'update') {
     return diff.diffType.deltas.map((delta, i) => (
       <div key={i} className="code-diff-hunk">
-        {/* Placeholder for actual diff rendering logic */}
         <div className="code-diff-line deletion">
           <span className="code-diff-line-number">...</span>
           <span className="code-diff-prefix"></span>

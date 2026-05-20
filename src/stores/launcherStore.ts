@@ -13,6 +13,7 @@ export interface LauncherState {
   terminalAutoDetectEnabled: boolean;
   historyTab: HistoryTab;
   selectedHistoryIndex: number;
+  selectedCommandIndex: number;
   modelTab: 'all' | 'saved';
   selectedModelIndex: number;
   localConversationId: string | null;
@@ -28,6 +29,7 @@ export interface LauncherState {
   setTerminalAutoDetectEnabled: (enabled: boolean) => void;
   setHistoryTab: (tab: HistoryTab | ((prev: HistoryTab) => HistoryTab)) => void;
   setSelectedHistoryIndex: (index: number | ((prev: number) => number)) => void;
+  setSelectedCommandIndex: (index: number | ((prev: number) => number)) => void;
   setModelTab: (tab: 'all' | 'saved' | ((prev: 'all' | 'saved') => 'all' | 'saved')) => void;
   setSelectedModelIndex: (index: number | ((prev: number) => number)) => void;
   setLocalConversationId: (id: string | null) => void;
@@ -49,6 +51,7 @@ function buildInitialState(initialComposerSurface: 'agent' | 'terminal' = 'termi
     terminalAutoDetectEnabled: true,
     historyTab: 'all' as const,
     selectedHistoryIndex: 0,
+    selectedCommandIndex: 0,
     modelTab: 'all' as const,
     selectedModelIndex: 0,
     localConversationId: null,
@@ -74,6 +77,9 @@ export function createLauncherStore(
     })),
     setSelectedHistoryIndex: (index) => set((state) => ({
       selectedHistoryIndex: typeof index === 'function' ? index(state.selectedHistoryIndex) : index
+    })),
+    setSelectedCommandIndex: (index) => set((state) => ({
+      selectedCommandIndex: typeof index === 'function' ? index(state.selectedCommandIndex) : index
     })),
     setModelTab: (tab) => set((state) => ({
       modelTab: typeof tab === 'function' ? tab(state.modelTab) : tab

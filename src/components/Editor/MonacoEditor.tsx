@@ -11,9 +11,10 @@ interface MonacoEditorProps {
   path: string;
   content: string;
   language: string;
+  readOnly?: boolean;
 }
 
-export function MonacoEditor({ tabId, path, content, language }: MonacoEditorProps) {
+export function MonacoEditor({ tabId, path, content, language, readOnly = false }: MonacoEditorProps) {
   const editorRef = useRef<any>(null);
   const updateContent = useEditorStore((state) => state.updateContent);
 
@@ -71,7 +72,7 @@ export function MonacoEditor({ tabId, path, content, language }: MonacoEditorPro
           lineNumbers: 'on',
           roundedSelection: false,
           scrollBeyondLastLine: false,
-          readOnly: false,
+          readOnly,
           theme: 'warp-dark',
           automaticLayout: true,
           padding: { top: 10, bottom: 10 },

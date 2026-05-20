@@ -2,6 +2,7 @@ import { useAppResize } from '../hooks/useAppResize';
 import { useUIStore } from '../../../stores';
 import { DrawerFrame } from './DrawerFrame';
 import { ModelManagementDrawer } from '../settings/ModelManagementDrawer';
+import { CloudProfileDrawer } from '../settings/CloudProfileDrawer';
 import { KeyboardShortcutsDrawer } from './KeyboardShortcutsDrawer';
 import { EditorDrawer } from './EditorDrawer';
 import { ProfileEditorDrawer } from './ProfileEditorDrawer';
@@ -19,6 +20,7 @@ export function AppWindowDrawers({
   onCloseKeyboardShortcutsDrawer
 }: AppWindowDrawersProps) {
   const isModelDrawerOpen = useUIStore((state) => state.isModelDrawerOpen);
+  const isCloudProfileDrawerOpen = useUIStore((state) => state.isCloudProfileDrawerOpen);
   const isProfileDrawerOpen = useUIStore((state) => state.isProfileDrawerOpen);
   const isRulesDrawerOpen = useUIStore((state) => state.isRulesDrawerOpen);
 
@@ -50,6 +52,13 @@ export function AppWindowDrawers({
     direction: 'right'
   });
 
+  const { width: cloudProfileDrawerWidth, isResizing: isResizingCloudProfileDrawerState, startResizing: startResizingCloudProfileDrawer } = useAppResize({
+    initialWidth: 450,
+    minWidth: 320,
+    maxWidth: 800,
+    direction: 'right'
+  });
+
   const { width: rulesDrawerWidth, isResizing: isResizingRulesDrawerState, startResizing: startResizingRulesDrawer } = useAppResize({
     initialWidth: 450,
     minWidth: 320,
@@ -57,7 +66,7 @@ export function AppWindowDrawers({
     direction: 'right'
   });
 
-  if (!isEditorOpen && !isModelDrawerOpen && !isKeyboardShortcutsDrawerOpen && !isProfileDrawerOpen && !isRulesDrawerOpen) {
+  if (!isEditorOpen && !isModelDrawerOpen && !isCloudProfileDrawerOpen && !isKeyboardShortcutsDrawerOpen && !isProfileDrawerOpen && !isRulesDrawerOpen) {
     return null;
   }
 
@@ -80,6 +89,18 @@ export function AppWindowDrawers({
           zIndex={20}
         >
           <ModelManagementDrawer />
+        </DrawerFrame>
+      )}
+
+      {isCloudProfileDrawerOpen && (
+        <DrawerFrame
+          className="cloud-profile-drawer-wrapper"
+          width={cloudProfileDrawerWidth}
+          isResizing={isResizingCloudProfileDrawerState}
+          onResizeStart={startResizingCloudProfileDrawer}
+          zIndex={21}
+        >
+          <CloudProfileDrawer />
         </DrawerFrame>
       )}
 

@@ -15,8 +15,10 @@ type TrayPanelProps = {
   showFooter?: boolean;
   showOpenInApp?: boolean;
   activeMode: TrayContentMode;
+  commandSearchQuery: string;
   helpItems: HelpItem[];
   commandItems: CommandItem[];
+  selectedCommandIndex: number;
   historyEntries: HistoryEntry[];
   conversations: TrayConversationEntry[];
   activeConversationId: string | null;
@@ -51,8 +53,10 @@ export function TrayPanel({
   showFooter = true,
   showOpenInApp = false,
   activeMode,
+  commandSearchQuery,
   helpItems,
   commandItems,
+  selectedCommandIndex,
   historyEntries,
   conversations,
   activeConversationId,
@@ -85,7 +89,14 @@ export function TrayPanel({
     <div className={`tray-region ${isOpen ? 'open' : 'closed'}`}>
       <div className="tray-body">
         {activeMode === 'help' && <TrayHelp items={helpItems} />}
-        {activeMode === 'commands' && <TrayCommands items={commandItems} onInsertCommand={onInsertCommand} />}
+        {activeMode === 'commands' && (
+          <TrayCommands
+            items={commandItems}
+            query={commandSearchQuery}
+            selectedIndex={selectedCommandIndex}
+            onInsertCommand={onInsertCommand}
+          />
+        )}
         {activeMode === 'history' && (
           <TrayHistory
             activeTab={historyTab}

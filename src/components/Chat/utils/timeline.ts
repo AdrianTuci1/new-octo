@@ -5,6 +5,7 @@ import { visibleChatMessageBody } from '../../../hooks/useChat';
 export type TimelineItem =
   | { id: string; kind: 'message'; at: number; order: number; message: ChatMessage }
   | { id: string; kind: 'terminal-block'; at: number; order: number; block: TerminalCommandBlock }
+  | { id: string; kind: 'multi-agent-block'; at: number; order: number; block: { agentName: string; status: 'running'|'completed'|'idle'; taskSummary: string; colorScheme?: string } }
   | { id: string; kind: 'terminal-error'; at: number; order: number; error: string };
 
 export function timeFromMessage(message: ChatMessage) {
@@ -42,8 +43,13 @@ export function buildTimelineItems(
   terminalBlocks: TerminalCommandBlock[],
   terminalError?: string | null
 ): TimelineItem[] {
+  const messageOrderById = new Map(messages.map((message, index) => [message.id, index]));
+
   const messageItems = messages
     .filter(m => {
+      if (m.role === 'tool' && m.toolKind === 'command') {
+        return false;
+      }
       if (m.role === 'assistant') {
         const visibleBody = visibleChatMessageBody(m.body);
         const isStreamingHint = m.isStreaming && !visibleBody.trim();
@@ -58,7 +64,9 @@ export function buildTimelineItems(
       id: message.id,
       kind: 'message' as const,
       at: timeFromMessage(message),
-      order,
+      order: message.messageKind === 'reasoning' && message.parentMessageId
+        ? (messageOrderById.get(message.parentMessageId) ?? order) - 0.5
+        : order,
       message
     }));
 

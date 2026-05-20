@@ -33,6 +33,13 @@
   opacity: 0.8;
 }
 
+.cli-command-pattern-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
 .cli-input-wrapper {
   position: relative;
   display: flex;

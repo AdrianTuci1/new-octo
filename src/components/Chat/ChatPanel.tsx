@@ -5,10 +5,16 @@ import { useChatPanelScroll } from './hooks/useChatPanelScroll';
 import { buildTimelineItems, shouldRenderCollapsedBlock } from './utils/timeline';
 import { MessageBubble } from './MessageBubble';
 import { TerminalBlockCard } from './blocks/TerminalBlockCard';
+import { MultiAgentBlock } from './blocks/MultiAgentBlock';
 import { CommandApprovalComposer } from '../Composer';
+import { ProfileAvatar } from '../App/profile/ProfileAvatar';
+import { useProfileSettings } from '../App/settings/useProfileSettings';
+import { MOCK_PENDING_APPROVAL, MOCK_TIMELINE_ITEMS } from './MockTimelineItems';
 import type { ChatMessage } from '../../types/chat';
 import type { CommandApproval, TerminalCommandBlock } from '../../types/terminal';
 import './ChatPanel.css';
+
+const USE_MOCK = false; // Set to true only while tuning the mocked chat timeline
 
 function performHighlight(
   container: HTMLElement,
@@ -165,14 +171,17 @@ export function ChatPanel({
   onOpenConversationBlock,
   title = 'New agent conversation'
 }: ChatPanelProps) {
-  const hasContent = messages.length > 0 || terminalBlocks.length > 0 || Boolean(terminalError) || Boolean(pendingApproval);
-  const timelineItems = buildTimelineItems(messages, terminalBlocks, terminalError);
+  const { profile } = useProfileSettings();
+  const baseTimelineItems = buildTimelineItems(messages, terminalBlocks, terminalError);
+  const timelineItems = USE_MOCK ? MOCK_TIMELINE_ITEMS : baseTimelineItems;
+  const activePendingApproval = USE_MOCK ? MOCK_PENDING_APPROVAL : pendingApproval;
+  const hasContent = USE_MOCK || messages.length > 0 || terminalBlocks.length > 0 || Boolean(terminalError) || Boolean(activePendingApproval);
 
   const { scrollRef, handleScroll } = useChatPanelScroll({
     messages,
     terminalBlocks,
     terminalError,
-    pendingApproval,
+    pendingApproval: activePendingApproval,
     isOpen,
     expandedTerminalBlockIds,
     selectedTerminalBlockId
@@ -199,13 +208,13 @@ export function ChatPanel({
     );
 
     setMatches(foundSpans);
-    
+
     if (foundSpans.length > 0) {
       setActiveIndex(0);
     } else {
       setActiveIndex(-1);
     }
-  }, [searchQuery, caseSensitive, useRegex, wholeWord, messages, terminalBlocks, pendingApproval]);
+  }, [searchQuery, caseSensitive, useRegex, wholeWord, messages, terminalBlocks, activePendingApproval]);
 
   // Handle active match changes (scrolling and active class highlight)
   useEffect(() => {
@@ -378,7 +387,9 @@ export function ChatPanel({
                     hasBottomDivider ? 'has-bottom-divider' : ''
                   ].filter(Boolean).join(' ')}
                 >
-                  <div className="role-avatar-container" />
+                  <div className="role-avatar-container">
+                    {item.block.source === 'user' ? <ProfileAvatar profile={profile} size={24} showInitials={Boolean(profile.avatarDataUrl)} /> : null}
+                  </div>
                   <TerminalBlockCard
                     block={item.block}
                     isExpanded={isExpanded}
@@ -392,6 +403,19 @@ export function ChatPanel({
               );
             }
 
+            if (item.kind === 'multi-agent-block') {
+              return (
+                <div key={item.id} className="agent-block-row-standalone">
+                  <MultiAgentBlock
+                    agentName={item.block.agentName}
+                    status={item.block.status}
+                    taskSummary={item.block.taskSummary}
+                    colorScheme={item.block.colorScheme}
+                  />
+                </div>
+              );
+            }
+
             return (
               <div key={item.id} className="terminal-error-row">
                 <div className="role-avatar-container" />
@@ -399,16 +423,16 @@ export function ChatPanel({
               </div>
             );
           })}
-          {pendingApproval && (
+          {activePendingApproval && (
             <div className="command-approval-row">
               <CommandApprovalComposer
-                approval={pendingApproval}
-                onRefine={() => onRefinePendingApproval?.(pendingApproval)}
-                onEdit={() => onEditPendingApproval?.(pendingApproval)}
-                onAccept={() => onAcceptPendingApproval?.(pendingApproval)}
-                onAutoApprove={() => onAutoApprovePendingApproval?.(pendingApproval)}
-                onStartNewConversation={pendingApproval.kind === 'topic-change' ? onStartNewConversationPendingApproval : undefined}
-                onContinueCurrentConversation={pendingApproval.kind === 'topic-change' ? onContinueCurrentConversationPendingApproval : undefined}
+                approval={activePendingApproval}
+                onRefine={() => onRefinePendingApproval?.(activePendingApproval)}
+                onEdit={() => onEditPendingApproval?.(activePendingApproval)}
+                onAccept={() => onAcceptPendingApproval?.(activePendingApproval)}
+                onAutoApprove={() => onAutoApprovePendingApproval?.(activePendingApproval)}
+                onStartNewConversation={activePendingApproval.kind === 'topic-change' ? onStartNewConversationPendingApproval : undefined}
+                onContinueCurrentConversation={activePendingApproval.kind === 'topic-change' ? onContinueCurrentConversationPendingApproval : undefined}
               />
             </div>
           )}

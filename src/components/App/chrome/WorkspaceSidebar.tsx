@@ -8,8 +8,9 @@ import {
   Plus,
   ChevronDown,
   Circle,
-  CheckCircle2,
-  MoreHorizontal
+  Check,
+  AlertTriangle,
+  Ban
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import type { WorkspaceConversation } from './workspaceChromeTypes';
@@ -77,17 +78,27 @@ export function WorkspaceSidebar({
     <div
       key={conversation.id}
       className={`workspace-sidebar-item ${options?.isSelected ? 'active' : ''}`}
+      onContextMenu={(event) => {
+        event.preventDefault();
+        setMenuConversationId(conversation.id);
+      }}
     >
       <button
         className="workspace-sidebar-item-button"
         type="button"
         onClick={() => onSelectConversation(conversation.id)}
       >
-        <div className="item-icon-container">
+        <div className="sidebar-item-icon-box">
           {options?.isActiveGroup ? (
-            <Circle size={14} fill="#c084fc" color="#c084fc" />
+            <Circle size={10} fill="#c084fc" color="#c084fc" />
           ) : (
-            <CheckCircle2 size={14} color="#5ef1a1" />
+            <>
+              {conversation.status === 'failed' && <AlertTriangle size={10} color="#ef4444" />}
+              {conversation.status === 'cancelled' && <Ban size={10} color="#94a3b8" />}
+              {(!conversation.status || (conversation.status !== 'failed' && conversation.status !== 'cancelled')) && (
+                <Check size={10} color="#10b981" />
+              )}
+            </>
           )}
         </div>
         <div className="item-details">
@@ -100,18 +111,6 @@ export function WorkspaceSidebar({
       </button>
 
       <div className="workspace-sidebar-item-menu-anchor">
-        <button
-          className="workspace-sidebar-item-menu-button"
-          type="button"
-          aria-label={`More actions for ${conversation.title}`}
-          onClick={(event) => {
-            event.stopPropagation();
-            setMenuConversationId((current) => current === conversation.id ? null : conversation.id);
-          }}
-        >
-          <MoreHorizontal size={14} />
-        </button>
-
         {menuConversationId === conversation.id && (
           <div ref={menuRef} className="workspace-sidebar-context-menu">
             <button

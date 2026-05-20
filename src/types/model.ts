@@ -1,5 +1,6 @@
 export type ModelSpec = {
   id: string;
+  modelId?: string | null;
   label: string;
   provider: string;
   note?: string;

@@ -1,66 +1,47 @@
-.thinking-card {
+.thinking-simple-block {
   width: 100%;
-  max-width: 720px;
-  border-radius: 12px;
-  border: 1px solid rgba(94, 241, 161, 0.14);
-  background: linear-gradient(180deg, rgba(16, 19, 18, 0.96), rgba(10, 12, 11, 0.98));
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.025) inset;
-  overflow: hidden;
+  margin: 0px 0 8px 0; /* Pushed higher */
 }
 
-.thinking-card-header {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 12px;
-  background: transparent;
-  color: rgba(244, 247, 246, 0.92);
-  cursor: pointer;
-}
-
-.thinking-card-icon {
+.thinking-simple-header {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  color: rgba(94, 241, 161, 0.86);
-  flex-shrink: 0;
+  gap: 4px;
+  background: transparent;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  color: rgba(255, 255, 255, 0.35);
+  font-family: var(--font-mono, 'JetBrains Mono', monospace);
+  font-size: 12px; /* Slightly bigger */
+  transition: color 0.15s ease;
 }
 
-.thinking-card-title {
-  font-size: 13px;
-  font-weight: 600;
+.thinking-simple-header:hover {
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.thinking-simple-title {
   letter-spacing: 0.01em;
 }
 
-.thinking-card-state {
-  margin-left: auto;
-  font-size: 10px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: rgba(244, 247, 246, 0.48);
-}
-
-.thinking-card-chevron {
+.thinking-simple-chevron {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: rgba(244, 247, 246, 0.52);
-  transition: transform 140ms ease;
+  transition: transform 150ms ease;
 }
 
-.thinking-card-chevron.expanded {
+.thinking-simple-chevron.expanded {
   transform: rotate(180deg);
 }
 
-.thinking-card-body {
-  padding: 0 12px 12px;
-}
-
-.thinking-card-body p {
-  margin: 0;
-  font-size: 12px;
-  line-height: 1.55;
-  color: rgba(244, 247, 246, 0.74);
+.thinking-simple-body {
+  margin-top: 8px;
+  font-size: 13px; /* Slightly bigger */
+  line-height: 1.6;
+  color: rgba(255, 255, 255, 0.4); /* Dimmer text */
+  font-family: var(--font-mono, 'JetBrains Mono', monospace);
   white-space: pre-wrap;
+  padding-left: 2px;
 }

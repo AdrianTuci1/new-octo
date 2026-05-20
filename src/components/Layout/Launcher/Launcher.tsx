@@ -13,15 +13,20 @@
 ** Staticlabs
 */
 
+import { useMemo } from 'react';
 import { ChatPanel } from '../../Chat';
 import { ComposerBar, ModelSetupOverlay, TerminalComposer } from '../../Composer';
 import { TrayPanel } from '../../Tray';
 import { useLauncher, type LauncherProps } from './hooks';
-import { COMMAND_ITEMS, HELP_ITEMS } from '../../../lib';
+import { COMMAND_ITEMS, HELP_ITEMS, COMPOSER_PLACEHOLDERS } from '../../../lib';
 
 export function Launcher(props: LauncherProps) {
   const launcher = useLauncher(props);
   const modelSetupRequired = launcher.ui.modelSelection.requiresModelSetup;
+  const placeholder = useMemo(() => {
+    const randomIndex = Math.floor(Math.random() * COMPOSER_PLACEHOLDERS.length);
+    return COMPOSER_PLACEHOLDERS[randomIndex];
+  }, [launcher.ui.resolvedConversationId]);
   const handleOpenModelSettings = () => {
     launcher.actions.openAppWindow();
     launcher.actions.openModelDrawer();
@@ -68,6 +73,8 @@ export function Launcher(props: LauncherProps) {
               activeConversationId={launcher.ui.resolvedConversationId}
               activeMode={launcher.tray.activeTrayMode}
               commandItems={COMMAND_ITEMS}
+              commandSearchQuery={launcher.chat.query}
+              selectedCommandIndex={launcher.store.selectedCommandIndex}
               conversationSearchQuery={launcher.store.conversationSearchQuery}
               conversations={launcher.ui.visibleTrayConversations}
               helpItems={HELP_ITEMS}
@@ -83,7 +90,10 @@ export function Launcher(props: LauncherProps) {
               onConversationSearchChange={launcher.store.setConversationSearchQuery}
               onExitShellMode={() => launcher.store.setModeLock(launcher.chat.query.trim().length > 0 ? 'chat' : null)}
               onHistoryTabChange={launcher.store.setHistoryTab}
-              onInsertCommand={(command: string) => launcher.chat.setQuery(`${command} `)}
+              onInsertCommand={(command: string) => {
+                launcher.chat.setQuery(`${command} `);
+                launcher.tray.closeTray();
+              }}
               onModelTabChange={launcher.store.setModelTab}
               onNewConversation={launcher.actions.handleNewConversation}
               onSelectConversation={launcher.actions.handleTrayConversationSelect}
@@ -157,12 +167,12 @@ export function Launcher(props: LauncherProps) {
               onNavigateToParentDirectory={launcher.ui.workingDirectory.navigateToParent}
               onToggleGitBranchMenu={launcher.ui.gitContext.toggleBranchMenu}
               onToggleModelTray={() => (modelSetupRequired ? launcher.actions.openModelDrawer() : launcher.tray.toggleTray('models'))}
-              placeholder="Octomus anything e.g. Find and fix race conditions in my Python application"
+              placeholder={launcher.ui.agentSettings?.input?.showInputHintText === false ? '' : placeholder}
               prediction={launcher.ui.activeShellPrediction}
               query={launcher.chat.query}
               recommendedAction={launcher.ui.recommendedAction}
               selectedModelLabel={launcher.ui.modelSelection.selectedModelLabel}
-              terminalAutoDetectEnabled={launcher.store.terminalAutoDetectEnabled}
+              terminalAutoDetectEnabled={launcher.store.terminalAutoDetectEnabled && launcher.ui.agentSettings?.enabled !== false && launcher.ui.agentSettings?.input?.autodetectTerminalCommandsInAgent !== false}
               workingDirectory={launcher.ui.workingDirectory.currentPath}
               workingDirectoryLabel={launcher.ui.workingDirectory.buttonLabel}
               workingDirectoryListing={launcher.ui.workingDirectory.listing}

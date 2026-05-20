@@ -8,6 +8,7 @@ export type WorkspaceChromeTab = {
   subtitle?: string;
   customLabel?: string | null;
   tintColor?: string | null;
+  lastExecutionStatus?: string | null;
 };
 
 export type WorkspaceConversation = {
@@ -15,6 +16,12 @@ export type WorkspaceConversation = {
   title: string;
   timeLabel: string;
   branchLabel?: string;
+  status?: string | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+  messageCount?: number;
+  modelId?: string | null;
+  cwd?: string | null;
 };
 
 export type WorkspacePaneLeafNode = {

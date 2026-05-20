@@ -1,9 +1,9 @@
 export * from './TerminalBlockCard';
 export * from './WebSearchBlock';
 export * from './ThinkingBlock';
-export * from './ImplementationPlanBlock';
-export * from './CodeDisplayBlock';
-export * from './MultiStepPlannerBlock';
+export { ImplementationPlanBlock } from './ImplementationPlanBlock';
+export { CodeDisplayBlock } from './CodeDisplayBlock';
+export { MultiAgentBlock } from './MultiAgentBlock';
 
 export function CodeDiffBlock() {
   return <div className="chat-block code-diff-block">Code Diff Block Placeholder</div>;

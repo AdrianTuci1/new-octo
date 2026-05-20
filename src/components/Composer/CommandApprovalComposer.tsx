@@ -85,17 +85,7 @@ export function CommandApprovalComposer({
 
   if (approval.kind === 'file-change') {
     const summary = approval.summary ?? 'Created or updated files need review';
-    const lineDelta = approval.fileDiffs.reduce((total, diff) => {
-      if (diff.diffType.kind === 'create') {
-        return total + diff.diffType.delta.insertion.split('\n').filter(Boolean).length;
-      }
-
-      if (diff.diffType.kind === 'update') {
-        return total + diff.diffType.deltas.reduce((sum, delta) => sum + delta.insertion.split('\n').filter(Boolean).length, 0);
-      }
-
-      return total - Math.max(1, diff.diffType.delta.insertion.split('\n').filter(Boolean).length);
-    }, 0);
+    const fileCountLabel = `${approval.fileDiffs.length} ${approval.fileDiffs.length === 1 ? 'file' : 'files'}`;
 
     return (
       <section className="command-approval-shell command-approval-file-shell" aria-label="Approval">
@@ -103,11 +93,11 @@ export function CommandApprovalComposer({
           <div className="command-approval-question">
             <span className="command-approval-marker" />
             <span className="command-approval-question-text">{summary}</span>
+            <span className="command-approval-file-count">{fileCountLabel}</span>
           </div>
 
           <div className="command-approval-actions">
             <button type="button" className="command-approval-text-btn" onClick={onRefine}>
-              <Sparkles size={12} />
               Refine
               <span className="keycap">
                 <CornerDownLeft size={10} />
@@ -115,16 +105,16 @@ export function CommandApprovalComposer({
               <span className="keycap">C</span>
             </button>
             <button type="button" className="command-approval-text-btn" onClick={onEdit}>
-              <PencilLine size={12} />
               Edit
               <span className="keycap">⌘</span>
               <span className="keycap">E</span>
             </button>
             <div ref={acceptMenuRef} className="command-approval-accept-group">
               <button type="button" className="command-approval-accept" onClick={onAccept}>
-                <Check size={12} />
                 Accept
-                <span className="command-approval-accept-count">{lineDelta >= 0 ? '+' : ''}{lineDelta}</span>
+                <span className="keycap">
+                  <CornerDownLeft size={10} />
+                </span>
               </button>
               <button
                 type="button"
@@ -163,16 +153,9 @@ export function CommandApprovalComposer({
           </div>
         </div>
 
-        <div className="command-approval-file-meta">
-          <span className="file-change-marker" />
-          <span className="command-approval-file-count">{approval.fileDiffs.length} files</span>
-        </div>
-
         <div className="command-approval-preview">
           <div className="command-approval-diffs">
-            {approval.fileDiffs.map((diff) => (
-              <CodeDiffView key={diff.filePath} diff={diff} showActions={false} />
-            ))}
+            <CodeDiffView diffs={approval.fileDiffs} showHeader />
           </div>
         </div>
       </section>

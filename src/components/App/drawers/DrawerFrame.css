@@ -64,12 +64,34 @@
   color: var(--text-main);
 }
 
+.drawer-header-action-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.drawer-header-save-button {
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border-strong);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-main);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.drawer-header-save-button:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
 .drawer-handle {
   left: -2px;
 }
 
 .editor-drawer,
 .model-mgmt-drawer,
+.cloud-profile-drawer,
 .keyboard-shortcuts-drawer {
   height: 100%;
   display: flex;
@@ -89,6 +111,11 @@
 .app-window-drawer-wrapper.model-drawer-wrapper {
   box-shadow: -10px 0 30px rgba(0, 0, 0, 0.5);
   border-left: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.app-window-drawer-wrapper.cloud-profile-drawer-wrapper {
+  box-shadow: -10px 0 30px rgba(0, 0, 0, 0.44);
+  border-left: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .app-window-drawer-wrapper.keyboard-shortcuts-drawer-wrapper {

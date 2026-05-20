@@ -87,7 +87,7 @@ export function TrayModels({
           </div>
           <div className="tray-model-detail">
             <span>Model ID</span>
-            <strong>{selectedModel.id}</strong>
+            <strong>{selectedModel.modelId ?? selectedModel.id}</strong>
           </div>
           {selectedModel.baseUrl && (
             <div className="tray-model-detail">

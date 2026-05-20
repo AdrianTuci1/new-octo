@@ -10,6 +10,7 @@ use crate::memory::{
     storage::{now_string, safe_file_component, write_json_atomic},
     types::{MemoryMeta, MEMORY_SCHEMA_VERSION},
 };
+use crate::octomus_paths::OctomusPaths;
 
 #[derive(Clone)]
 pub struct OctomusMemoryManager {
@@ -20,7 +21,7 @@ pub struct OctomusMemoryManager {
 impl Default for OctomusMemoryManager {
     fn default() -> Self {
         Self {
-            paths: Arc::new(MemoryPaths::new(resolve_octomus_root())),
+            paths: Arc::new(MemoryPaths::new(OctomusPaths::default().root)),
             lock: Arc::new(Mutex::new(())),
         }
     }
@@ -102,14 +103,4 @@ impl MemoryPaths {
 
         Ok(())
     }
-}
-
-fn resolve_octomus_root() -> PathBuf {
-    if let Some(home) = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE")) {
-        return PathBuf::from(home).join(".octomus");
-    }
-
-    std::env::current_dir()
-        .unwrap_or_else(|_| PathBuf::from("."))
-        .join(".octomus")
 }

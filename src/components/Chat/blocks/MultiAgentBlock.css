@@ -1,0 +1,175 @@
+/* Row styling with standard horizontal padding but no avatar indentation */
+.agent-block-row-standalone {
+  padding: 6px 24px;
+  display: flex;
+  width: 100%;
+}
+
+/* Single Running Agent Block Styling - Transparent with Outlined Border Presets */
+.agent-running-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  min-height: 40px;
+  padding: 7px 12px;
+  border-radius: 8px;
+  color: rgba(244, 247, 246, 0.92);
+  background: transparent;
+  border: 1px solid var(--agent-border, rgba(255, 255, 255, 0.065));
+  box-shadow: none;
+  position: relative;
+  overflow: hidden;
+  user-select: none;
+  transition: border-color 0.15s ease;
+}
+
+.agent-running-card:hover {
+  background: transparent;
+  border-color: var(--agent-border-hover, rgba(255, 255, 255, 0.12));
+}
+
+/* Square-ish running agent icon wrapper */
+.agent-square-icon-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 6px; /* SQUARE-ISH (patratos) */
+  background: var(--agent-icon-bg, rgba(48, 184, 111, 0.13)); 
+  border: 1px solid var(--agent-icon-border, rgba(48, 184, 111, 0.25));
+  flex-shrink: 0;
+  transition: all 0.3s ease;
+}
+
+.agent-running-card.running .agent-square-icon-wrapper {
+  animation: agent-pulse 2s infinite ease-in-out;
+}
+
+@keyframes agent-pulse {
+  0% { 
+    box-shadow: 0 0 0px var(--agent-icon-bg); 
+    border-color: var(--agent-icon-border);
+  }
+  50% { 
+    box-shadow: 0 0 8px var(--agent-icon-border); 
+    border-color: var(--agent-accent-color);
+  }
+  100% { 
+    box-shadow: 0 0 0px var(--agent-icon-bg); 
+    border-color: var(--agent-icon-border);
+  }
+}
+
+/* MASK SYSTEM FOR COLORING CUSTOM ANIMATED SVGs */
+.custom-agent-svg-mask {
+  width: 15px;
+  height: 15px;
+  background-color: var(--agent-accent-color, #30b86f);
+  -webkit-mask-size: contain;
+  mask-size: contain;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-position: center;
+  transition: background-color 0.2s ease;
+}
+
+.agent-running-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 2px;
+  flex: 1;
+}
+
+.agent-running-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.agent-running-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.92);
+  letter-spacing: -0.01em;
+  font-family: var(--font-sans, system-ui, sans-serif);
+}
+
+.agent-running-status-tag {
+  font-size: 8.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--agent-accent-color, #30b86f);
+  letter-spacing: 0.04em;
+  background: var(--agent-tag-bg, rgba(48, 184, 111, 0.09));
+  padding: 1px 5px;
+  border-radius: 4px;
+  line-height: 1.2;
+}
+
+.agent-running-summary {
+  font-size: 11.5px;
+  color: rgba(255, 255, 255, 0.52);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: var(--font-sans, system-ui, sans-serif);
+  letter-spacing: -0.01em;
+}
+
+.agent-running-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 8px;
+  flex-shrink: 0;
+}
+
+.agent-action-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  color: rgba(255, 255, 255, 0.35);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.agent-action-btn:hover {
+  color: rgba(255, 255, 255, 0.85);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.agent-action-btn:active {
+  transform: scale(0.94);
+}
+
+/* Completed & Idle subtle styling refinements */
+.agent-running-card.completed {
+  border-color: rgba(255, 255, 255, 0.045);
+}
+
+.agent-running-card.completed:hover {
+  border-color: var(--agent-border-hover, rgba(255, 255, 255, 0.12));
+}
+
+.agent-running-card.completed .agent-running-name {
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.agent-running-card.completed .agent-running-summary {
+  color: rgba(255, 255, 255, 0.42);
+}
+
+.agent-running-card.completed .agent-square-icon-wrapper {
+  background: var(--agent-tag-bg, rgba(255, 255, 255, 0.04));
+  border-color: var(--agent-border, rgba(255, 255, 255, 0.065));
+}

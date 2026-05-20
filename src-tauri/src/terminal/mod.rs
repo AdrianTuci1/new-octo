@@ -1,8 +1,11 @@
 mod ansi;
 mod block;
 mod completions;
+mod events;
 mod pty;
+mod requests;
 mod session;
+mod transport;
 
 pub mod fs;
 pub mod git;
@@ -13,7 +16,7 @@ use tauri::{AppHandle, State};
 
 // Re-export core types
 pub use block::TerminalBlock;
-pub use manager::{ManagedTerminalSession, TerminalManager};
+pub use manager::TerminalManager;
 pub use completions::{CompletionTracker, ShellCompletion, ShellCompletionFormat, ShellData};
 pub use fs::{FilesystemDirectoryListing, FilesystemEntry, FilesystemPathContext, ListDirectoryEntriesRequest, home_dir};
 pub use git::GitRepoContext;
@@ -23,7 +26,7 @@ pub use intelligence::{ShellHistoryEntry, TerminalRuntimeContext, sort_history_e
 pub fn terminal_create_session(
     app: AppHandle,
     manager: State<'_, TerminalManager>,
-    request: manager::CreateTerminalSessionRequest,
+    request: requests::CreateTerminalSessionRequest,
 ) -> Result<session::TerminalSessionInfo, String> {
     manager::terminal_create_session(app, manager, request)
 }
@@ -31,7 +34,7 @@ pub fn terminal_create_session(
 #[tauri::command]
 pub fn terminal_release_session(
     manager: State<'_, TerminalManager>,
-    request: manager::TerminalSessionRequest,
+    request: requests::TerminalSessionRequest,
 ) -> Result<(), String> {
     manager::terminal_release_session(manager, request)
 }
@@ -39,7 +42,7 @@ pub fn terminal_release_session(
 #[tauri::command]
 pub fn terminal_write(
     manager: State<'_, TerminalManager>,
-    request: manager::WriteTerminalSessionRequest,
+    request: requests::WriteTerminalSessionRequest,
 ) -> Result<(), String> {
     manager::terminal_write(manager, request)
 }
@@ -48,15 +51,15 @@ pub fn terminal_write(
 pub fn terminal_run_command(
     app: AppHandle,
     manager: State<'_, TerminalManager>,
-    request: manager::RunTerminalCommandRequest,
-) -> Result<manager::TerminalRunCommandResponse, String> {
+    request: requests::RunTerminalCommandRequest,
+) -> Result<requests::TerminalRunCommandResponse, String> {
     manager::terminal_run_command(app, manager, request)
 }
 
 #[tauri::command]
 pub fn terminal_resize(
     manager: State<'_, TerminalManager>,
-    request: manager::ResizeTerminalSessionRequest,
+    request: requests::ResizeTerminalSessionRequest,
 ) -> Result<(), String> {
     manager::terminal_resize(manager, request)
 }
@@ -64,7 +67,7 @@ pub fn terminal_resize(
 #[tauri::command]
 pub fn terminal_kill_session(
     manager: State<'_, TerminalManager>,
-    request: manager::TerminalSessionRequest,
+    request: requests::TerminalSessionRequest,
 ) -> Result<(), String> {
     manager::terminal_kill_session(manager, request)
 }
@@ -72,7 +75,7 @@ pub fn terminal_kill_session(
 #[tauri::command]
 pub fn terminal_get_blocks(
     manager: State<'_, TerminalManager>,
-    request: manager::TerminalSessionRequest,
+    request: requests::TerminalSessionRequest,
 ) -> Result<Vec<TerminalBlock>, String> {
     manager::terminal_get_blocks(manager, request)
 }

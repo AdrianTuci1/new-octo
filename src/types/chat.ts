@@ -16,6 +16,8 @@ export type ChatMessage = {
   toolCalls?: any[];
   fileDiffs?: FileDiff[];
   messageKind?: 'default' | 'reasoning';
+  thinkingDurationSeconds?: number;
+  hasNativeThinking?: boolean;
   parentMessageId?: string;
   toolKind?: 'command' | 'web-search' | 'plan';
   webSearchStatus?: 'searching' | 'success' | 'error';
@@ -28,6 +30,16 @@ export type ChatMessage = {
     description?: string;
     confidence?: number;
   };
+  subAgents?: SubAgentCall[];
+};
+
+export type SubAgentCall = {
+  id: string;
+  name: string;
+  task: string;
+  status: 'idle' | 'running' | 'completed' | 'failed';
+  avatarUrl?: string;
+  result?: string;
 };
 
 export type ExecutionPlanStep = {
@@ -121,6 +133,7 @@ export type AgentRunRequest = {
   cwd?: string | null;
   modelId?: string | null;
   messages?: AgentInputMessage[];
+  terminalBlocks?: import('./terminal').TerminalCommandBlock[];
 };
 
 export type AgentContinueRequest = {
@@ -130,6 +143,7 @@ export type AgentContinueRequest = {
   cwd?: string | null;
   modelId?: string | null;
   messages?: AgentInputMessage[];
+  terminalBlocks?: import('./terminal').TerminalCommandBlock[];
 };
 
 export type AgentInputMessage = {
@@ -206,4 +220,3 @@ export interface ConfiguredModel {
   friendlyName?: string;
   hasApiKey?: boolean;
 }
-

@@ -3,10 +3,16 @@
   gap: 8px;
 }
 
+.command-empty-state {
+  padding: 8px 0;
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
 .command-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: 24px minmax(150px, 210px) auto minmax(0, 1fr);
   align-items: center;
-  justify-content: flex-start;
   gap: 12px;
   padding: 4px 0;
   background: transparent;
@@ -21,17 +27,15 @@
   opacity: 0.8;
 }
 
-.command-keys {
-  display: flex;
-  gap: 4px;
-  flex-shrink: 0;
+.command-row.selected {
+  opacity: 1;
 }
 
-.command-text {
+.command-keys {
   display: flex;
-  align-items: baseline;
-  min-width: 0;
-  flex: 1;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
 }
 
 .command-label {
@@ -39,10 +43,9 @@
   font-size: 13px;
   font-weight: 500;
   white-space: nowrap;
-  max-width: 280px;
   overflow: hidden;
   text-overflow: ellipsis;
-  flex: 0 0 auto;
+  min-width: 0;
 }
 
 .command-detail {
@@ -51,7 +54,26 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  flex: 1;
+  min-width: 0;
+}
+
+.command-shortcut-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.command-shortcut-key {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--text-soft);
 }
 
 .keycap {

@@ -6,10 +6,12 @@ interface UIState {
   lastTrayMode: TrayContentMode;
   isExpanded: boolean;
   isModelDrawerOpen: boolean;
+  isCloudProfileDrawerOpen: boolean;
   isProfileDrawerOpen: boolean;
   isRulesDrawerOpen: boolean;
   activeProfileName: string;
   selectedModelIdForEdit: string | null;
+  selectedCloudProfileIdForEdit: string | null;
   
   // Actions
   setTrayMode: (mode: TrayMode) => void;
@@ -19,6 +21,10 @@ interface UIState {
   setSelectedModelIdForEdit: (id: string | null) => void;
   openModelDrawer: () => void;
   closeModelDrawer: () => void;
+  setIsCloudProfileDrawerOpen: (open: boolean) => void;
+  setSelectedCloudProfileIdForEdit: (id: string | null) => void;
+  openCloudProfileDrawer: () => void;
+  closeCloudProfileDrawer: () => void;
   setIsProfileDrawerOpen: (open: boolean) => void;
   openProfileDrawer: () => void;
   closeProfileDrawer: () => void;
@@ -33,10 +39,12 @@ export const useUIStore = create<UIState>((set) => ({
   lastTrayMode: 'help',
   isExpanded: false,
   isModelDrawerOpen: false,
+  isCloudProfileDrawerOpen: false,
   isProfileDrawerOpen: false,
   isRulesDrawerOpen: false,
   activeProfileName: 'Default',
   selectedModelIdForEdit: null,
+  selectedCloudProfileIdForEdit: null,
 
   setTrayMode: (mode) => set((state) => {
     if (state.trayMode === mode) {
@@ -63,6 +71,10 @@ export const useUIStore = create<UIState>((set) => ({
   setSelectedModelIdForEdit: (id) => set({ selectedModelIdForEdit: id }),
   openModelDrawer: () => set({ isModelDrawerOpen: true }),
   closeModelDrawer: () => set({ isModelDrawerOpen: false }),
+  setIsCloudProfileDrawerOpen: (open) => set({ isCloudProfileDrawerOpen: open }),
+  setSelectedCloudProfileIdForEdit: (id) => set({ selectedCloudProfileIdForEdit: id }),
+  openCloudProfileDrawer: () => set({ isCloudProfileDrawerOpen: true }),
+  closeCloudProfileDrawer: () => set({ isCloudProfileDrawerOpen: false }),
   setIsProfileDrawerOpen: (open) => set({ isProfileDrawerOpen: open }),
   openProfileDrawer: () => set({ isProfileDrawerOpen: true }),
   closeProfileDrawer: () => set({ isProfileDrawerOpen: false }),

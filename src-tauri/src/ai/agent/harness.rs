@@ -12,7 +12,7 @@ use tauri::{AppHandle, Emitter};
 use super::types::{
     AgentDoneEvent, AgentErrorEvent, AgentInputMessage, AgentReasoningEvent, AgentRunStatus,
     AgentRunStatusEvent, AgentTokenEvent, AgentToolCall, AgentToolCallEvent, AgentToolResultEvent,
-    AgentUsage,
+    AgentUsage, TerminalBlockContext,
 };
 use crate::ai::agent_management::AgentHarnessManager;
 
@@ -46,8 +46,10 @@ pub struct AgentHarnessContext {
     pub assistant_message_id: String,
     pub prompt: String,
     pub messages: Vec<AgentInputMessage>,
+    pub terminal_blocks: Vec<TerminalBlockContext>,
     pub cwd: Option<String>,
     pub model_id: String,
+    pub terminal_model_id: Option<String>,
 }
 
 #[derive(Debug, Clone)]

@@ -1,0 +1,497 @@
+{
+  "id": "octomus-agent-loop-contract",
+  "version": "2026-05-13",
+  "status": "draft-source-of-truth",
+  "description": "Machine-readable contract for the Octomus agent execution loop. This defines the intended decision surface for each stage, even when the current harness implementation compresses multiple stages into one streaming model pass.",
+  "runStatusMapping": {
+    "preparing": "preparing",
+    "reasoning": "running",
+    "planning": "running",
+    "toolSelection": "running",
+    "awaitingApproval": "waitingForTool",
+    "executing": "running",
+    "verifying": "running",
+    "completed": "completed",
+    "failed": "failed",
+    "cancelled": "cancelled"
+  },
+  "sharedDecisionTypes": [
+    "transition",
+    "emit_text",
+    "emit_reasoning",
+    "emit_tool_call",
+    "retry",
+    "await_user",
+    "complete",
+    "fail",
+    "cancel"
+  ],
+  "sharedToolNames": [
+    "lookup_web",
+    "propose_plan",
+    "update_plan",
+    "plan_execution",
+    "propose_terminal_command",
+    "propose_file_change",
+    "suggest_follow_up"
+  ],
+  "stages": [
+    {
+      "id": "preparing",
+      "displayName": "Preparing",
+      "primaryActor": "harness",
+      "purpose": "Validate run inputs and assemble the message bundle sent to the model.",
+      "inputs": [
+        "user prompt",
+        "conversation history",
+        "cwd",
+        "model configuration",
+        "active skills",
+        "cancellation signal"
+      ],
+      "allowedTools": [],
+      "allowedDecisions": [
+        {
+          "id": "prepare-context",
+          "actor": "harness",
+          "type": "transition",
+          "description": "Build system prompt, inject skills, sanitize history, and continue to reasoning."
+        },
+        {
+          "id": "fail-invalid-config",
+          "actor": "harness",
+          "type": "fail",
+          "description": "Stop immediately if API key, provider config, or request shape is invalid."
+        },
+        {
+          "id": "cancel-before-request",
+          "actor": "harness",
+          "type": "cancel",
+          "description": "Abort before sending the provider request if cancellation is already set."
+        }
+      ],
+      "emittedEvents": [
+        "agent:status(preparing)"
+      ],
+      "nextStages": [
+        "reasoning",
+        "failed",
+        "cancelled"
+      ]
+    },
+    {
+      "id": "reasoning",
+      "displayName": "Reasoning",
+      "primaryActor": "model",
+      "purpose": "Perform private analysis and frame the task before any visible output or tool selection.",
+      "inputs": [
+        "prepared message bundle",
+        "system prompt policies",
+        "streaming provider deltas"
+      ],
+      "allowedTools": [],
+      "allowedDecisions": [
+        {
+          "id": "emit-private-reasoning",
+          "actor": "model",
+          "type": "emit_reasoning",
+          "description": "Stream internal reasoning only through the dedicated reasoning channel."
+        },
+        {
+          "id": "continue-to-planning",
+          "actor": "model",
+          "type": "transition",
+          "description": "Move to planning when the task is multi-step or benefits from a visible artifact."
+        },
+        {
+          "id": "skip-planning",
+          "actor": "model",
+          "type": "transition",
+          "description": "Move directly to tool selection or final response when no plan artifact is needed."
+        },
+        {
+          "id": "cancel-during-stream",
+          "actor": "harness",
+          "type": "cancel",
+          "description": "Stop the stream if cancellation is triggered during provider output."
+        }
+      ],
+      "emittedEvents": [
+        "agent:reasoning",
+        "agent:status(running)"
+      ],
+      "nextStages": [
+        "planning",
+        "tool-selection",
+        "completed",
+        "cancelled",
+        "failed"
+      ]
+    },
+    {
+      "id": "planning",
+      "displayName": "Planning",
+      "primaryActor": "model",
+      "purpose": "Decide whether to create or update a visible execution plan artifact.",
+      "inputs": [
+        "reasoning summary",
+        "user request intent",
+        "existing execution plans in conversation",
+        "tool registry"
+      ],
+      "allowedTools": [
+        "propose_plan",
+        "update_plan",
+        "plan_execution"
+      ],
+      "allowedDecisions": [
+        {
+          "id": "create-plan-artifact",
+          "actor": "model",
+          "type": "emit_tool_call",
+          "tool": "propose_plan",
+          "description": "Create a visible plan when the user explicitly asked for a plan or the task is clearly multi-step."
+        },
+        {
+          "id": "update-existing-plan",
+          "actor": "model",
+          "type": "emit_tool_call",
+          "tool": "update_plan",
+          "description": "Revise the existing plan if new structure, workstreams, or scope changes appear."
+        },
+        {
+          "id": "mark-step-progress",
+          "actor": "model",
+          "type": "emit_tool_call",
+          "tool": "plan_execution",
+          "description": "Move one plan step to started, completed, or failed when progress is concrete."
+        },
+        {
+          "id": "decline-plan",
+          "actor": "model",
+          "type": "transition",
+          "description": "Continue without a plan when the request is informational, comparative, or too small."
+        }
+      ],
+      "emittedEvents": [
+        "agent:tool_call(propose_plan|update_plan|plan_execution)"
+      ],
+      "nextStages": [
+        "tool-selection",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "id": "tool-selection",
+      "displayName": "Tool Selection",
+      "primaryActor": "model",
+      "purpose": "Choose the next action surface: direct answer, web lookup, plan mutation, terminal proposal, or file change proposal.",
+      "inputs": [
+        "reasoning output",
+        "plan state",
+        "tool registry",
+        "guardian rules",
+        "prompt intent heuristics"
+      ],
+      "allowedTools": [
+        "lookup_web",
+        "propose_plan",
+        "update_plan",
+        "plan_execution",
+        "propose_terminal_command",
+        "propose_file_change",
+        "suggest_follow_up"
+      ],
+      "allowedDecisions": [
+        {
+          "id": "answer-directly",
+          "actor": "model",
+          "type": "emit_text",
+          "description": "Return a visible answer with no tool call when enough context already exists."
+        },
+        {
+          "id": "lookup-fresh-public-info",
+          "actor": "model",
+          "type": "emit_tool_call",
+          "tool": "lookup_web",
+          "description": "Use only for fresh public information that depends on the internet."
+        },
+        {
+          "id": "propose-terminal-command",
+          "actor": "model",
+          "type": "emit_tool_call",
+          "tool": "propose_terminal_command",
+          "description": "Use for local infrastructure or inspection steps that need user approval."
+        },
+        {
+          "id": "propose-file-change",
+          "actor": "model",
+          "type": "emit_tool_call",
+          "tool": "propose_file_change",
+          "description": "Use for file creation or edits instead of heredocs or raw file dumps."
+        },
+        {
+          "id": "attach-follow-up",
+          "actor": "model",
+          "type": "emit_tool_call",
+          "tool": "suggest_follow_up",
+          "description": "Attach only after a visible answer and only when there is a strong next-step suggestion."
+        },
+        {
+          "id": "retry-after-guardian",
+          "actor": "harness",
+          "type": "retry",
+          "description": "Force the model to choose a safer alternative when Guardian rejects a proposed terminal command."
+        }
+      ],
+      "emittedEvents": [
+        "agent:tool_call(*)",
+        "agent:status(running)"
+      ],
+      "nextStages": [
+        "awaiting-approval",
+        "executing",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "id": "awaiting-approval",
+      "displayName": "Awaiting Approval",
+      "primaryActor": "user",
+      "purpose": "Hold execution until the user accepts, edits, rejects, or otherwise resolves a gated action.",
+      "inputs": [
+        "approved tool proposal",
+        "pending command or file diff",
+        "user decision"
+      ],
+      "allowedTools": [],
+      "allowedDecisions": [
+        {
+          "id": "approve-action",
+          "actor": "user",
+          "type": "transition",
+          "description": "Accept the proposed command or file change and continue to execution."
+        },
+        {
+          "id": "edit-action",
+          "actor": "user",
+          "type": "transition",
+          "description": "Modify the proposal and then continue to execution."
+        },
+        {
+          "id": "reject-action",
+          "actor": "user",
+          "type": "fail",
+          "description": "Reject the proposal and stop the current execution path."
+        },
+        {
+          "id": "resume-with-feedback",
+          "actor": "harness",
+          "type": "transition",
+          "description": "Send the approval result back into the conversation so the model can continue from tool output."
+        }
+      ],
+      "emittedEvents": [
+        "agent:status(waitingForTool)"
+      ],
+      "nextStages": [
+        "executing",
+        "failed",
+        "cancelled"
+      ]
+    },
+    {
+      "id": "executing",
+      "displayName": "Executing",
+      "primaryActor": "harness",
+      "purpose": "Run or relay the selected tool action and capture its raw result.",
+      "inputs": [
+        "approved command",
+        "approved file diff",
+        "web search request",
+        "tool call id"
+      ],
+      "allowedTools": [
+        "lookup_web",
+        "propose_terminal_command",
+        "propose_file_change"
+      ],
+      "allowedDecisions": [
+        {
+          "id": "dispatch-web-search",
+          "actor": "frontend",
+          "type": "transition",
+          "description": "Send the web query to the search handler and collect results as a tool outcome."
+        },
+        {
+          "id": "run-terminal-command",
+          "actor": "frontend",
+          "type": "transition",
+          "description": "Execute the approved terminal command in the terminal runtime."
+        },
+        {
+          "id": "apply-file-change",
+          "actor": "frontend",
+          "type": "transition",
+          "description": "Apply the approved file diff and surface the resulting file state back to the conversation."
+        },
+        {
+          "id": "capture-tool-result",
+          "actor": "harness",
+          "type": "transition",
+          "description": "Persist tool results as tool messages so the model can inspect them."
+        },
+        {
+          "id": "execution-error",
+          "actor": "frontend",
+          "type": "fail",
+          "description": "Mark the run as failed if the selected tool cannot execute or returns an unrecoverable error."
+        }
+      ],
+      "emittedEvents": [
+        "agent:tool_result",
+        "terminal block events",
+        "agent:status(running)"
+      ],
+      "nextStages": [
+        "verifying",
+        "failed",
+        "cancelled"
+      ]
+    },
+    {
+      "id": "verifying",
+      "displayName": "Verifying",
+      "primaryActor": "model",
+      "purpose": "Interpret tool results, decide whether the task is done, and update the visible plan state if needed.",
+      "inputs": [
+        "tool results",
+        "terminal output",
+        "web search results",
+        "file diffs",
+        "existing plan state"
+      ],
+      "allowedTools": [
+        "update_plan",
+        "plan_execution",
+        "lookup_web",
+        "propose_terminal_command",
+        "propose_file_change",
+        "suggest_follow_up"
+      ],
+      "allowedDecisions": [
+        {
+          "id": "mark-plan-step-complete",
+          "actor": "model",
+          "type": "emit_tool_call",
+          "tool": "plan_execution",
+          "description": "Advance or fail a visible plan step based on actual evidence from tool results."
+        },
+        {
+          "id": "request-another-tool",
+          "actor": "model",
+          "type": "transition",
+          "description": "Loop back to tool selection if more information or edits are still needed."
+        },
+        {
+          "id": "emit-final-answer",
+          "actor": "model",
+          "type": "complete",
+          "description": "Return the final visible answer when the evidence is sufficient and the task is complete."
+        },
+        {
+          "id": "fail-with-explanation",
+          "actor": "model",
+          "type": "fail",
+          "description": "Stop with a visible failure explanation when the task cannot safely continue."
+        }
+      ],
+      "emittedEvents": [
+        "agent:tool_call(update_plan|plan_execution|suggest_follow_up)",
+        "agent:status(running)"
+      ],
+      "nextStages": [
+        "tool-selection",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "id": "completed",
+      "displayName": "Completed",
+      "primaryActor": "harness",
+      "purpose": "Finalize a successful run and freeze the visible outputs.",
+      "inputs": [
+        "final answer",
+        "usage totals",
+        "final plan state"
+      ],
+      "allowedTools": [],
+      "allowedDecisions": [
+        {
+          "id": "finish-success",
+          "actor": "harness",
+          "type": "complete",
+          "description": "Emit done status, finalize reasoning, and persist usage."
+        }
+      ],
+      "emittedEvents": [
+        "agent:done(completed)",
+        "agent:status(completed)"
+      ],
+      "nextStages": []
+    },
+    {
+      "id": "failed",
+      "displayName": "Failed",
+      "primaryActor": "harness",
+      "purpose": "Finalize an unsuccessful run with a clear error surface.",
+      "inputs": [
+        "error details",
+        "guardian rejection exhaustion",
+        "provider failure",
+        "execution failure",
+        "user rejection"
+      ],
+      "allowedTools": [],
+      "allowedDecisions": [
+        {
+          "id": "emit-failure",
+          "actor": "harness",
+          "type": "fail",
+          "description": "Emit the final error event and stop the run."
+        }
+      ],
+      "emittedEvents": [
+        "agent:error",
+        "agent:status(failed)"
+      ],
+      "nextStages": []
+    },
+    {
+      "id": "cancelled",
+      "displayName": "Cancelled",
+      "primaryActor": "harness",
+      "purpose": "Finalize a user-cancelled run without treating it as a failure.",
+      "inputs": [
+        "cancellation signal"
+      ],
+      "allowedTools": [],
+      "allowedDecisions": [
+        {
+          "id": "emit-cancelled",
+          "actor": "harness",
+          "type": "cancel",
+          "description": "Stop the run and emit the cancelled terminal state."
+        }
+      ],
+      "emittedEvents": [
+        "agent:done(cancelled)",
+        "agent:status(cancelled)"
+      ],
+      "nextStages": []
+    }
+  ]
+}

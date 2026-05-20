@@ -65,7 +65,13 @@ export function buildConversationFromSummary(summary: MemoryConversationSummary)
     id: summary.id,
     title: summary.title || 'New agent conversation',
     branchLabel: summary.branchLabel ?? cwdSegments[cwdSegments.length - 1] ?? '~',
-    timeLabel: summary.timeLabel || 'recently'
+    timeLabel: summary.timeLabel || 'recently',
+    status: summary.status,
+    createdAt: summary.createdAt,
+    updatedAt: summary.updatedAt,
+    messageCount: summary.messageCount,
+    modelId: summary.modelId,
+    cwd: summary.cwd
   };
 }
 

@@ -20,6 +20,34 @@ use crate::ai::agent_management::{
 const DEFAULT_MODEL_ID: &str = "octomus-scripted-harness";
 const EVENT_STATUS: &str = "agent:status";
 
+pub(crate) fn resolve_model_id(
+    requested_model_id: Option<String>,
+    provider_config: Option<&OpenAiCompatibleConfig>,
+) -> String {
+    let requested_model_id = requested_model_id
+        .filter(|id| !id.trim().is_empty())
+        .map(|id| id.trim().to_string());
+
+    if let Some(model_id) = requested_model_id {
+        if model_id.starts_with("model_") {
+            if let Some(provider_model_id) = provider_config
+                .map(|config| config.model_id.trim())
+                .filter(|id| !id.is_empty())
+            {
+                return provider_model_id.to_string();
+            }
+        }
+
+        return model_id;
+    }
+
+    provider_config
+        .map(|config| config.model_id.trim())
+        .filter(|id| !id.is_empty())
+        .map(|id| id.to_string())
+        .unwrap_or_else(|| DEFAULT_MODEL_ID.to_string())
+}
+
 pub async fn agent_start(
     app: AppHandle,
     window: tauri::Window,
@@ -56,15 +84,7 @@ pub async fn agent_start(
                 .filter(|config| !config.api_key.trim().is_empty())
         })
         .or_else(OpenAiCompatibleConfig::from_env);
-    let model_id = request
-        .model_id
-        .filter(|id| !id.trim().is_empty())
-        .or_else(|| {
-            provider_config
-                .as_ref()
-                .map(|config| config.model_id.clone())
-        })
-        .unwrap_or_else(|| DEFAULT_MODEL_ID.to_string());
+    let model_id = resolve_model_id(request.model_id, provider_config.as_ref());
 
     let cwd = request.cwd.or_else(|| {
         std::env::var("HOME").ok().or_else(|| {
@@ -79,9 +99,11 @@ pub async fn agent_start(
         conversation_id: conversation_id.clone(),
         assistant_message_id: assistant_message_id.clone(),
         prompt: prompt.clone(),
+        messages: request.messages,
+        terminal_blocks: request.terminal_blocks,
         cwd,
         model_id: model_id.clone(),
-        messages: request.messages,
+        terminal_model_id: request.terminal_model_id,
     };
 
     let cancel_flag = Arc::new(AtomicBool::new(false));

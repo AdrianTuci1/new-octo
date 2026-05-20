@@ -1,9 +1,11 @@
 
 import { useCallback } from 'react';
+import { invoke } from '@tauri-apps/api/core';
 import { useEditorStore } from '../../../../../stores/editorStore';
 import { createConversationId } from '../../utils';
 import { runCommandInSurface } from '../../utils/terminal';
 import { consumeShellModeActivator } from '../../../../../lib';
+import { normalizeCodeSettings } from '../../../../App/settings/codeSettings';
 import type { LauncherProps } from '../types';
 import type { CommandApproval, FileChangeApproval } from '../../../../../types';
 import type { FileDiff } from '../../../../../types/diff';
@@ -20,11 +22,49 @@ function getFileContentForDiff(diff: FileDiff) {
   return diff.originalContent ?? '';
 }
 
-function openFileDiffsInEditor(diffs: FileDiff[]) {
+function isAbsolutePath(path: string) {
+  return path.startsWith('/') || /^[A-Za-z]:[\\/]/.test(path);
+}
+
+function normalizePathSegments(path: string) {
+  const isAbsolute = path.startsWith('/');
+  const parts = path.split('/').filter(Boolean);
+  const stack: string[] = [];
+
+  parts.forEach((part) => {
+    if (part === '.') return;
+    if (part === '..') {
+      if (stack.length > 0) stack.pop();
+      return;
+    }
+    stack.push(part);
+  });
+
+  return `${isAbsolute ? '/' : ''}${stack.join('/')}`;
+}
+
+function resolveWorkspaceFilePath(filePath: string, cwd?: string | null) {
+  const trimmedPath = filePath.trim();
+  if (!trimmedPath || isAbsolutePath(trimmedPath) || !cwd?.trim()) {
+    return trimmedPath;
+  }
+
+  return normalizePathSegments(`${cwd.replace(/\/+$/, '')}/${trimmedPath.replace(/^\.\/+/, '')}`);
+}
+
+function withResolvedDiffPath(diff: FileDiff, cwd?: string | null): FileDiff {
+  return {
+    ...diff,
+    filePath: resolveWorkspaceFilePath(diff.filePath, cwd)
+  };
+}
+
+function openFileDiffsInEditor(diffs: FileDiff[], cwd?: string | null) {
   const { openFile } = useEditorStore.getState();
   diffs.forEach((diff) => {
-    const fileName = diff.filePath.split('/').pop() || diff.filePath;
-    openFile(diff.filePath, fileName, getFileContentForDiff(diff));
+    const resolvedPath = resolveWorkspaceFilePath(diff.filePath, cwd);
+    const fileName = resolvedPath.split('/').pop() || resolvedPath;
+    openFile(resolvedPath, fileName, getFileContentForDiff(diff));
   });
 }
 
@@ -42,6 +82,11 @@ function buildCommandRefinePrompt(command: string) {
     'Refine the following terminal command so it is safer, clearer, and still solves the same task:',
     command.trim()
   ].filter(Boolean).join('\n\n');
+}
+
+function isCommandSearchQuery(value: string) {
+  const trimmed = value.trimStart();
+  return trimmed.startsWith('/') && !trimmed.includes(' ');
 }
 
 export function useLauncherHandlers({
@@ -71,13 +116,15 @@ export function useLauncherHandlers({
 
   const memoryConversations = memoryStore.conversations;
   const saveSettings = memoryStore.saveSettings;
+  const codeSettings = normalizeCodeSettings(memoryStore.settings?.values);
 
   const openCommandsTray = useCallback(() => {
     store.setSelectedHistoryIndex(0);
+    store.setSelectedCommandIndex(0);
     if (!tray.isTrayOpen || tray.activeTrayMode !== 'commands') {
       tray.toggleTray('commands');
     }
-  }, [store.setSelectedHistoryIndex, tray.activeTrayMode, tray.isTrayOpen, tray.toggleTray]);
+  }, [store.setSelectedCommandIndex, store.setSelectedHistoryIndex, tray.activeTrayMode, tray.isTrayOpen, tray.toggleTray]);
 
   const closeAgentSurface = useCallback(() => {
     void chat.saveCurrentConversation?.();
@@ -267,7 +314,7 @@ export function useLauncherHandlers({
 
     if (approval.kind === 'file-change') {
       store.setModeLock(null);
-      openFileDiffsInEditor(approval.fileDiffs);
+      openFileDiffsInEditor(approval.fileDiffs, runtime.workingDirectory.currentPath);
       return;
     }
 
@@ -275,16 +322,55 @@ export function useLauncherHandlers({
       store.setModeLock('shell');
       chat.setQuery(approval.command);
     }
-  }, [chat.setQuery, setResolvedPendingApproval, store.setComposerSurface, store.setModeLock]);
+  }, [
+    chat.setQuery,
+    runtime.workingDirectory.currentPath,
+    setResolvedPendingApproval,
+    store.setComposerSurface,
+    store.setModeLock
+  ]);
 
   const handlePendingApprovalAccept = useCallback(async (approval: CommandApproval) => {
-    setResolvedPendingApproval(null);
-    store.setComposerSurface('agent');
-
     if (approval.kind === 'file-change') {
-      store.setModeLock(null);
+      try {
+        for (const diff of approval.fileDiffs) {
+          const resolvedDiff = withResolvedDiffPath(diff, runtime.workingDirectory.currentPath);
+          await invoke('apply_file_diff', {
+            filePath: resolvedDiff.filePath,
+            diff: resolvedDiff.diffType
+          });
+        }
+
+        const appliedFiles = approval.fileDiffs.map((diff) => `- ${diff.filePath}`).join('\n');
+        const toolCallId = approval.toolCallId ?? resolvedPendingApproval?.toolCallId;
+
+        setResolvedPendingApproval(null);
+        store.setComposerSurface('agent');
+        store.setModeLock(null);
+
+        if (codeSettings.editor.autoOpenCodeReviewPanel && codeSettings.editor.codeReviewEditor === 'Warp') {
+          openFileDiffsInEditor(approval.fileDiffs, runtime.workingDirectory.currentPath);
+        }
+
+        if (toolCallId) {
+          void chat.submitToolResult(
+            toolCallId,
+            [
+              'Applied file changes successfully.',
+              appliedFiles ? `Files:\n${appliedFiles}` : ''
+            ].filter(Boolean).join('\n\n'),
+            'command',
+            approval.summary
+          );
+        }
+      } catch (error) {
+        console.error('[Launcher] Failed to apply file changes:', error);
+      }
       return;
     }
+
+    setResolvedPendingApproval(null);
+    store.setComposerSurface('agent');
 
     if ('command' in approval) {
       const toolCallId = approval.toolCallId ?? resolvedPendingApproval?.toolCallId;
@@ -310,7 +396,10 @@ export function useLauncherHandlers({
     agentTerminal,
     chat.submitToolResult,
     clearTerminalSurface,
+    codeSettings.editor.autoOpenCodeReviewPanel,
+    codeSettings.editor.codeReviewEditor,
     resolvedPendingApproval?.toolCallId,
+    runtime.workingDirectory.currentPath,
     setResolvedPendingApproval,
     store.setComposerSurface,
     store.setModeLock,
@@ -324,19 +413,21 @@ export function useLauncherHandlers({
   const handleTerminalQueryChange = useCallback((value: string) => {
     chat.setQuery(value);
     store.setSelectedHistoryIndex(0);
+    store.setSelectedCommandIndex(0);
 
-    if (value === '/') {
+    if (isCommandSearchQuery(value)) {
       if (!tray.isTrayOpen || tray.activeTrayMode !== 'commands') {
         tray.toggleTray('commands');
       }
       return;
     }
 
-    if ((value === '' || value === '//') && tray.isTrayOpen && tray.activeTrayMode === 'commands') {
+    if (tray.isTrayOpen && tray.activeTrayMode === 'commands') {
       tray.closeTray();
     }
   }, [
     chat.setQuery,
+    store.setSelectedCommandIndex,
     store.setSelectedHistoryIndex,
     tray.activeTrayMode,
     tray.closeTray,
@@ -348,21 +439,25 @@ export function useLauncherHandlers({
     const nextValue = consumeShellModeActivator(rawValue);
     chat.setQuery(nextValue.value);
     store.setSelectedHistoryIndex(0);
+    store.setSelectedCommandIndex(0);
     if (nextValue.consumed) {
       store.setModeLock('shell');
     } else if (rawValue.length === 0 && store.modeLock === 'chat') {
       store.setModeLock(null);
     }
 
-    if (nextValue.value === '/' && !tray.isTrayOpen) {
-      tray.toggleTray('commands');
-    } else if ((nextValue.value === '' || nextValue.value === '//') && tray.isTrayOpen && tray.activeTrayMode === 'commands') {
-      tray.toggleTray('commands');
+    if (isCommandSearchQuery(nextValue.value)) {
+      if (!tray.isTrayOpen || tray.activeTrayMode !== 'commands') {
+        tray.toggleTray('commands');
+      }
+    } else if (tray.isTrayOpen && tray.activeTrayMode === 'commands') {
+      tray.closeTray();
     }
   }, [
     chat.setQuery,
     store.modeLock,
     store.setModeLock,
+    store.setSelectedCommandIndex,
     store.setSelectedHistoryIndex,
     tray.activeTrayMode,
     tray.isTrayOpen,
@@ -403,9 +498,10 @@ export function useLauncherHandlers({
 
   const handleToggleCommands = useCallback(() => {
     const willOpen = !tray.isTrayOpen || tray.activeTrayMode !== 'commands';
+    store.setSelectedCommandIndex(0);
     chat.setQuery(willOpen ? '/' : '');
     tray.toggleTray('commands');
-  }, [chat.setQuery, tray.activeTrayMode, tray.isTrayOpen, tray.toggleTray]);
+  }, [chat.setQuery, store.setSelectedCommandIndex, tray.activeTrayMode, tray.isTrayOpen, tray.toggleTray]);
 
   const handleToggleTerminalAutoDetect = useCallback(() => {
     const nextValue = !store.terminalAutoDetectEnabled;

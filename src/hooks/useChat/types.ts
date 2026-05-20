@@ -22,6 +22,7 @@ export type AssistantMessageRegistration = {
   append: (text: string) => boolean;
   update: (updater: (message: ChatMessage) => ChatMessage) => boolean;
   upsertReasoning: (payload: { text: string; isComplete?: boolean }) => void;
+  finalizeReasoning?: () => void;
   showPlan: (plan: ExecutionPlanArtifact, toolCallId: string) => void;
   applyPlanExecution: (update: PlanExecutionUpdate, toolCallId: string) => void;
   onCommandApproval?: (approval: CommandApproval) => void;

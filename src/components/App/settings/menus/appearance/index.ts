@@ -9,8 +9,7 @@ export const appearanceSidebarItem: SettingsSidebarLeafItem = {
 export const appearanceSectionMeta: Record<'appearance', SettingsSectionMeta> = {
   appearance: {
     title: 'Appearance',
-    description: 'Theme, density, and visual preferences will live here.',
-    contentKind: 'placeholder'
+    description: 'Theme, cursor, tabs, window, and layout preferences.',
+    contentKind: 'appearance'
   }
 };
-

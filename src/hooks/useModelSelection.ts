@@ -10,6 +10,13 @@ function readString(value: unknown) {
   return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
 }
 
+type ConfiguredModelRecord = {
+  id?: unknown;
+  modelId?: unknown;
+  friendlyName?: unknown;
+  baseUrl?: unknown;
+};
+
 function buildModelFromSettings(
   selectedModelId: string | null,
   memorySettings: ReturnType<typeof useMemoryStore.getState>['settings'],
@@ -20,19 +27,27 @@ function buildModelFromSettings(
     return null;
   }
 
+  const configuredModels = (memorySettings?.values.configuredModels as ConfiguredModelRecord[] | undefined) ?? [];
+  const selectedConfiguredModel = configuredModels.find((model) => model.id === selectedModelId);
   const providerLabel = readString(memorySettings?.values.aiProviderLabel)
     ?? (providerStatus?.provider === 'openai-compatible' ? 'OpenAI' : readString(providerStatus?.provider))
     ?? 'Connected provider';
-  const friendlyName = readString(memorySettings?.values.aiModelFriendlyName);
+  const friendlyName = readString(memorySettings?.values.aiModelFriendlyName)
+    ?? readString(selectedConfiguredModel?.friendlyName);
   const baseUrl = readString(memorySettings?.values.aiModelBaseUrl)
+    ?? readString(selectedConfiguredModel?.baseUrl)
     ?? (providerStatus?.baseUrl && providerStatus.baseUrl !== 'local' ? providerStatus.baseUrl : null);
+  const modelId = readString(selectedConfiguredModel?.modelId)
+    ?? readString(providerStatus?.modelId)
+    ?? selectedModelId;
 
   return {
     id: selectedModelId,
-    label: friendlyName ?? selectedModelId,
+    modelId,
+    label: friendlyName ?? modelId ?? selectedModelId,
     provider: providerLabel,
     baseUrl,
-    note: baseUrl ? `Base URL: ${baseUrl}` : 'Stored securely on this device.'
+    note: modelId ? `Model ID: ${modelId}` : (baseUrl ? `Base URL: ${baseUrl}` : 'Stored securely on this device.')
   };
 }
 
@@ -93,6 +108,7 @@ export function useModelSelection() {
   const models = useMemo(() => (selectedModel ? [selectedModel] : []), [selectedModel]);
   const requiresModelSetup = isProviderStatusLoaded && !isConfigured;
   const selectedModelLabel = selectedModel?.label ?? "You don't have any model";
+  const selectedModelApiId = selectedModel?.modelId ?? selectedModel?.id ?? null;
 
   const selectModel = (modelId: string, persist = false) => {
     setSelectedModelId(modelId);
@@ -106,6 +122,7 @@ export function useModelSelection() {
     models,
     selectedModel,
     selectedModelId: resolvedSelectedModelId,
+    selectedModelApiId,
     selectedModelLabel,
     isConfigured,
     isProviderStatusLoaded,

@@ -8,13 +8,88 @@ import { WorkspaceSidebar } from './chrome/WorkspaceSidebar';
 import { useAppWindow } from './hooks/useAppWindow';
 import { AgentsView } from './agents/AgentsView';
 import { useEditorStore } from '../../stores/editorStore';
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useMemoryStore } from '../../stores/memoryStore';
 import { AppWindowDrawers } from './drawers/AppWindowDrawers';
 import { useBackendShortcutActions } from './hooks/useBackendShortcutActions';
 import type { WorkspacePaneNode } from './chrome';
 import { LauncherStoreProvider, createLauncherStore, type LauncherStoreApi } from '../../stores';
-import { X } from 'lucide-react';
+import { Maximize2, X } from 'lucide-react';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 import * as Utils from './utils';
+
+function appearanceRecord(raw: unknown) {
+  return raw && typeof raw === 'object' && !Array.isArray(raw) ? raw as Record<string, unknown> : {};
+}
+
+function appearanceString(record: Record<string, unknown>, key: string, fallback: string) {
+  return typeof record[key] === 'string' ? record[key] as string : fallback;
+}
+
+function appearanceBoolean(record: Record<string, unknown>, key: string, fallback: boolean) {
+  return typeof record[key] === 'boolean' ? record[key] as boolean : fallback;
+}
+
+function appearanceNumber(record: Record<string, unknown>, key: string, fallback: number) {
+  return typeof record[key] === 'number' && Number.isFinite(record[key]) ? record[key] as number : fallback;
+}
+
+function clampAppearanceNumber(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, Number.isFinite(value) ? value : min));
+}
+
+function appearanceFontFamily(font: string) {
+  if (font === 'JetBrains') return '"JetBrains Mono", "SF Mono", monospace';
+  if (font === 'Monaspace') return '"Monaspace", "SF Mono", monospace';
+  if (font === 'Menlo') return 'Menlo, "SF Mono", monospace';
+  if (font === 'Monaco') return 'Monaco, "SF Mono", monospace';
+  if (font === 'SF Mono') return '"SF Mono", monospace';
+  return '"SF Mono", "Hack", "JetBrains Mono", monospace';
+}
+
+function applyAppearanceSettings(rawAppearance: unknown) {
+  const record = appearanceRecord(rawAppearance);
+  const root = document.documentElement;
+  const body = document.body;
+  const terminalFont = appearanceString(record, 'terminalFont', 'Hack');
+  const agentFont = appearanceString(record, 'agentFont', 'Hack');
+  const fontWeight = appearanceString(record, 'fontWeight', 'Normal');
+  const terminalFamily = appearanceFontFamily(terminalFont);
+  const useAltScreenPadding = appearanceBoolean(record, 'useAltScreenPadding', true);
+
+  root.style.setProperty('--font-mono', terminalFamily);
+  root.style.setProperty(
+    '--appearance-agent-font',
+    appearanceBoolean(record, 'matchTerminalFont', false) ? terminalFamily : appearanceFontFamily(agentFont)
+  );
+  root.style.setProperty('--appearance-terminal-font-size', `${clampAppearanceNumber(appearanceNumber(record, 'fontSize', 13), 9, 32)}px`);
+  root.style.setProperty('--appearance-line-height', String(clampAppearanceNumber(appearanceNumber(record, 'lineHeight', 1.2), 0.9, 2)));
+  root.style.setProperty('--appearance-font-weight', fontWeight === 'Bold' ? '700' : fontWeight === 'Medium' ? '500' : '400');
+  root.style.setProperty('--appearance-window-blur-radius', `${clampAppearanceNumber(appearanceNumber(record, 'windowBlurRadius', 1), 0, 20)}px`);
+  root.style.setProperty(
+    '--appearance-alt-screen-padding',
+    `${useAltScreenPadding ? clampAppearanceNumber(appearanceNumber(record, 'altScreenPadding', 0), 0, 80) : 0}px`
+  );
+
+  body.style.setProperty('zoom', `${clampAppearanceNumber(Number(appearanceString(record, 'zoomLevel', '100')), 80, 120)}%`);
+  body.style.opacity = String(clampAppearanceNumber(appearanceNumber(record, 'windowOpacity', 100), 20, 100) / 100);
+  body.classList.toggle('appearance-cursor-blinking', appearanceBoolean(record, 'cursorBlinking', true));
+  body.classList.toggle('appearance-cursor-bar', appearanceString(record, 'cursorType', 'block') === 'bar');
+  body.classList.toggle('appearance-cursor-block', appearanceString(record, 'cursorType', 'block') === 'block');
+  body.classList.toggle('appearance-cursor-underline', appearanceString(record, 'cursorType', 'block') === 'underline');
+  body.classList.toggle('appearance-compact-mode', appearanceBoolean(record, 'compactMode', false));
+  body.classList.toggle('appearance-dim-inactive-panes', appearanceBoolean(record, 'dimInactivePanes', false));
+  body.classList.toggle('appearance-focus-follows-mouse', appearanceBoolean(record, 'focusFollowsMouse', false));
+  body.classList.toggle('appearance-hide-block-dividers', !appearanceBoolean(record, 'showBlockDividers', true));
+  body.classList.toggle('appearance-hide-jump-to-bottom', !appearanceBoolean(record, 'showJumpToBottom', true));
+  body.classList.toggle('appearance-hide-tab-indicators', !appearanceBoolean(record, 'showTabIndicators', true));
+  body.classList.toggle('appearance-hide-tab-bar', appearanceString(record, 'showTabBar', 'windowed') === 'never');
+  body.classList.toggle('appearance-tab-close-left', appearanceString(record, 'tabClosePosition', 'right') === 'left');
+  body.classList.toggle('appearance-vertical-tabs', appearanceBoolean(record, 'verticalTabs', false));
+  body.classList.toggle('appearance-input-top', appearanceString(record, 'inputPosition', 'bottom') === 'top');
+  body.classList.toggle('appearance-shell-input', appearanceString(record, 'inputType', 'warp') === 'shell');
+  body.classList.toggle('appearance-alt-screen-padding-enabled', useAltScreenPadding);
+}
 
 function WorkspacePaneSlot(props: {
   paneId: string;
@@ -35,6 +110,11 @@ function WorkspacePaneSlot(props: {
     <div
       className={`app-window-launcher-slot ${props.active ? 'active' : ''}`}
       onMouseDown={() => props.onFocusPane(props.paneId)}
+      onMouseEnter={() => {
+        if (document.body.classList.contains('appearance-focus-follows-mouse')) {
+          props.onFocusPane(props.paneId);
+        }
+      }}
     >
       {props.hasMultiplePanes && (
         <div className="app-window-launcher-pane-header">
@@ -65,12 +145,34 @@ function WorkspacePaneSlot(props: {
 export function AppWindow() {
   const app = useAppWindow();
   const { tabs } = useEditorStore();
+  const appearanceSettings = useMemoryStore((state) => state.settings?.values.appearance);
   const isEditorOpen = tabs.length > 0;
   const [isKeyboardShortcutsDrawerOpen, setIsKeyboardShortcutsDrawerOpen] = useState(false);
   const isSpotlightOwned = app.chrome.selectedTab.id === app.chrome.launcherTabId && app.chrome.isSpotlightVisible;
 
   const [paneSizes, setPaneSizes] = useState<Record<string, number>>({});
   const [hoveredHandleKey, setHoveredHandleKey] = useState<string | null>(null);
+
+  const toggleFullscreen = useCallback(async () => {
+    if (!(window as any).__TAURI_INTERNALS__) {
+      return;
+    }
+
+    const currentWindow = getCurrentWindow();
+    const isFullscreen = await currentWindow.isFullscreen().catch(() => false);
+
+    if (isFullscreen) {
+      await currentWindow.setSimpleFullscreen(false).catch(() => {});
+      await currentWindow.unmaximize().catch(() => {});
+      return;
+    }
+
+    await currentWindow.setSimpleFullscreen(true).catch(async () => {
+      await currentWindow.setFullscreen(true).catch(async () => {
+        await currentWindow.maximize().catch(() => {});
+      });
+    });
+  }, []);
 
   const handleResizeStart = useCallback((
     event: React.MouseEvent,
@@ -144,6 +246,10 @@ export function AppWindow() {
   const handleOpenSettingsTab = useCallback(() => {
     app.actions.onOpenSettingsSection();
   }, [app.actions]);
+
+  useEffect(() => {
+    applyAppearanceSettings(appearanceSettings);
+  }, [appearanceSettings]);
 
   const workspacePaneTree = useMemo(() => {
     const paneIds = app.workspace.paneLayout ? Utils.collectPaneIdsFromLayout(app.workspace.paneLayout) : [];
@@ -290,6 +396,18 @@ export function AppWindow() {
           {app.workspace.isSettingsView && (
             <div className="app-window-header">
               <span className="app-window-header-title">Settings</span>
+              <div className="app-window-header-actions">
+                <button
+                  className="app-window-header-action"
+                  type="button"
+                  aria-label="Toggle fullscreen"
+                  onClick={() => {
+                    void toggleFullscreen();
+                  }}
+                >
+                  <Maximize2 size={14} />
+                </button>
+              </div>
             </div>
           )}
 
@@ -346,7 +464,14 @@ export function AppWindow() {
           {app.chrome.isAgentsActive && (
             <div className="app-window-overlay" role="presentation">
               <div className="app-window-overlay-panel">
-                <AgentsView />
+                <AgentsView
+                  conversations={app.sidebar.workspaceConversations}
+                  openConversationIds={app.sidebar.openConversationIds}
+                  selectedConversationId={app.sidebar.selectedOpenConversationId}
+                  onNewConversation={app.actions.onNewConversationInNewTab}
+                  onSelectConversation={app.actions.onSelectConversation}
+                  onClose={app.actions.onToggleAgents}
+                />
               </div>
             </div>
           )}

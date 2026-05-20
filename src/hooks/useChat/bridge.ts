@@ -104,6 +104,7 @@ export function ensureAgentEventBridge(): Promise<void> {
           usage,
           isStreaming: false
         }));
+        registration.finalizeReasoning?.();
       });
     }),
 

@@ -1,2 +1,2 @@
-export { AccountSection } from './AccountSection';
+export { ProfileSection, AccountSection } from './AccountSection';
 export { SectionPlaceholder } from './SectionPlaceholder';

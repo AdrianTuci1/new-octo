@@ -1,5 +1,7 @@
 import { create } from 'zustand';
 
+export type EditorTabPresentation = 'file' | 'artifact-markdown';
+
 export interface EditorTab {
   id: string;
   path: string;
@@ -7,6 +9,13 @@ export interface EditorTab {
   isDirty: boolean;
   content?: string;
   language?: string;
+  presentation: EditorTabPresentation;
+  readOnly: boolean;
+}
+
+export interface OpenEditorFileOptions {
+  presentation?: EditorTabPresentation;
+  readOnly?: boolean;
 }
 
 interface EditorState {
@@ -14,8 +23,9 @@ interface EditorState {
   activeTabId: string | null;
   
   // Actions
-  openFile: (path: string, name: string, content?: string) => void;
+  openFile: (path: string, name: string, content?: string, options?: OpenEditorFileOptions) => void;
   closeTab: (id: string) => void;
+  closeAllTabs: () => void;
   setActiveTab: (id: string) => void;
   updateContent: (id: string, content: string) => void;
   setDirty: (id: string, isDirty: boolean) => void;
@@ -25,8 +35,15 @@ export const useEditorStore = create<EditorState>((set) => ({
   tabs: [],
   activeTabId: null,
 
-  openFile: (path, name, content) => set((state) => {
-    const existingTab = state.tabs.find((tab) => tab.path === path);
+  openFile: (path, name, content, options) => set((state) => {
+    const presentation = options?.presentation ?? 'file';
+    const readOnly = options?.readOnly ?? presentation === 'artifact-markdown';
+    const isArtifactMarkdown = presentation === 'artifact-markdown';
+    const nextTabsBase = isArtifactMarkdown
+      ? []
+      : state.tabs.filter((tab) => tab.presentation !== 'artifact-markdown');
+    const existingTab = nextTabsBase.find((tab) => tab.path === path && tab.presentation === presentation);
+
     if (existingTab) {
       return { activeTabId: existingTab.id };
     }
@@ -37,11 +54,13 @@ export const useEditorStore = create<EditorState>((set) => ({
       name,
       isDirty: false,
       content,
-      language: getLanguageFromPath(path)
+      language: getLanguageFromPath(path),
+      presentation,
+      readOnly
     };
 
     return {
-      tabs: [...state.tabs, newTab],
+      tabs: [...nextTabsBase, newTab],
       activeTabId: newTab.id
     };
   }),
@@ -58,6 +77,11 @@ export const useEditorStore = create<EditorState>((set) => ({
       tabs: newTabs,
       activeTabId: newActiveTabId
     };
+  }),
+
+  closeAllTabs: () => set({
+    tabs: [],
+    activeTabId: null
   }),
 
   setActiveTab: (id) => set({ activeTabId: id }),

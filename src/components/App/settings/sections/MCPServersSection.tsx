@@ -1,12 +1,18 @@
 import React, { useState } from 'react';
-import { Search, Plus, Github, Terminal } from 'lucide-react';
+import { Search, Plus, Terminal } from 'lucide-react';
+import { useMemoryStore } from '../../../../stores';
+import { buildAgentSettingsValues, normalizeAgentSettings } from '../agentSettings';
+
+import datadogIcon from '../../../../../assets/mcps/datadog.png';
+import notionIcon from '../../../../../assets/mcps/notion.png';
+import githubIcon from '../../../../../assets/mcps/github.png';
+import playwrightIcon from '../../../../../assets/mcps/playwright.png';
 
 interface MCPServer {
   id: string;
   name: string;
   description: string;
   icon: React.ReactNode;
-  isActive: boolean;
   isDetected?: boolean;
 }
 
@@ -29,29 +35,25 @@ const INITIAL_SHARED_SERVERS: MCPServer[] = [
     id: 'datadog', 
     name: 'Datadog', 
     description: 'Monitor and analyze application performance.', 
-    icon: <div className="mcp-icon-circle" style={{ background: '#632CA6', color: 'white' }}>D</div>, 
-    isActive: false 
+    icon: <img src={datadogIcon} alt="Datadog" className="mcp-icon-img" />, 
   },
   { 
     id: 'notion', 
     name: 'Notion', 
     description: 'Read and write to Notion pages and databases.', 
-    icon: <div className="mcp-icon-circle" style={{ background: '#ffffff', color: '#000000' }}>N</div>, 
-    isActive: false 
+    icon: <img src={notionIcon} alt="Notion" className="mcp-icon-img" />, 
   },
   { 
     id: 'github', 
     name: 'GitHub', 
     description: 'Manage issues, projects and code.', 
-    icon: <Github size={18} />, 
-    isActive: false 
+    icon: <img src={githubIcon} alt="GitHub" className="mcp-icon-img" />, 
   },
   { 
     id: 'playwright', 
     name: 'Playwright', 
     description: 'Automate browser testing and web scraping.', 
-    icon: <div className="mcp-icon-circle" style={{ background: '#2EAD33', color: 'white' }}>P</div>, 
-    isActive: false 
+    icon: <img src={playwrightIcon} alt="Playwright" className="mcp-icon-img" />, 
   },
 ];
 
@@ -61,22 +63,69 @@ const DETECTED_SERVERS: MCPServer[] = [
     name: 'Local Shell Tools', 
     description: 'Auto-detected local terminal utilities and scripts.', 
     icon: <Terminal size={18} />, 
-    isActive: false,
     isDetected: true
   }
 ];
 
 export function MCPServersSection() {
-  const [servers, setServers] = useState<MCPServer[]>(INITIAL_SHARED_SERVERS);
-  const [autoSpawn, setAutoSpawn] = useState(false);
+  const settings = useMemoryStore((state) => state.settings);
+  const saveSettings = useMemoryStore((state) => state.saveSettings);
+  const agentSettings = normalizeAgentSettings(settings?.values);
   const [searchQuery, setSearchQuery] = useState('');
+  const customServers: MCPServer[] = agentSettings.mcp.customServers.map((server) => ({
+    ...server,
+    icon: <div className="mcp-icon-circle" style={{ background: '#164e63', color: 'white' }}>{server.name[0]?.toUpperCase() ?? 'C'}</div>
+  }));
+  const servers = [...INITIAL_SHARED_SERVERS, ...customServers];
+  const allServers = [...servers, ...DETECTED_SERVERS];
 
   const toggleServer = (id: string) => {
-    setServers(prev => prev.map(s => s.id === id ? { ...s, isActive: !s.isActive } : s));
+    const enabledServerIds = agentSettings.mcp.enabledServerIds.includes(id)
+      ? agentSettings.mcp.enabledServerIds.filter((serverId) => serverId !== id)
+      : [...agentSettings.mcp.enabledServerIds, id];
+
+    void saveSettings(buildAgentSettingsValues({
+      ...agentSettings,
+      mcp: {
+        ...agentSettings.mcp,
+        enabledServerIds
+      }
+    }), true);
   };
 
-  const activeServers = servers.filter(s => s.isActive);
-  const availableServers = servers.filter(s => !s.isActive);
+  const toggleAutoSpawn = () => {
+    void saveSettings(buildAgentSettingsValues({
+      ...agentSettings,
+      mcp: {
+        ...agentSettings.mcp,
+        autoSpawnFromThirdPartyAgents: !agentSettings.mcp.autoSpawnFromThirdPartyAgents
+      }
+    }), true);
+  };
+
+  const addCustomServer = () => {
+    const nextIndex = agentSettings.mcp.customServers.length + 1;
+    const nextServer = {
+      id: `custom_${Date.now()}`,
+      name: `Custom MCP ${nextIndex}`,
+      description: 'Custom server configured locally.'
+    };
+
+    void saveSettings(buildAgentSettingsValues({
+      ...agentSettings,
+      mcp: {
+        ...agentSettings.mcp,
+        customServers: [...agentSettings.mcp.customServers, nextServer],
+        enabledServerIds: [...agentSettings.mcp.enabledServerIds, nextServer.id]
+      }
+    }), true);
+  };
+
+  const query = searchQuery.trim().toLowerCase();
+  const matchesSearch = (server: MCPServer) => !query || `${server.name} ${server.description}`.toLowerCase().includes(query);
+  const activeServers = allServers.filter((server) => agentSettings.mcp.enabledServerIds.includes(server.id) && matchesSearch(server));
+  const availableServers = servers.filter((server) => !agentSettings.mcp.enabledServerIds.includes(server.id) && matchesSearch(server));
+  const detectedServers = DETECTED_SERVERS.filter((server) => !agentSettings.mcp.enabledServerIds.includes(server.id) && matchesSearch(server));
 
   return (
     <section className="settings-panel mcp-servers-section">
@@ -97,7 +146,7 @@ export function MCPServersSection() {
             onChange={(e) => setSearchQuery(e.target.value)}
           />
         </div>
-        <button className="mcp-add-button">
+        <button className="mcp-add-button" type="button" onClick={addCustomServer}>
           <Plus size={16} />
           <span>Add</span>
         </button>
@@ -111,7 +160,7 @@ export function MCPServersSection() {
           </div>
         </div>
         <div className="mcp-settings-action">
-          <SettingsToggle checked={autoSpawn} onChange={() => setAutoSpawn(!autoSpawn)} />
+          <SettingsToggle checked={agentSettings.mcp.autoSpawnFromThirdPartyAgents} onChange={toggleAutoSpawn} />
         </div>
       </div>
 
@@ -170,7 +219,7 @@ export function MCPServersSection() {
       <div className="mcp-group">
         <h3 className="mcp-group-title">DETECTED FROM OCTOMUS</h3>
         <div className="mcp-list">
-          {DETECTED_SERVERS.map(server => (
+          {detectedServers.map(server => (
             <div key={server.id} className="mcp-card">
               <div className="mcp-card-icon-wrapper">
                 <div className="mcp-card-icon">
@@ -182,7 +231,7 @@ export function MCPServersSection() {
                 <div className="mcp-card-description">{server.description}</div>
               </div>
               <div className="mcp-card-action">
-                <button className="mcp-plus-button">
+                <button className="mcp-plus-button" onClick={() => toggleServer(server.id)}>
                   <Plus size={18} />
                 </button>
               </div>

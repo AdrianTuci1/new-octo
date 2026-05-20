@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { 
   X, 
   AlertCircle, 
@@ -16,6 +16,13 @@ import {
 } from 'lucide-react';
 import { useMemoryStore, useUIStore } from '../../../stores';
 import { DrawerHeader } from './DrawerHeader';
+import {
+  buildAgentSettingsValues,
+  normalizeAgentSettings,
+  type AgentPermissionMode,
+  type AgentProfileSettings,
+  type AgentQuestionMode
+} from '../settings/agentSettings';
 import './ProfileEditorDrawer.css';
 
 export function ProfileEditorDrawer() {
@@ -27,37 +34,101 @@ export function ProfileEditorDrawer() {
   const [baseModel, setBaseModel] = useState('minimax 2.7 (us-hosted)');
   const [terminalModel, setTerminalModel] = useState('kimi k2.6 (us-hosted)');
   
-  const [applyDiffs, setApplyDiffs] = useState('Agent decides');
-  const [readFiles, setReadFiles] = useState('Agent decides');
+  const [applyDiffs, setApplyDiffs] = useState<AgentPermissionMode>('Agent decides');
+  const [readFiles, setReadFiles] = useState<AgentPermissionMode>('Agent decides');
   const [dirAllowlist, setDirAllowlist] = useState('');
-  const [execCommands, setExecCommands] = useState('Always ask');
+  const [execCommands, setExecCommands] = useState<AgentPermissionMode>('Always ask');
   const [cmdAllowlist, setCmdAllowlist] = useState('');
-  const [interactCommands, setInteractCommands] = useState('Always ask');
-  const [askQuestions, setAskQuestions] = useState('Ask unless auto-approve');
-  const [callMcp, setCallMcp] = useState('Agent decides');
+  const [interactCommands, setInteractCommands] = useState<AgentPermissionMode>('Always ask');
+  const [askQuestions, setAskQuestions] = useState<AgentQuestionMode>('Ask unless auto-approve');
+  const [callMcp, setCallMcp] = useState<AgentPermissionMode>('Agent decides');
   const [mcpAllowlist, setMcpAllowlist] = useState('Select MCP servers');
   const [planAutoSync, setPlanAutoSync] = useState(true);
+  const [callWebTools, setCallWebTools] = useState(true);
   const settings = useMemoryStore((state) => state.settings);
   const saveSettings = useMemoryStore((state) => state.saveSettings);
-  const callWebTools = settings?.values.webSearchEnabled !== false;
+  const agentSettings = useMemo(() => normalizeAgentSettings(settings?.values), [settings?.values]);
+  const activeProfile = useMemo(() => (
+    agentSettings.profiles.find((profile) => profile.name === activeProfileName)
+      ?? agentSettings.profiles[0]
+  ), [activeProfileName, agentSettings]);
 
   useEffect(() => {
-    setProfileName(activeProfileName);
-  }, [activeProfileName]);
+    setProfileName(activeProfile.name);
+    setBaseModel(activeProfile.baseModel);
+    setTerminalModel(activeProfile.terminalModel);
+    setApplyDiffs(activeProfile.applyDiffs);
+    setReadFiles(activeProfile.readFiles);
+    setDirAllowlist(activeProfile.directoryAllowlist.join(', '));
+    setExecCommands(activeProfile.executeCommands);
+    setCmdAllowlist(activeProfile.commandAllowlist.join(', '));
+    setInteractCommands(activeProfile.interactWithRunningCommands);
+    setAskQuestions(activeProfile.askQuestions);
+    setCallMcp(activeProfile.callMcpServers);
+    setMcpAllowlist(activeProfile.mcpAllowlist.length > 0 ? activeProfile.mcpAllowlist.join(', ') : 'Select MCP servers');
+    setCallWebTools(activeProfile.callWebTools);
+    setPlanAutoSync(activeProfile.planAutoSync);
+  }, [activeProfile]);
+
+  const buildProfileFromForm = (): AgentProfileSettings => ({
+    ...activeProfile,
+    name: activeProfile.id === 'default' ? 'Default' : profileName.trim() || activeProfile.name,
+    baseModel,
+    terminalModel,
+    applyDiffs,
+    readFiles,
+    directoryAllowlist: splitList(dirAllowlist),
+    executeCommands: execCommands,
+    commandAllowlist: splitList(cmdAllowlist),
+    interactWithRunningCommands: interactCommands,
+    askQuestions,
+    callMcpServers: callMcp,
+    mcpAllowlist: mcpAllowlist === 'Select MCP servers' ? [] : splitList(mcpAllowlist),
+    callWebTools,
+    planAutoSync
+  });
+
+  const handleSaveProfile = () => {
+    const nextProfile = buildProfileFromForm();
+    void saveSettings(buildAgentSettingsValues({
+      ...agentSettings,
+      profiles: agentSettings.profiles.map((profile) => profile.id === activeProfile.id ? nextProfile : profile)
+    }), true);
+    setIsProfileDrawerOpen(false);
+  };
+
+  const handleDeleteProfile = () => {
+    if (activeProfile.id === 'default') return;
+
+    void saveSettings(buildAgentSettingsValues({
+      ...agentSettings,
+      profiles: agentSettings.profiles.filter((profile) => profile.id !== activeProfile.id)
+    }), true);
+    setIsProfileDrawerOpen(false);
+  };
 
   return (
     <div className="profile-editor-drawer">
       <DrawerHeader
         title="Profile Editor"
         action={(
-          <button
-            className="drawer-header-action-button"
-            onClick={() => setIsProfileDrawerOpen(false)}
-            type="button"
-            aria-label="Close profile editor"
-          >
-            <X size={18} />
-          </button>
+          <div className="drawer-header-action-group">
+            <button
+              className="drawer-header-save-button"
+              onClick={handleSaveProfile}
+              type="button"
+            >
+              Save
+            </button>
+            <button
+              className="drawer-header-action-button"
+              onClick={() => setIsProfileDrawerOpen(false)}
+              type="button"
+              aria-label="Close profile editor"
+            >
+              <X size={18} />
+            </button>
+          </div>
         )}
       />
 
@@ -100,6 +171,7 @@ export function ProfileEditorDrawer() {
                 className="profile-editor-select"
               >
                 <option value="minimax 2.7 (us-hosted)">minimax 2.7 (us-hosted)</option>
+                <option value="minimax 2.7">minimax 2.7</option>
                 <option value="gpt-4o-mini">gpt-4o-mini (us-hosted)</option>
                 <option value="claude-3-5-sonnet">claude-3-5-sonnet (us-hosted)</option>
                 <option value="gemini-1.5-pro">gemini-1.5-pro (us-hosted)</option>
@@ -120,6 +192,7 @@ export function ProfileEditorDrawer() {
                 className="profile-editor-select"
               >
                 <option value="kimi k2.6 (us-hosted)">kimi k2.6 (us-hosted)</option>
+                <option value="Auto">Auto</option>
                 <option value="gpt-4o">gpt-4o (us-hosted)</option>
                 <option value="claude-3-5-sonnet">claude-3-5-sonnet (us-hosted)</option>
               </select>
@@ -143,7 +216,7 @@ export function ProfileEditorDrawer() {
             <div className="profile-editor-select-wrapper">
               <select 
                 value={applyDiffs} 
-                onChange={(e) => setApplyDiffs(e.target.value)}
+                onChange={(e) => setApplyDiffs(e.target.value as AgentPermissionMode)}
                 className="profile-editor-select"
               >
                 <option value="Agent decides">Agent decides</option>
@@ -167,7 +240,7 @@ export function ProfileEditorDrawer() {
             <div className="profile-editor-select-wrapper">
               <select 
                 value={readFiles} 
-                onChange={(e) => setReadFiles(e.target.value)}
+                onChange={(e) => setReadFiles(e.target.value as AgentPermissionMode)}
                 className="profile-editor-select"
               >
                 <option value="Agent decides">Agent decides</option>
@@ -209,7 +282,7 @@ export function ProfileEditorDrawer() {
             <div className="profile-editor-select-wrapper">
               <select 
                 value={execCommands} 
-                onChange={(e) => setExecCommands(e.target.value)}
+                onChange={(e) => setExecCommands(e.target.value as AgentPermissionMode)}
                 className="profile-editor-select"
               >
                 <option value="Always ask">Always ask</option>
@@ -251,7 +324,7 @@ export function ProfileEditorDrawer() {
             <div className="profile-editor-select-wrapper">
               <select 
                 value={interactCommands} 
-                onChange={(e) => setInteractCommands(e.target.value)}
+                onChange={(e) => setInteractCommands(e.target.value as AgentPermissionMode)}
                 className="profile-editor-select"
               >
                 <option value="Always ask">Always ask</option>
@@ -275,7 +348,7 @@ export function ProfileEditorDrawer() {
             <div className="profile-editor-select-wrapper">
               <select 
                 value={askQuestions} 
-                onChange={(e) => setAskQuestions(e.target.value)}
+                onChange={(e) => setAskQuestions(e.target.value as AgentQuestionMode)}
                 className="profile-editor-select"
               >
                 <option value="Ask unless auto-approve">Ask unless auto-approve</option>
@@ -299,7 +372,7 @@ export function ProfileEditorDrawer() {
             <div className="profile-editor-select-wrapper">
               <select 
                 value={callMcp} 
-                onChange={(e) => setCallMcp(e.target.value)}
+                onChange={(e) => setCallMcp(e.target.value as AgentPermissionMode)}
                 className="profile-editor-select"
               >
                 <option value="Agent decides">Agent decides</option>
@@ -344,7 +417,7 @@ export function ProfileEditorDrawer() {
             <button 
               className={`profile-editor-toggle ${callWebTools ? 'active' : ''}`}
               type="button"
-              onClick={() => { void saveSettings({ webSearchEnabled: !callWebTools }, true); }}
+              onClick={() => setCallWebTools((value) => !value)}
             >
               <span />
             </button>
@@ -373,7 +446,7 @@ export function ProfileEditorDrawer() {
               <button 
                 className="btn-delete" 
                 type="button" 
-                onClick={() => setIsProfileDrawerOpen(false)}
+                onClick={handleDeleteProfile}
               >
                 Delete Profile
               </button>
@@ -384,4 +457,11 @@ export function ProfileEditorDrawer() {
       </div>
     </div>
   );
+}
+
+function splitList(value: string) {
+  return value
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter(Boolean);
 }

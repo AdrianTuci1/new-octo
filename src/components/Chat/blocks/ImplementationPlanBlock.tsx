@@ -1,4 +1,5 @@
 import { Compass, ExternalLink } from 'lucide-react';
+import './TerminalBlockSummary.css';
 import './ImplementationPlanBlock.css';
 
 export type ImplementationPlanBlockProps = {

@@ -2,40 +2,273 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
-import { Copy, Play, Save, Check } from 'lucide-react';
-import { useState } from 'react';
+import { Copy, Terminal, Check } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { invoke } from '@tauri-apps/api/core';
 import { CodeDiffView } from './CodeDiffView';
-import { ImplementationPlanBlock, MultiStepPlannerBlock, ThinkingBlock, WebSearchBlock } from './blocks';
+import { ImplementationPlanBlock, ThinkingBlock, WebSearchBlock } from './blocks';
 import { visibleChatMessageBody } from '../../hooks/useChat';
-import type { ChatMessage } from '../../types/chat';
+import type { ChatMessage, ExecutionPlanArtifact } from '../../types/chat';
 import type { CommandApproval } from '../../types/terminal';
+import type { FileDiff } from '../../types/diff';
+import { useEditorStore } from '../../stores/editorStore';
+import { ProfileAvatar } from '../App/profile/ProfileAvatar';
+import { useProfileSettings } from '../App/settings/useProfileSettings';
 
 type MessageBubbleProps = {
   message: ChatMessage;
   onRequestCommandApproval?: (approval: CommandApproval) => void;
 };
 
+function highlightSlashCommandsInMarkdown(text: string): string {
+  // Split text by backticks (code blocks) to ignore them during processing
+  const parts = text.split(/(`{1,3}[\s\S]*?`{1,3})/g);
+
+  return parts.map((part, index) => {
+    // Odd indices correspond to matches from the capturing group (the backtick blocks)
+    if (index % 2 === 1) {
+      return part;
+    }
+
+    // In normal text, find occurrences of slash commands
+    // Must be preceded by start/whitespace, contain only word chars/hyphens,
+    // and followed by whitespace, end, or sentence punctuation.
+    return part.replace(/(^|\s)(\/[a-zA-Z0-9-_]+)(?=$|\s|[.,!?;:])/g, (match, space, cmd) => {
+      return `${space}[${cmd}](slash-cmd://${cmd.slice(1)})`;
+    });
+  }).join('');
+}
+
+const SHELL_LANGUAGES = new Set(['bash', 'console', 'fish', 'ps1', 'powershell', 'sh', 'shell', 'terminal', 'zsh']);
+const FILE_PATH_PATTERN = /(?:^|[\s"'`=:/])((?:\.{1,2}\/|\/)?(?:[\w.-]+\/)+[\w.-]+\.[A-Za-z0-9]{1,12}|[\w.-]+\.[A-Za-z0-9]{1,12})(?=$|[\s"'`),;])/;
+
+function cleanPossibleFilePath(value: string) {
+  return value
+    .trim()
+    .replace(/^[-*]\s+/, '')
+    .replace(/^file(?:name)?\s*[:=]\s*/i, '')
+    .replace(/^path\s*[:=]\s*/i, '')
+    .replace(/^`+|`+$/g, '')
+    .replace(/^\*\*|\*\*$/g, '')
+    .replace(/^["']|["']$/g, '')
+    .trim();
+}
+
+function extractFilePathFromFence(info: string, previousLine: string) {
+  const infoParts = info.trim().split(/\s+/).filter(Boolean);
+  const language = infoParts[0]?.toLowerCase() ?? '';
+  if (SHELL_LANGUAGES.has(language)) {
+    return null;
+  }
+
+  const metadata = infoParts.slice(1).join(' ');
+  const metadataMatch = metadata.match(FILE_PATH_PATTERN);
+  if (metadataMatch?.[1]) {
+    return cleanPossibleFilePath(metadataMatch[1]);
+  }
+
+  const previous = cleanPossibleFilePath(previousLine);
+  const previousMatch = previous.match(FILE_PATH_PATTERN);
+  return previousMatch?.[1] ? cleanPossibleFilePath(previousMatch[1]) : null;
+}
+
+function extractFileProposalFromMarkdown(body: string) {
+  const lines = body.split('\n');
+  const fileDiffs: FileDiff[] = [];
+  const visibleLines: string[] = [];
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const fenceStart = lines[index].match(/^```([^\n`]*)$/);
+    if (!fenceStart) {
+      visibleLines.push(lines[index]);
+      continue;
+    }
+
+    const previousVisibleLine = visibleLines[visibleLines.length - 1] ?? '';
+    const filePath = extractFilePathFromFence(fenceStart[1] ?? '', previousVisibleLine);
+    const codeLines: string[] = [];
+    let endIndex = index + 1;
+    for (; endIndex < lines.length; endIndex += 1) {
+      if (/^```$/.test(lines[endIndex])) {
+        break;
+      }
+      codeLines.push(lines[endIndex]);
+    }
+
+    if (endIndex >= lines.length) {
+      visibleLines.push(lines[index], ...codeLines);
+      break;
+    }
+
+    if (!filePath) {
+      visibleLines.push(lines[index], ...codeLines, lines[endIndex]);
+      index = endIndex;
+      continue;
+    }
+
+    if (previousVisibleLine && cleanPossibleFilePath(previousVisibleLine).includes(filePath)) {
+      visibleLines.pop();
+    }
+
+    fileDiffs.push({
+      filePath,
+      diffType: {
+        kind: 'create',
+        delta: {
+          replacement_line_range: { start: 1, end: 1 },
+          insertion: codeLines.join('\n')
+        }
+      }
+    });
+    index = endIndex;
+  }
+
+  return {
+    visibleBody: visibleLines.join('\n').replace(/\n{3,}/g, '\n\n').trimEnd(),
+    fileDiffs
+  };
+}
+
 export function MessageBubble({ message, onRequestCommandApproval }: MessageBubbleProps) {
   const isUser = message.role === 'user';
-  const initials = "AT"; // Placeholder for user initials
-  const visibleBody = message.role === 'assistant'
+  const { profile } = useProfileSettings();
+  const openFile = useEditorStore((state) => state.openFile);
+  const rawVisibleBodyWithArtifacts = message.role === 'assistant'
     ? visibleChatMessageBody(message.body)
     : message.body;
-  const showStreamingHint = message.role === 'assistant' && message.isStreaming && !visibleBody.trim();
+  const extractedFileProposal = useMemo(() => (
+    message.role === 'assistant' && !message.isStreaming
+      ? extractFileProposalFromMarkdown(rawVisibleBodyWithArtifacts)
+      : { visibleBody: rawVisibleBodyWithArtifacts, fileDiffs: [] as FileDiff[] }
+  ), [message.isStreaming, message.role, rawVisibleBodyWithArtifacts]);
+  const emittedFileProposalIdsRef = useRef(new Set<string>());
+  const rawVisibleBody = extractedFileProposal.visibleBody;
+  const visibleBody = highlightSlashCommandsInMarkdown(rawVisibleBody);
+  const showStreamingHint = message.role === 'assistant'
+    && message.isStreaming
+    && !visibleBody.trim()
+    && !message.hasNativeThinking;
+
+  useEffect(() => {
+    if (!onRequestCommandApproval) return;
+    if (message.role !== 'assistant' || message.isStreaming) return;
+    if (message.fileDiffs?.length) return;
+    if (extractedFileProposal.fileDiffs.length === 0) return;
+    if (emittedFileProposalIdsRef.current.has(message.id)) return;
+
+    emittedFileProposalIdsRef.current.add(message.id);
+    onRequestCommandApproval({
+      kind: 'file-change',
+      summary: `Review proposed changes across ${extractedFileProposal.fileDiffs.length} ${extractedFileProposal.fileDiffs.length === 1 ? 'file' : 'files'}`,
+      fileDiffs: extractedFileProposal.fileDiffs
+    });
+  }, [
+    extractedFileProposal.fileDiffs,
+    message.fileDiffs?.length,
+    message.id,
+    message.isStreaming,
+    message.role,
+    onRequestCommandApproval
+  ]);
+
+  const handleMarkdownLinkClick = async (href?: string | null) => {
+    if (!href) return;
+
+    const localPath = resolveLocalPathFromHref(href);
+    if (localPath) {
+      const openedInEditor = await openLocalPath(localPath, openFile);
+      if (openedInEditor) {
+        return;
+      }
+    }
+
+    const match = href.match(/^octomus:\/\/cloud-profile\/(modal|custom-vm)$/);
+    if (!match) {
+      try {
+        await invoke('open_external_url', { url: href });
+      } catch (error) {
+        console.warn('[chat] failed to open external chat link', error);
+        window.open(href, '_blank', 'noopener,noreferrer');
+      }
+      return;
+    }
+
+    const provider = match[1];
+    const profileId = provider === 'modal' ? 'modal-sandbox' : 'core-dev-vm';
+
+    try {
+      await invoke('open_cloud_profile_drawer', { profileId });
+    } catch (error) {
+      console.warn('[chat] failed to open cloud profile drawer from chat link', error);
+    }
+  };
+
+  const markdownComponents = {
+    a({ href, children, ...props }: any) {
+      if (href && href.startsWith('slash-cmd://')) {
+        return (
+          <span className="chat-slash-command">
+            {children}
+          </span>
+        );
+      }
+
+      return (
+        <a
+          {...props}
+          className="chat-action-link"
+          href={href}
+          onClick={(event) => {
+            event.preventDefault();
+            void handleMarkdownLinkClick(href);
+          }}
+        >
+          {children}
+        </a>
+      );
+    },
+    code({ node, inline, className, children, ...props }: any) {
+      const match = /language-(\w+)/.exec(className || '');
+      const lang = match ? match[1] : '';
+
+      if (!inline && match) {
+        return (
+          <CodeBlock
+            code={String(children).replace(/\n$/, '')}
+            language={lang}
+            onRequestCommandApproval={onRequestCommandApproval}
+          />
+        );
+      }
+
+      const isSlash = String(children || '').trim().startsWith('/');
+      const combinedClassName = isSlash
+        ? `${className || ''} is-slash-command`.trim()
+        : className;
+
+      return (
+        <code className={combinedClassName} {...props}>
+          {children}
+        </code>
+      );
+    }
+  };
 
   return (
     <div className={`message-bubble ${message.role}`}>
       <div className="role-avatar-container">
         {isUser && (
-          <div className="initials-avatar">
-            {initials}
-          </div>
+          <ProfileAvatar profile={profile} size={24} showInitials={Boolean(profile.avatarDataUrl)} />
         )}
       </div>
 
       <div className="message-content">
         {message.messageKind === 'reasoning' ? (
-          <ThinkingBlock body={visibleBody} isStreaming={message.isStreaming} />
+          <ThinkingBlock 
+            body={visibleBody} 
+            isStreaming={message.isStreaming} 
+            durationSeconds={message.thinkingDurationSeconds}
+          />
         ) : showStreamingHint ? (
           <div className="message-streaming-hint">
             <span className="thinking-dot-animation">Thinking</span>
@@ -50,55 +283,48 @@ export function MessageBubble({ message, onRequestCommandApproval }: MessageBubb
                   <WebSearchBlock
                     status={message.webSearchStatus}
                     results={message.webSearchResults ?? []}
+                    query={message.webSearchQuery}
+                    onOpenResult={(url) => {
+                      void handleMarkdownLinkClick(url);
+                    }}
                   />
                   {(!message.webSearchResults || message.webSearchResults.length === 0) && message.body.trim().length > 0 && (
-                    <div className="tool-output-raw tool-output-web-search-fallback">
-                      {message.body}
-                    </div>
+                    <MarkdownBody
+                      body={message.body}
+                      className="tool-output-raw tool-output-web-search-fallback"
+                      components={markdownComponents}
+                    />
                   )}
                 </div>
               )
             : message.toolKind === 'plan' && message.executionPlan
               ? (
                   <div className="tool-output-plan">
+                    {(() => {
+                      const executionPlan = message.executionPlan;
+                      return (
                     <ImplementationPlanBlock
-                      title={message.executionPlan.title}
-                      version={message.executionPlan.version ?? 'v1'}
+                      title={executionPlan.title}
+                      version={executionPlan.version ?? 'v1'}
+                      onClick={() => {
+                        openExecutionPlanInEditor(executionPlan, openFile);
+                      }}
                     />
-                    <MultiStepPlannerBlock
-                      title="Execution Plan"
-                      summary={message.executionPlan.summary}
-                      steps={message.executionPlan.steps}
-                      workstreams={message.executionPlan.workstreams ?? []}
-                    />
+                      );
+                    })()}
                   </div>
                 )
             : (
-                <div className="tool-output-raw">
-                  {message.body}
-                </div>
+                <MarkdownBody
+                  body={message.body}
+                  className="tool-output-raw"
+                  components={markdownComponents}
+                />
               )
         ) : (
           <ReactMarkdown
             remarkPlugins={[remarkGfm]}
-            components={{
-              code({ node, inline, className, children, ...props }: any) {
-                const match = /language-(\w+)/.exec(className || '');
-                const lang = match ? match[1] : '';
-
-                return !inline && match ? (
-                  <CodeBlock
-                    code={String(children).replace(/\n$/, '')}
-                    language={lang}
-                    onRequestCommandApproval={onRequestCommandApproval}
-                  />
-                ) : (
-                  <code className={className} {...props}>
-                    {children}
-                  </code>
-                );
-              }
-            }}
+            components={markdownComponents}
           >
             {visibleBody}
           </ReactMarkdown>
@@ -106,14 +332,130 @@ export function MessageBubble({ message, onRequestCommandApproval }: MessageBubb
 
         {message.fileDiffs && message.fileDiffs.length > 0 && (
           <div className="message-diffs">
-            {message.fileDiffs.map((diff, index) => (
-              <CodeDiffView key={index} diff={diff} />
-            ))}
+            <CodeDiffView diffs={message.fileDiffs} />
           </div>
         )}
       </div>
     </div>
   );
+}
+
+function MarkdownBody({
+  body,
+  className,
+  components
+}: {
+  body: string;
+  className?: string;
+  components: any;
+}) {
+  return (
+    <div className={className}>
+      <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
+        {body}
+      </ReactMarkdown>
+    </div>
+  );
+}
+
+function resolveLocalPathFromHref(href: string) {
+  const trimEditorLocationSuffix = (value: string) => value
+    .replace(/#L\d+(?:C\d+)?$/i, '')
+    .replace(/:\d+(?::\d+)?$/i, '');
+
+  if (href.startsWith('file://')) {
+    try {
+      return trimEditorLocationSuffix(decodeURIComponent(new URL(href).pathname));
+    } catch {
+      return null;
+    }
+  }
+
+  if (href.startsWith('/')) {
+    return trimEditorLocationSuffix(href);
+  }
+
+  return null;
+}
+
+function fileNameFromPath(path: string) {
+  const normalizedPath = path.endsWith('/') ? path.slice(0, -1) : path;
+  return normalizedPath.split('/').pop() || normalizedPath;
+}
+
+async function openLocalPath(
+  path: string,
+  openFile: (path: string, name: string, content?: string) => void
+) {
+  try {
+    const content = await invoke<string>('terminal_read_file', {
+      request: { path }
+    });
+    openFile(path, fileNameFromPath(path), content);
+    return true;
+  } catch (error) {
+    try {
+      await invoke('open_external_url', { url: path });
+      return true;
+    } catch (openError) {
+      console.warn('[chat] failed to open local path from chat link', {
+        path,
+        readError: error,
+        openError
+      });
+      return false;
+    }
+  }
+}
+
+function sanitizeArtifactId(id: string) {
+  return id.replace(/[^a-zA-Z0-9._-]/g, '-');
+}
+
+function buildExecutionPlanDocument(plan: ExecutionPlanArtifact) {
+  const completedSteps = plan.steps.filter((step) => step.status === 'completed');
+  const inProgressSteps = plan.steps.filter((step) => step.status === 'inProgress');
+  const pendingSteps = plan.steps.filter((step) => step.status === 'pending');
+
+  return [
+    `# ${plan.title}`,
+    '',
+    plan.summary?.trim() || 'Execution plan proposed.',
+    ...(plan.workstreams?.length
+      ? [
+          '',
+          '## Workstreams',
+          ...plan.workstreams.map((workstream) => {
+            const linkedSteps = workstream.stepIds.length > 0
+              ? ` - steps: ${workstream.stepIds.join(', ')}`
+            : '';
+            return `- [${workstream.status}] ${workstream.title}${linkedSteps}`;
+          })
+        ]
+      : []),
+    '',
+    '## Tasks',
+    ...completedSteps.map((step) => `- [x] ${step.label}`),
+    ...inProgressSteps.map((step) => `- [ ] ${step.label} _(in progress)_`),
+    ...pendingSteps.map((step) => `- [ ] ${step.label}`),
+    '',
+    '## Metadata',
+    `- id: ${plan.id}`,
+    `- version: ${plan.version ?? 'v1'}`
+  ].join('\n');
+}
+
+function openExecutionPlanInEditor(
+  plan: ExecutionPlanArtifact,
+  openFile: (path: string, name: string, content?: string, options?: { presentation?: 'artifact-markdown'; readOnly?: boolean }) => void
+) {
+  const safeId = sanitizeArtifactId(plan.id);
+  const path = `/private/tmp/octomus-plan-${safeId}.md`;
+  const fileName = `plan-${safeId}.md`;
+  openFile(path, fileName, buildExecutionPlanDocument(plan), {
+    presentation: 'artifact-markdown',
+    readOnly: true
+  });
 }
 
 function CodeBlock({
@@ -137,12 +479,33 @@ function CodeBlock({
 
   return (
     <div className="code-block-container">
-      <div className="code-block-header">
+      <SyntaxHighlighter
+        language={language}
+        style={vscDarkPlus}
+        showLineNumbers={true}
+        lineNumberStyle={{
+          minWidth: '2.5em',
+          paddingRight: '1em',
+          textAlign: 'right',
+          color: 'rgba(255, 255, 255, 0.25)',
+          fontSize: '11px',
+          userSelect: 'none'
+        }}
+        customStyle={{
+          margin: 0,
+          background: 'transparent',
+          fontSize: '12px',
+          padding: '12px 12px 8px 12px',
+          lineHeight: '1.5'
+        }}
+      >
+        {code}
+      </SyntaxHighlighter>
+      <div className="code-block-footer">
         <span className="code-lang">{language}</span>
         <div className="code-actions">
-          <button className="code-action-btn" onClick={handleCopy}>
-            {copied ? <Check size={10} /> : <Copy size={10} />}
-            {copied ? 'Copied' : 'Copy'}
+          <button className="code-action-btn" onClick={handleCopy} title="Copy">
+            {copied ? <Check size={16} /> : <Copy size={16} />}
           </button>
           {isShell && (
             <button
@@ -150,29 +513,11 @@ function CodeBlock({
               title="Run in terminal"
               onClick={() => onRequestCommandApproval?.({ kind: 'command', command: code })}
             >
-              <Play size={10} />
-              Run
+              <Terminal size={16} />
             </button>
           )}
-          <button className="code-action-btn" title="Save as workflow">
-            <Save size={10} />
-            Save
-          </button>
         </div>
       </div>
-      <SyntaxHighlighter
-        language={language}
-        style={vscDarkPlus}
-        customStyle={{
-          margin: 0,
-          background: 'transparent',
-          fontSize: '12px',
-          padding: '16px',
-          lineHeight: '1.5'
-        }}
-      >
-        {code}
-      </SyntaxHighlighter>
     </div>
   );
 }

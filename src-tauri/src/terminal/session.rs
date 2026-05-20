@@ -4,7 +4,7 @@ use std::{
 };
 
 use portable_pty::{Child, MasterPty, PtySize};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use super::block::{BlockTracker, TerminalBlock};
@@ -12,10 +12,56 @@ use super::completions::{CompletionTracker, ShellCompletion, ShellCompletionForm
 
 pub type SharedTerminalSession = Arc<TerminalSession>;
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum TerminalSessionKind {
+    Local,
+    Cloud,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum TerminalSessionProvider {
+    Local,
+    CustomVm,
+    Modal,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum TerminalSessionStatus {
+    Starting,
+    Connecting,
+    Running,
+    Connected,
+    Exited,
+    Error,
+    Disconnected,
+}
+
+#[derive(Debug, Clone)]
+pub struct TerminalSessionRuntime {
+    pub kind: TerminalSessionKind,
+    pub provider: TerminalSessionProvider,
+    pub profile_id: Option<String>,
+}
+
+impl TerminalSessionRuntime {
+    pub fn local() -> Self {
+        Self {
+            kind: TerminalSessionKind::Local,
+            provider: TerminalSessionProvider::Local,
+            profile_id: None,
+        }
+    }
+}
+
 pub struct TerminalSession {
     pub id: String,
     pub shell: String,
+    runtime: TerminalSessionRuntime,
     cwd: Mutex<Option<String>>,
+    status: Mutex<TerminalSessionStatus>,
     master: Mutex<Option<Box<dyn MasterPty + Send>>>,
     writer: Mutex<Option<Box<dyn Write + Send>>>,
     child: Mutex<Option<Box<dyn Child + Send>>>,
@@ -28,11 +74,17 @@ pub struct TerminalSession {
 pub struct TerminalSessionInfo {
     pub id: String,
     pub shell: String,
+    pub kind: TerminalSessionKind,
+    pub provider: TerminalSessionProvider,
+    pub status: TerminalSessionStatus,
     pub cwd: Option<String>,
+    pub profile_id: Option<String>,
 }
 
 impl TerminalSession {
     pub fn new(
+        runtime: TerminalSessionRuntime,
+        initial_status: TerminalSessionStatus,
         shell: String,
         cwd: Option<String>,
         master: Box<dyn MasterPty + Send>,
@@ -42,7 +94,9 @@ impl TerminalSession {
         Self {
             id: Uuid::new_v4().to_string(),
             shell,
+            runtime,
             cwd: Mutex::new(cwd),
+            status: Mutex::new(initial_status),
             master: Mutex::new(Some(master)),
             writer: Mutex::new(Some(writer)),
             child: Mutex::new(Some(child)),
@@ -51,11 +105,18 @@ impl TerminalSession {
         }
     }
 
-    pub fn new_headless(shell: String, cwd: Option<String>) -> Self {
+    pub fn new_headless(
+        runtime: TerminalSessionRuntime,
+        initial_status: TerminalSessionStatus,
+        shell: String,
+        cwd: Option<String>,
+    ) -> Self {
         Self {
             id: Uuid::new_v4().to_string(),
             shell,
+            runtime,
             cwd: Mutex::new(cwd),
+            status: Mutex::new(initial_status),
             master: Mutex::new(None),
             writer: Mutex::new(None),
             child: Mutex::new(None),
@@ -68,7 +129,24 @@ impl TerminalSession {
         TerminalSessionInfo {
             id: self.id.clone(),
             shell: self.shell.clone(),
+            kind: self.runtime.kind.clone(),
+            provider: self.runtime.provider.clone(),
+            status: self.status(),
             cwd: self.cwd(),
+            profile_id: self.runtime.profile_id.clone(),
+        }
+    }
+
+    pub fn status(&self) -> TerminalSessionStatus {
+        self.status
+            .lock()
+            .map(|status| status.clone())
+            .unwrap_or(TerminalSessionStatus::Error)
+    }
+
+    pub fn set_status(&self, status: TerminalSessionStatus) {
+        if let Ok(mut current_status) = self.status.lock() {
+            *current_status = status;
         }
     }
 

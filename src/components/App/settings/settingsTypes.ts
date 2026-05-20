@@ -23,13 +23,17 @@ export type SettingsSidebarItem =
   | SettingsSidebarHeadingItem;
 
 export type SettingsSectionContentKind =
-  | 'account'
+  | 'profile'
   | 'octo-agent'
   | 'knowledge'
+  | 'appearance'
   | 'profiles'
   | 'mcp-servers'
   | 'keyboard-shortcuts'
   | 'third-party-cli-agents'
+  | 'cloud-terminals'
+  | 'code-indexing'
+  | 'editor-code-review'
   | 'placeholder';
 
 export type SettingsSectionMeta = {

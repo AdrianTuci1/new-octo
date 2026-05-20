@@ -40,9 +40,20 @@
   transition: all 0.1s ease;
 }
 
+.agents-btn-secondary:disabled {
+  color: #525252;
+  cursor: default;
+  opacity: 0.7;
+}
+
 .agents-btn-secondary:hover {
   background: #0a0a0a;
   border-color: #404040;
+}
+
+.agents-btn-secondary:disabled:hover {
+  background: #000000;
+  border-color: #262626;
 }
 
 .agents-btn-primary {
@@ -88,6 +99,21 @@
   color: #e5e5e5;
   cursor: pointer;
   transition: all 0.1s ease;
+}
+
+.filter-item select {
+  max-width: 150px;
+  background: transparent;
+  border: 0;
+  color: #ffffff;
+  font: inherit;
+  outline: none;
+  cursor: pointer;
+}
+
+.filter-item select option {
+  background: #0a0a0a;
+  color: #ffffff;
 }
 
 .filter-item span {
@@ -136,17 +162,26 @@
 
 .run-card {
   display: flex;
+  width: 100%;
   gap: 12px;
   padding: 14px 16px;
   background: #000000;
   border: 1px solid #1a1a1a;
   border-radius: 8px;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
   transition: all 0.15s ease;
 }
 
 .run-card:hover {
   border-color: #262626;
   background: #050505;
+}
+
+.run-card.selected {
+  border-color: #00A3FF;
+  background: #04131c;
 }
 
 .run-card-icon {
@@ -169,8 +204,17 @@
   justify-content: center;
 }
 
+.status-icon-failed-wrapper {
+  color: #ef4444;
+}
+
+.status-icon-cancelled-wrapper {
+  color: #94a3b8;
+}
+
 .run-card-content {
   flex: 1;
+  min-width: 0;
 }
 
 .run-card-top {
@@ -184,12 +228,17 @@
   font-size: 14px;
   font-weight: 500;
   color: #f5f5f5;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .run-card-right {
   display: flex;
   align-items: center;
   gap: 12px;
+  flex-shrink: 0;
 }
 
 .run-card-time {
@@ -214,4 +263,43 @@
   font-size: 13px;
   color: #737373;
   opacity: 0.8;
+}
+
+.agents-empty-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 160px;
+  color: #737373;
+  border: 1px dashed #1f1f1f;
+  border-radius: 8px;
+  font-size: 13px;
+}
+
+.agents-empty-state button {
+  background: #0a0a0a;
+  color: #ffffff;
+  border: 1px solid #262626;
+  border-radius: 6px;
+  padding: 5px 10px;
+  font: inherit;
+  cursor: pointer;
+}
+
+@media (max-width: 760px) {
+  .agents-header,
+  .agents-filters-bar,
+  .run-card-top {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .agents-search-wrapper {
+    width: 100%;
+  }
+
+  .run-card-right {
+    justify-content: space-between;
+  }
 }

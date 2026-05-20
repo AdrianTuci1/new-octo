@@ -18,6 +18,7 @@ An autonomous AI-native launcher shell built with Tauri, Rust, and React. Octomu
 - [MCP Integration](docs/05_mcp_integration.md)
 - [Autonomous Loop](docs/06_autonomous_agent_loop.md)
 - [Predict & Tips](docs/07_predict_and_tips.md)
+- [Runtime and Release Plan](docs/08_runtime_and_release_plan.md)
 
 ---
 
@@ -32,10 +33,23 @@ An autonomous AI-native launcher shell built with Tauri, Rust, and React. Octomu
 - `npm run dev:app`: Run the application.
 - `npm run logs`: View development logs.
 - `npm run tauri -- dev`: Raw Tauri development command.
+- `npm run release:cli`: Build and archive the `octomus-cli` runtime.
+- `npm run release:desktop`: Build desktop bundles for the current host OS.
+- `npm run release:dmg`: Build the macOS `.dmg` installer.
+- `npm run release:exe`: Build the Windows `.exe` installer.
+- See [scripts/README.md](scripts/README.md) for the packaging script map.
 
 ### Prerequisites
 - Rust Toolchain (cargo & rustc)
 - Node.js (v18+)
+
+### Release Artifacts
+- CLI archives are written to `artifacts/cli/` as `octomus-cli-<version>-<target>.tar.gz`.
+- Desktop bundles are copied into `artifacts/desktop/<platform>-<version>/`.
+- `.dmg` bundles must be produced on macOS.
+- `.exe` and `.msi` bundles must be produced on Windows.
+- Linux hosts default to `.AppImage` and `.deb` bundles when using `npm run release:desktop`.
+- macOS `.dmg` bundling may require Finder Automation permission for the calling terminal app.
 
 ---
 

@@ -160,22 +160,7 @@
   flex: 0 0 auto;
 }
 
-.workspace-sidebar-item-menu-button {
-  width: 28px;
-  height: 28px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--text-dim);
-  border-radius: 6px;
-  background: transparent;
-  cursor: pointer;
-}
-
-.workspace-sidebar-item-menu-button:hover {
-  color: var(--text-main);
-  background: rgba(255, 255, 255, 0.06);
-}
+/* removed menu-button styles */
 
 .workspace-sidebar-context-menu {
   position: absolute;
@@ -205,11 +190,21 @@
   background: rgba(255, 255, 255, 0.06);
 }
 
-.item-icon-container {
+.sidebar-item-icon-box {
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  border: none; /* fara outline/border */
+  background: rgba(255, 255, 255, 0.08); /* background la patrat gri */
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 20px;
+  flex-shrink: 0;
+  transition: all 180ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.workspace-sidebar-item.active .sidebar-item-icon-box {
+  background: rgba(255, 255, 255, 0.14); /* slightly lighter grey for active */
 }
 
 .item-details {

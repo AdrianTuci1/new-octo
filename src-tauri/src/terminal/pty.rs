@@ -6,7 +6,7 @@ use std::{
 
 use portable_pty::{native_pty_system, CommandBuilder, PtySize};
 
-use super::session::TerminalSession;
+use super::session::{TerminalSession, TerminalSessionRuntime, TerminalSessionStatus};
 
 pub struct SpawnedPty {
     pub session: TerminalSession,
@@ -30,7 +30,12 @@ pub fn spawn_terminal(rows: u16, cols: u16, cwd: Option<String>) -> Result<Spawn
         Err(error) => {
             eprintln!("[terminal] failed to open PTY, falling back to headless session: {error}");
             return Ok(SpawnedPty {
-                session: TerminalSession::new_headless(shell, cwd),
+                session: TerminalSession::new_headless(
+                    TerminalSessionRuntime::local(),
+                    TerminalSessionStatus::Running,
+                    shell,
+                    cwd,
+                ),
                 reader: None,
             });
         }
@@ -60,7 +65,15 @@ pub fn spawn_terminal(rows: u16, cols: u16, cwd: Option<String>) -> Result<Spawn
     drop(pair.slave);
 
     Ok(SpawnedPty {
-        session: TerminalSession::new(shell, cwd, pair.master, writer, child),
+        session: TerminalSession::new(
+            TerminalSessionRuntime::local(),
+            TerminalSessionStatus::Running,
+            shell,
+            cwd,
+            pair.master,
+            writer,
+            child,
+        ),
         reader: Some(reader),
     })
 }

@@ -1,6 +1,7 @@
 import { ArrowRight, Command, CornerDownLeft, Sparkles, SquareTerminal } from 'lucide-react';
 import type { KeyboardEventHandler } from 'react';
 import { GitBranchPicker } from './GitBranchPicker';
+import { hasCompleteSlashCommand, SlashCommandHighlight } from './SlashCommandHighlight';
 import { useComposerBar } from './useComposerBar';
 import { WorkingDirectoryPicker } from './WorkingDirectoryPicker';
 import type { RecommendedComposerAction, ShellPrediction } from '../../lib/composerIntelligence';
@@ -73,6 +74,7 @@ export function TerminalComposer({
   const { inputRef, shellRef } = useComposerBar(query, onHeightChange, { autoFocus: true });
   const showRecommendation = Boolean(recommendedAction) && query.trim().length === 0;
   const predictionSuffix = prediction?.completionText ?? '';
+  const showSlashCommandHighlight = hasCompleteSlashCommand(query);
   const completionItems = completionState?.completions ?? [];
   const showCompletionPanel = Boolean(completionState) && (
     completionState?.status === 'running' ||
@@ -154,9 +156,11 @@ export function TerminalComposer({
               </div>
             )}
 
+            <SlashCommandHighlight query={query} extraClassName="terminal-composer-input-highlight" />
+
             <textarea
               ref={inputRef}
-              className={`chat-input terminal-chat-input ${showRecommendation ? 'has-recommendation' : ''}`}
+              className={`chat-input terminal-chat-input ${showRecommendation ? 'has-recommendation' : ''} ${showSlashCommandHighlight ? 'has-slash-command-highlight' : ''}`}
               value={query}
               onChange={(event) => {
                 const nextValue = event.target.value;

@@ -16,6 +16,7 @@ import type {
   TerminalCommandSource,
   TerminalExitEvent,
   TerminalSessionCwdEvent,
+  TerminalSessionStateEvent,
   TerminalRunCommandResponse,
   TerminalSessionInfo
 } from '../types/terminal';
@@ -94,6 +95,7 @@ export function useTerminalCommandBlocks(options: UseTerminalCommandBlocksOption
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [sessionCwd, setSessionCwd] = useState<string | null>(null);
+  const [sessionInfo, setSessionInfo] = useState<TerminalSessionInfo | null>(null);
   const [completionState, setCompletionState] = useState<TerminalCompletionState | null>(null);
 
   useEffect(() => {
@@ -200,6 +202,7 @@ export function useTerminalCommandBlocks(options: UseTerminalCommandBlocksOption
     })
       .then((session) => {
         sessionRef.current = session;
+        setSessionInfo(session);
         setSessionCwd(session.cwd ?? null);
         sessionOriginCwdRef.current = session.cwd ?? cwd;
         if (persistedSessionIdRef.current !== session.id) {
@@ -291,12 +294,23 @@ export function useTerminalCommandBlocks(options: UseTerminalCommandBlocksOption
       return;
     }
 
+    // IDEMPOTENCY GUARD:
+    // If the session object currently stored matches the requested ID and the current path,
+    // we shouldn't clear and re-bootstrap anything as it would overwrite active component state (like expandedBlockIds).
+    if (sessionRef.current?.id === requestedSessionId && sessionOriginCwdRef.current === cwd) {
+      return;
+    }
+
     let cancelled = false;
     sessionRef.current = {
       id: requestedSessionId,
       shell: sessionRef.current?.shell ?? '',
+      kind: sessionRef.current?.kind ?? 'local',
+      provider: sessionRef.current?.provider ?? 'local',
+      status: sessionRef.current?.status ?? 'starting',
       cwd: sessionRef.current?.cwd ?? cwd
     };
+    setSessionInfo(sessionRef.current);
     sessionOriginCwdRef.current = cwd;
     setSessionCwd(sessionRef.current.cwd ?? null);
 
@@ -320,6 +334,7 @@ export function useTerminalCommandBlocks(options: UseTerminalCommandBlocksOption
       }
 
       sessionRef.current = sessionInfo;
+      setSessionInfo(sessionInfo);
       setSessionCwd(sessionInfo.cwd ?? null);
       sessionOriginCwdRef.current = sessionInfo.cwd ?? cwd;
       persistedSessionIdRef.current = sessionInfo.id;
@@ -331,6 +346,7 @@ export function useTerminalCommandBlocks(options: UseTerminalCommandBlocksOption
       }
 
       sessionRef.current = null;
+      setSessionInfo(null);
       setSessionCwd(null);
       persistedSessionIdRef.current = null;
       onSessionChange?.(null);
@@ -366,6 +382,7 @@ export function useTerminalCommandBlocks(options: UseTerminalCommandBlocksOption
       if (!activeSession || event.payload.sessionId !== activeSession.id) return;
 
       sessionRef.current = null;
+      setSessionInfo(null);
       setSessionCwd(null);
       setCompletionState(null);
       setError(
@@ -383,7 +400,28 @@ export function useTerminalCommandBlocks(options: UseTerminalCommandBlocksOption
         ...activeSession,
         cwd: event.payload.cwd ?? null
       };
+      setSessionInfo(sessionRef.current);
       setSessionCwd(event.payload.cwd ?? null);
+    });
+
+    const sessionStateSubscription = listen<TerminalSessionStateEvent>('terminal:session-state', (event) => {
+      const activeSession = sessionRef.current;
+      if (!activeSession || event.payload.sessionId !== activeSession.id) return;
+
+      const nextSessionInfo: TerminalSessionInfo = {
+        ...activeSession,
+        kind: event.payload.kind,
+        provider: event.payload.provider,
+        status: event.payload.status,
+        cwd: event.payload.cwd ?? activeSession.cwd ?? null,
+        profileId: event.payload.profileId ?? activeSession.profileId ?? null
+      };
+
+      sessionRef.current = nextSessionInfo;
+      setSessionInfo(nextSessionInfo);
+      if (event.payload.cwd !== undefined) {
+        setSessionCwd(event.payload.cwd ?? null);
+      }
     });
 
     const completionsStartedSubscription = listen<TerminalCompletionsStartedEvent>('terminal:completions-started', (event) => {
@@ -493,6 +531,7 @@ export function useTerminalCommandBlocks(options: UseTerminalCommandBlocksOption
       blockOutputSubscription,
       exitSubscription,
       sessionCwdSubscription,
+      sessionStateSubscription,
       completionsStartedSubscription,
       completionsFinishedSubscription,
       completionResultSubscription,
@@ -525,6 +564,7 @@ export function useTerminalCommandBlocks(options: UseTerminalCommandBlocksOption
       }
 
       sessionRef.current = null;
+      setSessionInfo(null);
       resetCompletionState();
     };
   }, [appendOutput, persistSession, resetCompletionState, upsertBlock, upsertCompletionState]);
@@ -566,6 +606,7 @@ export function useTerminalCommandBlocks(options: UseTerminalCommandBlocksOption
     pendingOutputRef.current = {};
     blockOptionsRef.current = {};
     setSessionCwd(null);
+    setSessionInfo(null);
     setError(null);
     setBlocks([]);
     setCompletionState(null);
@@ -623,6 +664,8 @@ export function useTerminalCommandBlocks(options: UseTerminalCommandBlocksOption
     sessionPromiseRef.current = null;
     persistedSessionIdRef.current = null;
     sessionOriginCwdRef.current = cwd;
+    setSessionInfo(null);
+    setSessionCwd(null);
     setCompletionState(null);
     publishBlockMeta({});
     publishSyntheticBlocks([]);
@@ -675,6 +718,10 @@ export function useTerminalCommandBlocks(options: UseTerminalCommandBlocksOption
     replaceBlocks,
     runCommand,
     sessionId: persistedSessionIdRef.current,
+    sessionInfo,
+    sessionStatus: sessionInfo?.status ?? null,
+    sessionKind: sessionInfo?.kind ?? null,
+    sessionProvider: sessionInfo?.provider ?? null,
     selectedBlockId,
     setSelectedBlockId,
     cwd: sessionCwd,

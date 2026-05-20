@@ -16,14 +16,13 @@ export const codeSectionMeta: Record<
   SettingsSectionMeta
 > = {
   'code/indexing-and-projects': {
-    title: 'Indexing and projects',
+    title: 'Codebase Indexing',
     description: 'Tune project indexing and repository discovery behavior.',
-    contentKind: 'placeholder'
+    contentKind: 'code-indexing'
   },
   'code/editor-and-code-review': {
     title: 'Editor and Code Review',
     description: 'Configure code editing, review flows, and inline suggestions.',
-    contentKind: 'placeholder'
+    contentKind: 'editor-code-review'
   }
 };
-

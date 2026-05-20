@@ -1,10 +1,10 @@
-# MCP Integration in Octomus (Warp Port)
+# MCP Integration in Octomus
 
-Documentul de față detaliază arhitectura Model Context Protocol (MCP) din Warp și modul în care aceasta trebuie portată în Octomus Launcher pentru a permite extinderea capacităților agentului prin servere externe (locale sau remote).
+Documentul de față detaliază arhitectura Model Context Protocol (MCP) din Octomus și modul în care aceasta este expusă în aplicație pentru a permite extinderea capacităților agentului prin servere externe (locale sau remote).
 
 ## 1. Arhitectura de Backend (Rust)
 
-Warp utilizează o ierarhie clară pentru gestionarea serverelor MCP, localizată în `app/src/ai/mcp/`:
+Octomus utilizează o ierarhie clară pentru gestionarea serverelor MCP, localizată în `src-tauri/src/ai/mcp/`:
 
 ### Componente Cheie:
 *   **`TemplatableMCPServer`**: Reprezintă "definiția" unui server. Poate fi un JSON brut sau un template care conține variabile (ex: `{{API_KEY}}`).
@@ -17,22 +17,21 @@ Warp utilizează o ierarhie clară pentru gestionarea serverelor MCP, localizat�
 *   **`ReconnectingPeer`**: Un wrapper peste peer-ul `rmcp` care implementează auto-reconectarea transparentă. Dacă un transport se închide în timpul unui apel de tool, peer-ul încearcă reconectarea înainte de a eșua.
 
 ### Managementul Transportului:
-Warp suportă două moduri principale (definite în `JSONTransportType`):
+Octomus suportă două moduri principale (definite în `McpTransportKind`):
 1.  **`CLIServer`**: Execută o comandă locală (ex: `npx -y @modelcontextprotocol/server-everything`).
 2.  **`SSEServer`**: Se conectează la un URL via Server-Sent Events.
 
 ---
 
-## 2. Fluxul de Adăugare (`/add-mcp`)
+## 2. Fluxul de Adăugare (`/create-mcp`)
 
-Când utilizatorul scrie `/add-mcp`, se declanșează următorul lanț:
+Când utilizatorul scrie `/create-mcp`, se declanșează următorul lanț:
 
 1.  **`SlashCommand`**: `ADD_MCP` dispecerează `TerminalAction::OpenAddMCPPane`.
 2.  **`RootView`**: Prinde acțiunea și deschide `MCPServersSettingsPage` cu `item_id: None` (modul "New").
 3.  **`MCPServersEditPageView`**: Afișează un editor JSON (`CodeEditorView`).
 4.  **Validare & Parsare**:
-    *   Warp este permisiv: poți introduce un singur server sau un map de tip Claude Desktop.
-    *   `ParsedTemplatableMCPServerResult::from_user_json` normalizează input-ul.
+    *   Octomus tratează configurarea ca JSON de tip `mcpServers` și o normalizează în structurile interne.
 5.  **Detecția Variabilelor**:
     *   Dacă JSON-ul conține `{{variable}}`, se deschide un **Installation Modal**.
     *   Utilizatorul completează valorile (ex: chei API).
@@ -42,21 +41,21 @@ Când utilizatorul scrie `/add-mcp`, se declanșează următorul lanț:
 
 ## 3. Logica de "Guiding" (Ghidarea Utilizatorului)
 
-Warp ghidează utilizatorul prin mai multe mecanisme:
+Octomus ghidează utilizatorul prin mai multe mecanisme:
 
 ### A. Tip-uri în Chat (`AITip`)
 În `agent_tips.rs`, există un tip specific pentru MCP:
 ```rust
 AgentTip {
-    description: "`/add-mcp` to add an MCP server to your workspace.".to_string(),
-    link: Some("https://docs.warp.dev/agent-platform/capabilities/mcp".to_string()),
+    description: "`/create-mcp` to add an MCP server to your workspace.".to_string(),
+    link: Some("https://octomus.local/docs/mcp".to_string()),
     kind: AgentTipKind::Mcp,
 }
 ```
 Acestea apar aleatoriu sub bulele de chat pentru a educa utilizatorul.
 
 ### B. Normalizarea JSON-ului (`parsing.rs`)
-Warp ajută utilizatorul acceptând formate variate. Dacă cineva dă paste la o configurare Claude Desktop:
+Octomus ajută utilizatorul acceptând formatul standard `mcpServers`. Dacă cineva dă paste la o configurare Claude Desktop:
 ```json
 {
   "mcpServers": {
@@ -64,7 +63,7 @@ Warp ajută utilizatorul acceptând formate variate. Dacă cineva dă paste la o
   }
 }
 ```
-Warp detectează cheia `mcpServers` și extrage automat serverele, în loc să dea eroare de format.
+Octomus detectează cheia `mcpServers` și extrage automat serverele, în loc să dea eroare de format.
 
 ### C. Secrete & Redactare
 Înainte de salvare, `find_secrets_in_text` verifică dacă utilizatorul a introdus parole sau chei API direct în JSON-ul de configurare (fără a folosi template-uri) și afișează un avertisment (Toast) sugerând folosirea setărilor de Privacy/Secrets.
@@ -89,10 +88,9 @@ Warp detectează cheia `mcpServers` și extrage automat serverele, în loc să d
 
 ---
 
-## 5. Locații Fișiere de Referință (Warp)
+## 5. Locații Fișiere de Referință (Octomus)
 
-*   `app/src/ai/mcp/mod.rs`: Structurile de date de bază (`MCPServer`, `TransportType`).
-*   `app/src/ai/mcp/manager.rs`: Logica de orchestrator.
-*   `app/src/ai/mcp/parsing.rs`: Normalizarea și extragerea variabilelor.
-*   `app/src/settings_view/mcp_servers/edit_page.rs`: UI-ul de editare/adăugare.
-*   `app/src/ai/agent_tips.rs`: Sistemul de sugestii pasive.
+*   `src-tauri/src/ai/mcp/mod.rs`: Structurile de date de bază (`TemplatedMcpServer`, `McpTransportKind`).
+*   `src-tauri/src/octomus_paths.rs`: Locațiile implicite pentru `~/.octomus/.mcp.json`.
+*   `src/hooks/useChat/modules/useChatActions.ts`: Alias-ul slash-command care mapează `/create-mcp` la skill.
+*   `src/lib/constants.ts`: Comanda afișată în meniul de sugestii.

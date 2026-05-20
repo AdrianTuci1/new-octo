@@ -4,6 +4,7 @@ mod continuation;
 pub mod conversation;
 pub mod decision;
 mod harness;
+pub mod loop_contract;
 pub(crate) mod openai;
 mod scripted;
 pub mod types;
@@ -13,3 +14,4 @@ pub use commands::{
     agent_list_runs, agent_provider_status, agent_start,
 };
 pub use continuation::agent_continue;
+pub use loop_contract::agent_get_loop_contract;

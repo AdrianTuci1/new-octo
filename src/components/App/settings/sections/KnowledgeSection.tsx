@@ -1,42 +1,7 @@
-import React, { type ReactNode, useState } from 'react';
 import { ChevronRight } from 'lucide-react';
-import { useUIStore } from '../../../../stores';
-
-function SettingsToggle({ checked = false, onChange }: { checked?: boolean; onChange?: () => void }) {
-  return (
-    <button
-      className={`settings-toggle ${checked ? 'active' : ''}`}
-      type="button"
-      role="switch"
-      aria-checked={checked}
-      onClick={onChange}
-    >
-      <span />
-    </button>
-  );
-}
-
-function SettingsRow({ 
-  title, 
-  description, 
-  action 
-}: { 
-  title: string; 
-  description?: string | ReactNode; 
-  action: ReactNode 
-}) {
-  return (
-    <div className="settings-row">
-      <div className="settings-row-info">
-        <div className="settings-row-title">{title}</div>
-        {description && <div className="settings-row-description">{description}</div>}
-      </div>
-      <div className="settings-row-action">
-        {action}
-      </div>
-    </div>
-  );
-}
+import { useMemoryStore, useUIStore } from '../../../../stores';
+import { buildAgentSettingsValues, normalizeAgentSettings } from '../agentSettings';
+import { SettingsRow, SettingsToggle } from './SettingsPrimitives';
 
 function ActionCard({ label, onClick }: { label: string; onClick?: () => void }) {
   return (
@@ -49,10 +14,12 @@ function ActionCard({ label, onClick }: { label: string; onClick?: () => void })
 
 export function KnowledgeSection() {
   const setIsRulesDrawerOpen = useUIStore((state) => state.setIsRulesDrawerOpen);
-
-  const [rulesEnabled, setRulesEnabled] = useState(true);
-  const [suggestedRulesEnabled, setSuggestedRulesEnabled] = useState(true);
-  const [contextEnabled, setContextEnabled] = useState(true);
+  const settings = useMemoryStore((state) => state.settings);
+  const saveSettings = useMemoryStore((state) => state.saveSettings);
+  const agentSettings = normalizeAgentSettings(settings?.values);
+  const saveKnowledge = (knowledge: typeof agentSettings.knowledge) => {
+    void saveSettings(buildAgentSettingsValues({ ...agentSettings, knowledge }), true);
+  };
 
   return (
     <section className="settings-panel">
@@ -68,12 +35,12 @@ export function KnowledgeSection() {
               Rules help the Octo Agent follow your conventions, whether for codebases or specific workflows. <button className="settings-link-inline">Learn more</button>
             </span>
           }
-          action={<SettingsToggle checked={rulesEnabled} onChange={() => setRulesEnabled(!rulesEnabled)} />}
+          action={<SettingsToggle checked={agentSettings.knowledge.rulesEnabled} onChange={() => saveKnowledge({ ...agentSettings.knowledge, rulesEnabled: !agentSettings.knowledge.rulesEnabled })} />}
         />
         <SettingsRow 
           title="Suggested Rules" 
           description="Let AI suggest rules to save based on your interactions."
-          action={<SettingsToggle checked={suggestedRulesEnabled} onChange={() => setSuggestedRulesEnabled(!suggestedRulesEnabled)} />}
+          action={<SettingsToggle checked={agentSettings.knowledge.suggestedRulesEnabled} onChange={() => saveKnowledge({ ...agentSettings.knowledge, suggestedRulesEnabled: !agentSettings.knowledge.suggestedRulesEnabled })} />}
         />
 
         <div style={{ marginTop: '12px', marginBottom: '24px' }}>
@@ -83,7 +50,7 @@ export function KnowledgeSection() {
         <SettingsRow 
           title="Octo Drive as agent context" 
           description="The Octo Agent can leverage your Octo Drive Contents to tailor responses to your personal and team developer workflows and environments. This includes any Workflows, Notebooks, and Environment Variables."
-          action={<SettingsToggle checked={contextEnabled} onChange={() => setContextEnabled(!contextEnabled)} />}
+          action={<SettingsToggle checked={agentSettings.knowledge.octoDriveContextEnabled} onChange={() => saveKnowledge({ ...agentSettings.knowledge, octoDriveContextEnabled: !agentSettings.knowledge.octoDriveContextEnabled })} />}
         />
       </div>
     </section>
