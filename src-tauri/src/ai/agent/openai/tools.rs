@@ -256,6 +256,44 @@ pub(super) fn build_tool_definitions() -> Value {
         {
             "type": "function",
             "function": {
+                "name": "launch_cloud_agent",
+                "description": "Launch a new Octomus cloud agent run in a cloud tab when the user explicitly asks to run work in cloud infrastructure, a cloud terminal, a VPS, or Modal. The local UI will choose the configured cloud profile when profileId is omitted.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "prompt": {
+                            "type": "string",
+                            "description": "The complete task prompt for the cloud agent."
+                        },
+                        "provider": {
+                            "type": "string",
+                            "enum": ["custom-vm", "modal"],
+                            "description": "Preferred cloud provider. Omit unless the user specified one."
+                        },
+                        "profileId": {
+                            "type": "string",
+                            "description": "Optional configured cloud profile id."
+                        },
+                        "repo": {
+                            "type": "string",
+                            "description": "Optional Git repository URL to clone in the cloud workspace."
+                        },
+                        "baseBranch": {
+                            "type": "string",
+                            "description": "Optional base branch, default main."
+                        },
+                        "workBranch": {
+                            "type": "string",
+                            "description": "Optional branch name for cloud work."
+                        }
+                    },
+                    "required": ["prompt"]
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
                 "name": "propose_file_change",
                 "description": "Propose file changes when the task creates, edits, or deletes files. Use this instead of shell heredocs, EOF blocks, or full-file markdown fences so the UI can show a native retractable file diff preview. Paths should be relative to the current CWD unless the user explicitly requested an absolute path.",
                 "parameters": {

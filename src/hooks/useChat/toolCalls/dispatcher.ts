@@ -1,6 +1,7 @@
 import type { AgentToolCall } from '../../../types/chat';
 import type { AssistantMessageRegistration } from '../types';
 import { fileChangeToolCallHandler } from './fileChange';
+import { cloudAgentToolCallHandler } from './cloudAgent';
 import { followUpToolCallHandler } from './followUp';
 import { mcpServerToolCallHandler } from './mcpServer';
 import { planToolCallHandler } from './plan';
@@ -16,6 +17,7 @@ const toolCallHandlers: ToolCallHandler[] = [
   planExecutionToolCallHandler,
   webSearchToolCallHandler,
   workspaceExplorationToolCallHandler,
+  cloudAgentToolCallHandler,
   mcpServerToolCallHandler,
   terminalCommandToolCallHandler,
   fileChangeToolCallHandler

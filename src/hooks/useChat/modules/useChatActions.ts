@@ -125,6 +125,7 @@ type UseChatActionsProps = {
   onFileChangeApprovalRef: React.MutableRefObject<UseChatOptions['onFileChangeApproval']>;
   onWebSearchRef: React.MutableRefObject<UseChatOptions['onWebSearch']>;
   onWorkspaceExplorationRef: React.MutableRefObject<UseChatOptions['onWorkspaceExploration']>;
+  onCloudAgentLaunchRef: React.MutableRefObject<UseChatOptions['onCloudAgentLaunch']>;
 };
 
 function resolveAgentPrompt(rawPrompt: string) {
@@ -177,7 +178,8 @@ export function useChatActions({
   onCommandApprovalRef,
   onFileChangeApprovalRef,
   onWebSearchRef,
-  onWorkspaceExplorationRef
+  onWorkspaceExplorationRef,
+  onCloudAgentLaunchRef
 }: UseChatActionsProps) {
   const attachFiles = useCallback(async (files: File[]) => {
     if (!files.length) {
@@ -307,7 +309,8 @@ export function useChatActions({
       onCommandApproval: (approval) => onCommandApprovalRef.current?.(approval),
       onFileChangeApproval: (approval) => onFileChangeApprovalRef.current?.(approval),
       onWebSearch: (request) => onWebSearchRef.current?.(request),
-      onWorkspaceExploration: (request) => onWorkspaceExplorationRef.current?.(request)
+      onWorkspaceExploration: (request) => onWorkspaceExplorationRef.current?.(request),
+      onCloudAgentLaunch: (request) => onCloudAgentLaunchRef.current?.(request)
     });
 
     await ensureAgentEventBridge();
@@ -348,6 +351,7 @@ export function useChatActions({
     onFileChangeApprovalRef,
     onWebSearchRef,
     onWorkspaceExplorationRef,
+    onCloudAgentLaunchRef,
     options.cwd,
     options.modelId,
     options.terminalModelId,
@@ -507,7 +511,8 @@ export function useChatActions({
       onCommandApproval: (approval) => onCommandApprovalRef.current?.(approval),
       onFileChangeApproval: (approval) => onFileChangeApprovalRef.current?.(approval),
       onWebSearch: (request) => onWebSearchRef.current?.(request),
-      onWorkspaceExploration: (request) => onWorkspaceExplorationRef.current?.(request)
+      onWorkspaceExploration: (request) => onWorkspaceExplorationRef.current?.(request),
+      onCloudAgentLaunch: (request) => onCloudAgentLaunchRef.current?.(request)
     });
 
     try {

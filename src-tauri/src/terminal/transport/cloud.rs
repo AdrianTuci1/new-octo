@@ -1,5 +1,6 @@
 use std::{fs, io::Read, path::PathBuf, sync::Arc};
 
+use octomus_cloud_protocol::CloudCliBootstrapSpec;
 use portable_pty::{native_pty_system, CommandBuilder, PtySize};
 use uuid::Uuid;
 
@@ -73,9 +74,7 @@ fn create_custom_vm_session(
     }
 
     command.arg(format!("{username}@{host}"));
-    if let Some(cwd) = cwd.as_deref().filter(|value| !value.trim().is_empty()) {
-        command.arg(format!("cd {} && exec $SHELL -l", shell_quote(cwd)));
-    }
+    command.arg(remote_bootstrap_shell(cwd.as_deref()));
 
     let spawn_result = spawn_cloud_command(
         rows,
@@ -185,4 +184,25 @@ fn sanitize_filename(value: &str) -> String {
 
 fn shell_quote(value: &str) -> String {
     format!("'{}'", value.replace('\'', "'\\''"))
+}
+
+fn remote_bootstrap_shell(cwd: Option<&str>) -> String {
+    let bootstrap = CloudCliBootstrapSpec::default();
+    let mut commands = vec![
+        "octomus_dir=\"$HOME/.octomus/bin\"".to_string(),
+        format!(
+            "octomus_url=\"${{OCTOMUS_CLI_URL:-{}}}\"",
+            bootstrap.install_url
+        ),
+        "octomus_bin=\"$octomus_dir/octomus-cli\"".to_string(),
+        "if [ ! -x \"$octomus_bin\" ]; then mkdir -p \"$octomus_dir\"; tmp=\"$octomus_bin.tmp.$$\"; if command -v curl >/dev/null 2>&1; then curl -fsSL \"$octomus_url\" -o \"$tmp\" && chmod 0755 \"$tmp\" && mv \"$tmp\" \"$octomus_bin\" || rm -f \"$tmp\"; elif command -v wget >/dev/null 2>&1; then wget -qO \"$tmp\" \"$octomus_url\" && chmod 0755 \"$tmp\" && mv \"$tmp\" \"$octomus_bin\" || rm -f \"$tmp\"; else echo \"Octomus CLI bootstrap skipped: curl or wget is required\" >&2; fi; fi".to_string(),
+        "export PATH=\"$octomus_dir:$PATH\"".to_string(),
+    ];
+
+    if let Some(cwd) = cwd.filter(|value| !value.trim().is_empty()) {
+        commands.push(format!("cd {}", shell_quote(cwd)));
+    }
+
+    commands.push("exec \"${SHELL:-/bin/sh}\" -l".to_string());
+    commands.join("; ")
 }

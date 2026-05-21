@@ -18,6 +18,7 @@ futures-util = "0.3"
 itertools = "0.14.0"
 lazy_static = "1.5.0"
 log = "0.4.29"
+octomus-cloud-protocol = { path = "../octomus-cloud-protocol" }
 portable-pty = "0.8"
 rangemap = "1.7.1"
 regex = "1.12.3"

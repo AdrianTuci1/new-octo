@@ -1,6 +1,5 @@
 # Agent SDK & Harness System — Warp Reference & Octomus Adaptation
 
-> Reverse-engineered din Warp codebase (~500K bytes, Agent SDK module).
 > Adaptat pentru Octomus: Tauri v2 + Rust backend + React frontend.
 
 ---

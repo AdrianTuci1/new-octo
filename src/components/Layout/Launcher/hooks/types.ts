@@ -21,6 +21,13 @@ export type LauncherProps = {
   onConversationChange?: (conversationId: string | null) => void;
   onComposerSurfaceChange?: (composerSurface: 'agent' | 'terminal') => void;
   onNewConversation?: (options?: { seedPrompt?: string }) => string | null | void;
+  onCloudAgentLaunch?: (options?: {
+    prompt?: string | null;
+    repo?: string | null;
+    baseBranch?: string | null;
+    workBranch?: string | null;
+    profileId?: string | null;
+  }) => Promise<unknown> | unknown;
   onExitAgentToTerminal?: () => void;
   onPendingApprovalChange?: (approval: CommandApproval | null) => void;
   onTerminalBlockMetaChange?: (terminalBlockMetaById: Record<string, TerminalBlockSharedMeta>) => void;

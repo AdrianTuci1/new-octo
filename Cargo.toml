@@ -1,3 +1,3 @@
 [workspace]
-members = ["src-tauri", "octomus-cli"]
+members = ["src-tauri", "octomus-cli", "octomus-cloud-protocol"]
 resolver = "2"

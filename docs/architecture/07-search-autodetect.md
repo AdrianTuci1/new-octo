@@ -1,7 +1,7 @@
 # Search, Recomandare & Terminal Command Autodetection
 
-> Reverse-engineered din Warp: `search/mixer.rs` (25K), `search/data_source.rs` (19K),
-> `search/command_search/` (90K), `ai/blocklist/input_model.rs` (33K), `input_classifier` crate.
+
+
 > Adaptat pentru Octomus: Tauri v2 + Rust + React.
 
 ---
@@ -440,239 +440,45 @@ handle_input_buffer_submitted => {
 
 ## 5. Octomus Adaptation
 
-### 5.1 Input Classifier (Rust Backend)
+### 5.1 Current Input Intelligence
 
-```rust
-// src-tauri/src/spotlight/classifier.rs
+Octomus does not currently use a `src-tauri/src/spotlight/` module. Input classification, search, and prediction are distributed across terminal intelligence, shell signatures, code index, and composer hooks.
 
-use serde::{Deserialize, Serialize};
+| Concern | Current implementation |
+|---------|------------------------|
+| Shell command catalog | `terminal_list_commands`, backed by `src-tauri/src/terminal/fs.rs` and PATH scanning |
+| Runtime context | `terminal_get_runtime_context`, `terminal_get_path_context` |
+| Command history | `terminal_get_recent_history`, `src-tauri/src/terminal/intelligence.rs` |
+| Command prediction | `terminal_get_prediction`, `src-tauri/src/ai/predict/*` |
+| Composer intelligence | `terminal_get_composer_intelligence`, `src/hooks/useComposerIntelligence.ts` |
+| Filesystem search | `terminal_search_directory_entries`, `terminal_list_directory_entries` |
+| Code search | `code_index_search`, `src-tauri/src/code_index.rs` |
+| Shell signatures | `src-tauri/src/shell_signatures/*` |
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum InputMode {
-    Shell,
-    AI,
-}
+### 5.2 Frontend Flow
 
-pub struct InputClassifier {
-    /// Known shell commands (from PATH scanning)
-    known_commands: HashSet<String>,
-    /// User's command history
-    history: Vec<String>,
-    /// User-defined denylist (always Shell)
-    denylist: Vec<String>,
-}
-
-impl InputClassifier {
-    /// Classify input as Shell or AI
-    pub fn classify(&self, input: &str) -> InputMode {
-        let trimmed = input.trim();
-        if trimmed.is_empty() { return InputMode::Shell; }
-
-        let first_token = trimmed.split_whitespace().next().unwrap_or("");
-
-        // 1. Denylist check
-        if self.denylist.contains(&first_token.to_string()) {
-            return InputMode::Shell;
-        }
-
-        // 2. Starts with known command → Shell
-        if self.known_commands.contains(first_token) {
-            return InputMode::Shell;
-        }
-
-        // 3. Starts with common shell patterns → Shell
-        if Self::is_shell_pattern(trimmed) {
-            return InputMode::Shell;
-        }
-
-        // 4. History fuzzy match (>90%) → Shell
-        if self.history_match(trimmed) {
-            return InputMode::Shell;
-        }
-
-        // 5. Contains question words / NL patterns → AI
-        if Self::is_natural_language(trimmed) {
-            return InputMode::AI;
-        }
-
-        // 6. Default: treat as Shell (safe default)
-        InputMode::Shell
-    }
-
-    fn is_shell_pattern(input: &str) -> bool {
-        let patterns = [
-            "sudo ", "cd ", "mkdir ", "rm ", "cp ", "mv ", "cat ",
-            "echo ", "grep ", "find ", "chmod ", "chown ", "curl ",
-            "wget ", "tar ", "zip ", "ssh ", "scp ", "docker ",
-            "git ", "npm ", "yarn ", "cargo ", "make ", "python ",
-            "./", "/", "|", "&&", ">>", "2>&1",
-        ];
-        patterns.iter().any(|p| input.starts_with(p) || input.contains(p))
-    }
-
-    fn is_natural_language(input: &str) -> bool {
-        let lower = input.to_lowercase();
-        let nl_markers = [
-            "how ", "what ", "why ", "when ", "where ", "which ",
-            "can you ", "could you ", "please ", "help me ",
-            "explain ", "fix ", "create ", "build ", "write ",
-            "show me ", "tell me ", "i want ", "i need ",
-            "?",  // Questions almost always NL
-        ];
-        nl_markers.iter().any(|m| lower.starts_with(m) || lower.contains(m))
-    }
-
-    fn history_match(&self, input: &str) -> bool {
-        self.history.iter().any(|cmd| {
-            strsim::jaro_winkler(input, cmd) > 0.9
-        })
-    }
-}
+```
+ComposerBar / TerminalComposer
+    │
+    ├─ useTerminalRuntimeContext  → cwd, shell, path/git context
+    ├─ useComposerIntelligence    → command-vs-AI hints and suggestions
+    ├─ useShellCommandIndex       → known commands
+    ├─ useCommandHistory          → recent commands
+    └─ useGitContext              → branch/diff context
 ```
 
-### 5.2 Tauri Commands
+### 5.3 Backend Flow
 
-```rust
-// src-tauri/src/spotlight/mod.rs
-
-#[tauri::command]
-fn classify_input(
-    state: State<'_, AppState>,
-    input: String,
-) -> InputMode {
-    state.classifier.lock().unwrap().classify(&input)
-}
-
-#[tauri::command]
-async fn search_universal(
-    state: State<'_, AppState>,
-    query: String,
-    filter: Option<String>,  // "history:", "#", "files:", etc.
-) -> Result<Vec<SearchResult>, String> {
-    state.search_mixer.lock().unwrap().search(&query, filter)
-}
+```
+terminal_get_composer_intelligence
+    │
+    ├─ terminal runtime context
+    ├─ shell command index/history
+    ├─ filesystem path context
+    ├─ git context
+    └─ ai::predict scoring/client helpers
 ```
 
-### 5.3 React Hook
+### 5.4 Adaptation Notes
 
-```tsx
-// src/hooks/useInputClassifier.ts
-
-function useInputClassifier() {
-  const [mode, setMode] = useState<'shell' | 'ai'>('shell');
-  const [isLocked, setIsLocked] = useState(false);
-  const debounceRef = useRef<NodeJS.Timeout>();
-
-  const classify = useCallback((input: string) => {
-    if (isLocked) return;
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-
-    debounceRef.current = setTimeout(async () => {
-      const result = await invoke<'Shell' | 'AI'>('classify_input', { input });
-      setMode(result === 'AI' ? 'ai' : 'shell');
-    }, 100);  // 100ms debounce
-  }, [isLocked]);
-
-  const toggleLock = useCallback(() => {
-    setIsLocked(prev => !prev);
-  }, []);
-
-  const toggleMode = useCallback(() => {
-    setMode(prev => prev === 'shell' ? 'ai' : 'shell');
-    setIsLocked(true);  // Manual toggle locks the mode
-  }, []);
-
-  return { mode, isLocked, classify, toggleLock, toggleMode };
-}
-```
-
-### 5.4 SearchMixer Simplificat (Rust)
-
-```rust
-// src-tauri/src/spotlight/search.rs
-
-pub struct OctomusSearchMixer {
-    sources: Vec<Box<dyn SearchSource>>,
-}
-
-pub trait SearchSource: Send + Sync {
-    fn name(&self) -> &str;
-    fn search(&self, query: &str) -> Vec<SearchResult>;
-    fn filter_key(&self) -> Option<&str>;  // "history:", "files:", etc.
-}
-
-#[derive(Serialize)]
-pub struct SearchResult {
-    pub id: String,
-    pub label: String,
-    pub detail: Option<String>,
-    pub icon: String,
-    pub category: String,
-    pub score: f64,
-    pub action: SearchAction,
-}
-
-#[derive(Serialize)]
-pub enum SearchAction {
-    ExecuteCommand(String),
-    InsertText(String),
-    OpenFile(String),
-    NavigateTo(String),
-    SendToAI(String),
-}
-
-impl OctomusSearchMixer {
-    pub fn search(&self, query: &str, filter: Option<&str>) -> Vec<SearchResult> {
-        let mut results: Vec<SearchResult> = self.sources
-            .iter()
-            .filter(|s| {
-                filter.is_none() ||
-                s.filter_key() == filter ||
-                s.filter_key().is_none()
-            })
-            .flat_map(|s| s.search(query))
-            .collect();
-
-        results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap());
-        results.dedup_by(|a, b| a.id == b.id);
-        results
-    }
-}
-
-// Built-in sources:
-// 1. CommandHistorySource — searches past commands
-// 2. FileSearchSource — fuzzy file search in cwd/repo
-// 3. SlashCommandSource — matches slash commands
-// 4. ConversationSource — searches past AI conversations
-```
-
-### 5.5 Input Mode Indicator (React)
-
-```tsx
-// Visual feedback for autodetected mode
-
-function ModeIndicator({ mode, isLocked, onToggle, onLock }: Props) {
-  return (
-    <div className="mode-indicator">
-      <button
-        className={`mode-pill ${mode}`}
-        onClick={onToggle}
-        title={isLocked ? 'Mode locked (click to toggle)' : 'Auto-detected'}
-      >
-        {mode === 'shell' ? (
-          <><Terminal size={12} /> Shell</>
-        ) : (
-          <><Sparkles size={12} /> AI</>
-        )}
-      </button>
-      <button
-        className={`lock-btn ${isLocked ? 'locked' : ''}`}
-        onClick={onLock}
-        title={isLocked ? 'Unlock (enable auto-detection)' : 'Lock current mode'}
-      >
-        {isLocked ? <Lock size={10} /> : <Unlock size={10} />}
-      </button>
-    </div>
-  );
-}
-```
+The SearchMixer concept remains useful as an architectural model, but the repo currently implements the pieces as narrower commands instead of a single universal search backend. If Octomus later adds a unified command palette, it should compose the existing APIs above rather than introduce a parallel `spotlight` backend tree.

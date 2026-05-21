@@ -1,10 +1,10 @@
 mod ansi;
-mod block;
+pub(crate) mod block;
 mod completions;
-mod events;
+pub(crate) mod events;
 mod pty;
-mod requests;
-mod session;
+pub(crate) mod requests;
+pub(crate) mod session;
 mod transport;
 
 pub mod fs;

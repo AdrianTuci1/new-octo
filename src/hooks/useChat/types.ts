@@ -1,5 +1,6 @@
 import type {
   ChatMessage,
+  CloudAgentLaunchRequest,
   ExecutionPlanArtifact,
   PlanExecutionUpdate,
   WebSearchRequest,
@@ -12,6 +13,7 @@ export type UseChatOptions = {
   onFileChangeApproval?: (approval: FileChangeApproval) => void;
   onWebSearch?: (request: WebSearchRequest) => void;
   onWorkspaceExploration?: (request: WorkspaceExplorationRequest) => void;
+  onCloudAgentLaunch?: (request: CloudAgentLaunchRequest) => Promise<unknown> | unknown;
   onNewChat?: () => void;
   onConversationCreated?: (conversationId: string) => void;
   onRequireModelSetup?: () => void;
@@ -37,4 +39,5 @@ export type AssistantMessageRegistration = {
   onFileChangeApproval?: (approval: FileChangeApproval) => void;
   onWebSearch?: (request: WebSearchRequest) => void;
   onWorkspaceExploration?: (request: WorkspaceExplorationRequest) => void;
+  onCloudAgentLaunch?: (request: CloudAgentLaunchRequest) => Promise<unknown> | unknown;
 };

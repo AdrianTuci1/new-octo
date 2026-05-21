@@ -352,6 +352,7 @@ export function AppWindow() {
         onSelectTab={app.actions.onSelectTab}
         onNewTerminalTab={app.actions.onNewTerminalTab}
         onNewCloudTerminalTab={app.actions.onNewCloudTerminalTab}
+        onNewCloudAgentTab={() => { void app.actions.onNewCloudAgentTab(); }}
         onCloseTab={app.actions.onCloseTab}
         onMoveTab={app.actions.handleMoveTab}
         onRemoveTabFromLauncher={app.actions.onRemoveTabFromLauncher}

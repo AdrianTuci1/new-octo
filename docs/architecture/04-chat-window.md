@@ -1,6 +1,6 @@
 # Chat Window & Advanced Features — Warp Reference & Octomus Adaptation
 
-> Reverse-engineered din Warp AI Assistant (~130K bytes across 9 files).
+
 > Adaptat pentru Octomus: Tauri v2 + Rust backend + React frontend.
 
 ---

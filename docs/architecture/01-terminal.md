@@ -1,6 +1,6 @@
 # Terminal Architecture — Warp Reference & Octomus Adaptation
 
-> Reverse-engineered din Warp codebase (~2.5M bytes, 80+ module Rust).
+
 > Adaptat pentru Octomus: Tauri v2 + Rust backend + React frontend.
 
 ---
@@ -212,29 +212,38 @@ pub struct SizeInfo {
 ### 7.1 Architecture Mapping (Tauri + Rust)
 
 ```
-Octomus (launcher-rs-react)
+Octomus
 ├── src-tauri/src/
 │   ├── terminal/
-│   │   ├── mod.rs              # Terminal module entry
-│   │   ├── model.rs            # TerminalState (simplified TerminalModel)
-│   │   ├── pty.rs              # PTY spawn + read/write (portable_pty)
-│   │   ├── ansi.rs             # ANSI parser (use `vte` crate)
-│   │   ├── grid.rs             # Cell grid (rows × columns)
-│   │   ├── block.rs            # Block system
-│   │   ├── session.rs          # Session lifecycle
-│   │   ├── size.rs             # SizeInfo equivalent
-│   │   └── history.rs          # Command history
+│   │   ├── mod.rs              # Tauri command facade
+│   │   ├── manager.rs          # TerminalManager and session registry
+│   │   ├── session.rs          # Session lifecycle/model
+│   │   ├── pty.rs              # PTY spawn + read/write
+│   │   ├── ansi.rs             # ANSI handling
+│   │   ├── block.rs            # Command block model
+│   │   ├── events.rs           # React event payloads
+│   │   ├── requests.rs         # command/session request types
+│   │   ├── fs.rs               # filesystem listing/search/read/write
+│   │   ├── git.rs              # branch and worktree context
+│   │   ├── intelligence.rs     # command history and prediction context
+│   │   ├── completions.rs
+│   │   └── transport/
+│   │       ├── local.rs
+│   │       └── cloud.rs
 │   ├── ai/
-│   │   ├── mod.rs
-│   │   ├── conversation.rs
-│   │   └── provider.rs
+│   │   ├── predict/            # terminal/composer prediction helpers
+│   │   └── agent/              # agent tool calls can run terminal commands
 │   └── main.rs
 └── src/
     ├── components/
-    │   ├── Terminal.tsx         # Terminal renderer (xterm.js or custom)
-    │   ├── BlockView.tsx        # Block-based rendering
-    │   ├── SpotlightInput.tsx   # AI spotlight input
-    │   └── CodeEditor.tsx       # Code editing component
+    │   ├── Composer/
+    │   │   ├── TerminalComposer.tsx
+    │   │   └── CommandApprovalComposer.tsx
+    │   ├── Chat/blocks/
+    │   │   ├── TerminalBlockCard.tsx
+    │   │   ├── TerminalBlockSummary.tsx
+    │   │   └── TerminalBlockDetail.tsx
+    │   └── Editor/
     └── App.tsx
 ```
 
@@ -269,10 +278,10 @@ tauri = { version = "2.0.0", features = [] }
 
 ### 7.4 Key Design Decisions
 
-1. **xterm.js vs Custom Renderer**: Folosește `xterm.js` în frontend-ul React. Warp a construit un renderer custom de la zero — asta a durat ani. xterm.js oferă 90% din funcționalitate instant.
+1. **React block UI vs full terminal renderer**: Octomus expune terminalul ca sesiuni PTY și blocuri în chat/composer. Un renderer full `xterm.js` poate fi adăugat ulterior, dar structura curentă este `TerminalComposer` + `TerminalBlock*`.
 
 2. **Block System**: Implementează block detection prin interceptarea hook-urilor shell (precmd/preexec). Trimite events din Rust → React prin Tauri events.
 
-3. **Dual Mode**: Spotlight mode (input AI) + Terminal mode (shell complet). Toggle între ele cu hotkey.
+3. **Composer modes**: Composer-ul curent decide între prompt AI, comandă terminal, context mention și acțiuni aprobate prin hook-uri dedicate.
 
 4. **PTY in Rust**: PTY-ul rulează în Rust backend (Tauri), trimite output prin events la React frontend. Input vine din React → Tauri command → PTY write.

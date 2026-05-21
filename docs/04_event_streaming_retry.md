@@ -1,6 +1,6 @@
 # Event Streaming, Retry & Reconnection Patterns
 
-> **Context:** Documentație extrasă din `warp/app/src/ai/` pentru implementarea în Octomus Launcher.  
+
 > **Data:** 2026-05-02
 
 ---
@@ -92,7 +92,7 @@ pub fn is_transient_http_error(err: &anyhow::Error) -> bool {
     // - 429 Too Many Requests
     // - 500, 502, 503, 504 Server Error
     // - DNS resolution failure
-    // 
+    //
     // NU sunt transiente:
     // - 400 Bad Request
     // - 401 Unauthorized
@@ -356,7 +356,7 @@ pub enum DriverState {
 pub trait EventSource: Send + Sync {
     type Event: Send;
     type Stream: futures::Stream<Item = Result<Self::Event>> + Unpin + Send;
-    
+
     async fn open_stream(&self, since_sequence: i64) -> Result<Self::Stream>;
 }
 
@@ -364,10 +364,10 @@ pub trait EventSource: Send + Sync {
 #[async_trait::async_trait]
 pub trait EventConsumer: Send {
     type Event: Send;
-    
+
     /// Procesează un eveniment. Returnează false pentru a opri driver-ul.
     async fn on_event(&mut self, event: Self::Event) -> Result<bool>;
-    
+
     /// Notificare despre starea driver-ului (opțional)
     async fn on_state_change(&mut self, _state: DriverState) {}
 }
@@ -485,7 +485,7 @@ pub fn mark_request_completed_with_error(
             error: error.clone(),
         }
     };
-    
+
     // Actualizează status-ul conversației
     self.update_status(ConversationStatus::Error, ...);
 }
@@ -579,14 +579,14 @@ impl<T: Send + 'static> IdleTimeoutSender<T> {
             let _ = tx.send(value);
         }
     }
-    
+
     /// Trimite rezultatul DUPĂ un delay
     fn end_run_after(&self, timeout: Duration, value: T) {
         // Incrementează generația
         let gen = self.generation.fetch_add(1, Ordering::SeqCst) + 1;
         let tx_cell = self.tx_cell.clone();
         let generation = self.generation.clone();
-        
+
         // Spawn timer
         tokio::spawn(async move {
             tokio::time::sleep(timeout).await;
@@ -600,7 +600,7 @@ impl<T: Send + 'static> IdleTimeoutSender<T> {
             // Dacă generația e diferită, timer-ul e stale → ignore
         });
     }
-    
+
     /// Anulează orice timer pending (prin incrementarea generației)
     fn cancel_idle_timeout(&self) {
         self.generation.fetch_add(1, Ordering::SeqCst);

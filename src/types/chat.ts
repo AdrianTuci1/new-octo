@@ -85,6 +85,16 @@ export type WebSearchRequest = {
   maxResults?: number;
 };
 
+export type CloudAgentLaunchRequest = {
+  toolCallId: string;
+  prompt: string;
+  provider?: 'custom-vm' | 'modal' | string | null;
+  profileId?: string | null;
+  repo?: string | null;
+  baseBranch?: string | null;
+  workBranch?: string | null;
+};
+
 export type WorkspaceExplorationSearch = {
   source: 'code-index' | 'filesystem';
   query: string;

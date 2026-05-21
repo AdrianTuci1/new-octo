@@ -12,6 +12,7 @@ export function useChat(options: UseChatOptions = {}) {
   const onFileChangeApprovalRef = useRef(options.onFileChangeApproval);
   const onWebSearchRef = useRef(options.onWebSearch);
   const onWorkspaceExplorationRef = useRef(options.onWorkspaceExploration);
+  const onCloudAgentLaunchRef = useRef(options.onCloudAgentLaunch);
   
   const actions = useChatActions({
     options,
@@ -19,7 +20,8 @@ export function useChat(options: UseChatOptions = {}) {
     onCommandApprovalRef,
     onFileChangeApprovalRef,
     onWebSearchRef,
-    onWorkspaceExplorationRef
+    onWorkspaceExplorationRef,
+    onCloudAgentLaunchRef
   });
 
   useChatEffects({
@@ -29,7 +31,8 @@ export function useChat(options: UseChatOptions = {}) {
     onCommandApprovalRef,
     onFileChangeApprovalRef,
     onWebSearchRef,
-    onWorkspaceExplorationRef
+    onWorkspaceExplorationRef,
+    onCloudAgentLaunchRef
   });
 
   return useMemo(() => ({

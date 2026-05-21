@@ -1,6 +1,5 @@
 # Chain-of-Thought: Cum Decide Agentul Când Să Se Oprească
 
-> **Context:** Documentație extrasă din `warp/app/src/ai/` pentru implementarea în Octomus Launcher.  
 > **Data:** 2026-05-02
 
 ---
@@ -144,7 +143,7 @@ AgentDriver monitorizează `BlocklistAIHistoryEvent::UpdatedConversationStatus`:
 // execute_run() — subscribing la history events
 BlocklistAIHistoryEvent::UpdatedConversationStatus { conversation_id, .. } => {
     let conversation = history_model.conversation(conversation_id);
-    
+
     if conversation.status().is_in_progress() {
         // Conversația a fost reluată → anulează idle timeout
         run_exit.cancel_idle_timeout();
@@ -244,13 +243,13 @@ if error.will_attempt_resume() {
 /// Determină dacă agentul trebuie să continue sau să se oprească.
 pub enum AgentDecision {
     /// Agentul trebuie să execute acțiunile și să facă follow-up
-    Continue { 
+    Continue {
         pending_actions: Vec<AgentAction>,
     },
     /// Agentul a terminat cu succes
     Stop,
     /// Eroare — retry sau oprire
-    Error { 
+    Error {
         error: AgentError,
         should_retry: bool,
     },
@@ -286,7 +285,7 @@ pub async fn run_agent_loop(
 ) -> Result<AgentRunStatus, AgentError> {
     let mut conversation = Conversation::new();
     let mut current_input = AgentInput::UserQuery(prompt);
-    
+
     loop {
         if cancel.is_cancelled() {
             return Ok(AgentRunStatus::Cancelled);
@@ -294,7 +293,7 @@ pub async fn run_agent_loop(
 
         // 1. Trimite input-ul curent (query sau action result)
         let exchange = conversation.start_exchange(current_input.clone());
-        
+
         // 2. Stream response de la LLM
         let response = with_bounded_retry(|| {
             harness.run_exchange(&exchange, sink, cancel)
@@ -312,7 +311,7 @@ pub async fn run_agent_loop(
             AgentDecision::Continue { pending_actions } => {
                 // Execută acțiunile
                 let results = execute_actions(pending_actions, sink, cancel).await;
-                
+
                 // Construiește ActionResult pentru follow-up
                 current_input = AgentInput::ActionResults(results);
                 // → REINTRĂ ÎN LOOP

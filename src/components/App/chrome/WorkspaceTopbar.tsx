@@ -20,9 +20,9 @@ type TabConfigSummary = {
 };
 
 type PlusMenuItem = {
-  id: 'agent' | 'terminal' | 'cloud-term' | 'create-tab-config' | 'update-tab-config' | 'tab-configs' | 'worktree-config';
+  id: 'agent' | 'terminal' | 'cloud-term' | 'cloud-agent' | 'create-tab-config' | 'update-tab-config' | 'tab-configs' | 'worktree-config';
   label: string;
-  action: 'new-terminal' | 'new-cloud-terminal' | 'save-current-config' | 'none';
+  action: 'new-terminal' | 'new-cloud-terminal' | 'new-cloud-agent' | 'save-current-config' | 'none';
   shortcut?: string;
   icon: LucideIcon;
   hasChevron?: boolean;
@@ -47,6 +47,12 @@ const PLUS_MENU_ITEMS: PlusMenuItem[] = [
     label: 'Cloud term',
     action: 'new-cloud-terminal',
     icon: Cloud
+  },
+  {
+    id: 'cloud-agent',
+    label: 'Cloud agent',
+    action: 'new-cloud-agent',
+    icon: Sparkles
   },
   {
     id: 'create-tab-config',
@@ -90,6 +96,7 @@ type WorkspaceTopbarProps = {
   onSelectTab: (tabId: string) => void;
   onNewTerminalTab: () => void;
   onNewCloudTerminalTab: () => void;
+  onNewCloudAgentTab: () => void;
   onCloseTab: (tabId: string) => void;
   onMoveTab: (tabId: string, direction: 'left' | 'right') => void;
   onRemoveTabFromLauncher: (tabId: string) => void;
@@ -116,6 +123,7 @@ export function WorkspaceTopbar({
   onSelectTab,
   onNewTerminalTab,
   onNewCloudTerminalTab,
+  onNewCloudAgentTab,
   onCloseTab,
   onMoveTab,
   onRemoveTabFromLauncher,
@@ -344,6 +352,12 @@ export function WorkspaceTopbar({
     if (item.action === 'new-cloud-terminal') {
       setPlusMenuState(null);
       onNewCloudTerminalTab();
+      return;
+    }
+
+    if (item.action === 'new-cloud-agent') {
+      setPlusMenuState(null);
+      onNewCloudAgentTab();
       return;
     }
 

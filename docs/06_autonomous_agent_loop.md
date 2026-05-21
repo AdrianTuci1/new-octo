@@ -1,4 +1,4 @@
-# Autonomous Agent Loop (Warp Port)
+# Autonomous Agent Loop 
 
 Acest document descrie modul în care transformăm interfața actuală de chat a Octomus într-un agent autonom capabil de execuție iterativă (Tool-Use Loop).
 

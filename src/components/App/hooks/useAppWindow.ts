@@ -10,7 +10,7 @@ import { useMemoryStore } from '../../../stores/memoryStore';
 import { normalizeAgentSettings } from '../settings/agentSettings';
 import { getDefaultReadyCloudProfile, toTerminalTarget } from '../settings/cloudProfiles';
 import type { FilesystemPathContext } from '../../../types/filesystem';
-import type { CommandApproval, TerminalBlockSharedMeta, TerminalCommandBlock } from '../../../types/terminal';
+import type { CommandApproval, TerminalBlockSharedMeta, TerminalCommandBlock, TerminalSessionInfo } from '../../../types/terminal';
 import type { WorkspaceChromeTab, WorkspaceConversation, WorkspacePaneLayout } from '../chrome';
 import * as Utils from '../utils';
 import {
@@ -619,13 +619,77 @@ export function useAppWindow() {
 
     const session = {
       ...Utils.createEmptyTerminalSession(pathContext?.homeDir ?? null),
-      terminalTarget: toTerminalTarget(profile)
+      terminalTarget: toTerminalTarget(profile),
+      agentTerminalTarget: toTerminalTarget(profile)
     };
     const nextTab = createTerminalTab({
       label: profile.title || 'Cloud',
       terminalSession: session
     });
     setSelectedTabId(nextTab.id);
+  }, [
+    createTerminalTab,
+    memorySettings?.values,
+    openSettingsSectionInternal,
+    pathContext?.homeDir,
+    setIsCloudProfileDrawerOpen,
+    setSelectedCloudProfileIdForEdit
+  ]);
+
+  const startCloudAgentTab = useCallback(async (options: {
+    prompt?: string | null;
+    repo?: string | null;
+    baseBranch?: string | null;
+    workBranch?: string | null;
+    profileId?: string | null;
+  } = {}) => {
+    const profiles = getDefaultReadyCloudProfile(memorySettings?.values)
+      ? [getDefaultReadyCloudProfile(memorySettings?.values)!]
+      : [];
+    const profile = options.profileId
+      ? profiles.find((candidate) => candidate.id === options.profileId) ?? getDefaultReadyCloudProfile(memorySettings?.values)
+      : getDefaultReadyCloudProfile(memorySettings?.values);
+
+    if (!profile) {
+      openSettingsSectionInternal('cloud-platform/cloud');
+      setIsCloudProfileDrawerOpen(true);
+      setSelectedCloudProfileIdForEdit(null);
+      return null;
+    }
+
+    const prompt = options.prompt?.trim() || window.prompt('Cloud agent prompt', 'Inspect this workspace and report next steps.')?.trim() || '';
+    if (!prompt) {
+      return null;
+    }
+
+    const target = toTerminalTarget(profile);
+    const sessionInfo = await invoke<TerminalSessionInfo>('cloud_runtime_start_run', {
+      request: {
+        sessionId: `cloud_run_${Date.now()}`,
+        provider: profile.provider,
+        harness: 'octomus',
+        workspace: '/workspace',
+        prompt,
+        repo: options.repo?.trim() || null,
+        baseBranch: options.baseBranch?.trim() || 'main',
+        workBranch: options.workBranch?.trim() || null,
+        includeLlmCredentials: true,
+        target
+      }
+    });
+
+    const tab = createTerminalTab({
+      label: `${profile.title || 'Cloud'} Agent`,
+      terminalSession: {
+        ...Utils.createEmptyTerminalSession(pathContext?.homeDir ?? null),
+        composerSurface: 'agent',
+        terminalTarget: target,
+        agentTerminalTarget: target,
+        agentTerminalSessionId: sessionInfo.id
+      }
+    });
+    setSelectedTabId(tab.id);
+    return sessionInfo;
   }, [
     createTerminalTab,
     memorySettings?.values,
@@ -1457,6 +1521,7 @@ export function useAppWindow() {
     onAgentTerminalBlockMetaChange: (terminalBlockMetaById: Record<string, TerminalBlockSharedMeta>) => handleAgentTerminalBlockMetaChange(paneId, terminalBlockMetaById),
     onAgentTerminalBlocksChange: (terminalBlocks: TerminalCommandBlock[]) => handleAgentTerminalBlocksChange(paneId, terminalBlocks),
     onAgentTerminalSessionChange: (sessionId: string | null) => handleAgentTerminalSessionChange(paneId, sessionId),
+    onCloudAgentLaunch: startCloudAgentTab,
     onWorkingDirectoryChange: (path: string | null) => handleTerminalWorkingDirectoryChange(paneId, path),
     pendingApproval: terminalSessions[paneId]?.pendingApproval ?? null,
     persistWorkingDirectory: false,
@@ -1487,6 +1552,7 @@ export function useAppWindow() {
     onSelectConversation,
     pathContext?.homeDir,
     selectedTab.id,
+    startCloudAgentTab,
     terminalSessions,
     paneStartupCommandsByPaneId
   ]);
@@ -1536,6 +1602,7 @@ export function useAppWindow() {
       onNewConversation,
       onNewConversationInNewTab,
       onNewCloudTerminalTab,
+      onNewCloudAgentTab: startCloudAgentTab,
       onNewTerminalTab,
       onFocusPane,
       onSplitTerminal,

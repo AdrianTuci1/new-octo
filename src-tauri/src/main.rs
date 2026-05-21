@@ -15,7 +15,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use octomus_launcher_prototype::{
-    ai, app_updates, code_index, keybindings, memory, octomus_paths, secure_store,
+    ai, app_updates, cloud_runtime, code_index, keybindings, memory, octomus_paths, secure_store,
     shell_signatures, terminal,
 };
 use serde::Serialize;
@@ -245,6 +245,7 @@ fn main() {
 
     tauri::Builder::default()
         .manage(app_updates::AppUpdateManager::default())
+        .manage(cloud_runtime::CloudRuntimeManager::default())
         .manage(code_index::CodeIndexManager::default())
         .manage(terminal::TerminalManager::default())
         .manage(ai::AgentHarnessManager::default())
@@ -311,6 +312,9 @@ fn main() {
             app_updates::app_updates_check,
             app_updates::app_updates_install,
             app_updates::app_updates_restart,
+            cloud_runtime::cloud_runtime_build_launch_command,
+            cloud_runtime::cloud_runtime_start_run,
+            cloud_runtime::cloud_runtime_cancel_run,
             code_index::code_index_list_projects,
             code_index::code_index_index_project,
             code_index::code_index_remove_project,

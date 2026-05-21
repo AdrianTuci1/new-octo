@@ -5,5 +5,7 @@ edition = "2021"
 description = "Lightweight CLI tool for the Octomus Launcher"
 
 [dependencies]
+octomus-cloud-protocol = { path = "../octomus-cloud-protocol" }
+reqwest = { version = "0.12", features = ["blocking", "json", "native-tls"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"

@@ -11,6 +11,7 @@ import type { CommandApproval, FileChangeApproval } from '../../../../../types';
 import type {
   WebSearchRequest,
   WebSearchResponse,
+  CloudAgentLaunchRequest,
   WorkspaceExplorationRequest,
   WorkspaceExplorationEntry,
   WorkspaceExplorationSegment,
@@ -284,6 +285,35 @@ export function useLauncherRuntime(props: LauncherProps, store: any, tray: any) 
     }
   }, [agentSettings.enabled, agentSettings.permissions.webSearch, activeProfileCallWebTools]);
 
+  const requestCloudAgentLaunch = useCallback(async (request: CloudAgentLaunchRequest) => {
+    try {
+      const result = await props.onCloudAgentLaunch?.({
+        prompt: request.prompt,
+        repo: request.repo,
+        baseBranch: request.baseBranch,
+        workBranch: request.workBranch,
+        profileId: request.profileId
+      });
+      void chatApiRef.current?.submitToolResult(
+        request.toolCallId,
+        result ? 'Cloud agent launched in a new cloud tab.' : 'Cloud agent launch was cancelled.',
+        'cloud-agent',
+        request.prompt,
+        [],
+        { cloudAgentStatus: result ? 'started' : 'cancelled' }
+      );
+    } catch (error) {
+      void chatApiRef.current?.submitToolResult(
+        request.toolCallId,
+        `Cloud agent launch failed: ${error}`,
+        'cloud-agent',
+        request.prompt,
+        [],
+        { cloudAgentStatus: 'error' }
+      );
+    }
+  }, [props]);
+
   const requestWorkspaceExploration = useCallback(async (request: WorkspaceExplorationRequest) => {
     if (!agentSettings.enabled) {
       const createdAt = new Date().toISOString();
@@ -531,6 +561,7 @@ export function useLauncherRuntime(props: LauncherProps, store: any, tray: any) 
     onFileChangeApproval: requestFileChangeApproval,
     onWebSearch: requestWebSearch,
     onWorkspaceExploration: requestWorkspaceExploration,
+    onCloudAgentLaunch: requestCloudAgentLaunch,
     onConversationCreated,
     onNewChat,
     active

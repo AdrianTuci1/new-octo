@@ -1,4 +1,4 @@
-# Agent Tips & Predict (Warp Port)
+# Agent Tips & Predict 
 
 Documentul de față analizează două sisteme critice din Warp care îmbunătățesc experiența utilizatorului prin proactivitate: **Agent Tips** (educare) și **Predict** (anticipare).
 
