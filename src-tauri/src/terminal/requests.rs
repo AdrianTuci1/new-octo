@@ -65,6 +65,8 @@ pub struct WriteTerminalSessionRequest {
 pub struct RunTerminalCommandRequest {
     pub session_id: String,
     pub command: String,
+    #[serde(default)]
+    pub wait_for_completion: Option<bool>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -78,4 +80,5 @@ pub struct TerminalSessionRequest {
 pub struct TerminalRunCommandResponse {
     pub block: TerminalBlock,
     pub output: String,
+    pub pending: Option<bool>,
 }

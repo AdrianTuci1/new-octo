@@ -22,7 +22,7 @@ export function useLauncher(props: LauncherProps) {
   const runtime = Modules.useLauncherRuntime(props, store, tray);
   
   // 2. Logic Orchestration (Specialized Domains)
-  const composer = Modules.useLauncherComposer({ store, runtime });
+  const composer = Modules.useLauncherComposer({ store, runtime, refs });
   const ui = Modules.useLauncherUIState({ store, tray, props, runtime });
   const history = Modules.useLauncherHistory({ runtime, store });
 
@@ -32,6 +32,7 @@ export function useLauncher(props: LauncherProps) {
     store, tray, props, runtime,
     seededConversationAnchorTimesRef: refs.seededConversationAnchorTimesRef,
     pendingConversationAnchorRef: refs.pendingConversationAnchorRef,
+    suppressComposerShellAutodetectRef: refs.suppressComposerShellAutodetectRef,
     launchAgentComposer: actions.launchAgentComposer,
     clearTerminalSurface: actions.clearTerminalSurface
   });

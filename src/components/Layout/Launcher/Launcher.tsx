@@ -54,13 +54,13 @@ export function Launcher(props: LauncherProps) {
               onAutoApprovePendingApproval={launcher.actions.handlePendingApprovalAutoApprove}
               onStartNewConversationPendingApproval={launcher.actions.handlePendingTopicChangeStartNewConversation}
               onContinueCurrentConversationPendingApproval={launcher.actions.handlePendingTopicChangeContinueConversation}
-              expandedTerminalBlockIds={launcher.store.composerSurface === 'agent' ? launcher.terminal.agentTerminal.expandedBlockIds : launcher.terminal.terminal.expandedBlockIds}
-              onCollapseTerminalBlock={launcher.store.composerSurface === 'agent' ? launcher.terminal.agentTerminal.collapseBlock : launcher.terminal.terminal.collapseBlock}
-              onExpandTerminalBlock={launcher.store.composerSurface === 'agent' ? launcher.terminal.agentTerminal.expandBlock : launcher.terminal.terminal.expandBlock}
+              expandedTerminalBlockIds={launcher.terminal.activeExpandedBlockIds}
+              onCollapseTerminalBlock={launcher.terminal.collapseActiveTimelineBlock}
+              onExpandTerminalBlock={launcher.terminal.expandActiveTimelineBlock}
               onOpenConversationBlock={launcher.actions.openConversationFromBlock}
               onRequestCommandApproval={launcher.actions.requestCommandApproval}
-              onSelectTerminalBlock={launcher.store.composerSurface === 'agent' ? launcher.terminal.agentTerminal.setSelectedBlockId : launcher.terminal.terminal.setSelectedBlockId}
-              selectedTerminalBlockId={launcher.store.composerSurface === 'agent' ? launcher.terminal.agentTerminal.selectedBlockId : launcher.terminal.terminal.selectedBlockId}
+              onSelectTerminalBlock={launcher.terminal.selectActiveTimelineBlock}
+              selectedTerminalBlockId={launcher.terminal.activeSelectedBlockId}
               terminalBlocks={launcher.terminal.activeTimelineBlocks}
               terminalError={launcher.terminal.activeTimelineError}
               workingDirectory={launcher.ui.activeSurfaceWorkingDirectory ?? launcher.ui.workingDirectory.currentPath}

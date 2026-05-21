@@ -25,10 +25,13 @@ type KeyboardShortcutOptions = {
 
 function parseTerminalCommand(query: string, isShellMode?: boolean) {
   const trimmed = query.trim();
-  if (isShellMode) return trimmed;
-  if (!trimmed.startsWith('!') && !trimmed.startsWith('$')) return null;
+  if (trimmed.startsWith('!') || trimmed.startsWith('$')) {
+    return trimmed.slice(1).trim();
+  }
 
-  return trimmed.slice(1).trim();
+  if (isShellMode) return trimmed;
+
+  return null;
 }
 
 export function useKeyboardShortcuts(options: KeyboardShortcutOptions) {

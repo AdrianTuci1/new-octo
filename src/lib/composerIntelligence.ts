@@ -32,6 +32,16 @@ export function consumeShellModeActivator(value: string): { consumed: boolean; v
   };
 }
 
+export function applyShellActivatorToPrediction(query: string, fullCommand: string) {
+  const match = query.match(/^(\s*[!$]\s?)(.*)$/s);
+  if (!match) {
+    return fullCommand;
+  }
+
+  const activator = match[1] ?? '';
+  return fullCommand.startsWith(activator) ? fullCommand : `${activator}${fullCommand}`;
+}
+
 export function getShellToggleShortcutTokens() {
   if (isMacPlatform()) {
     return ['⌘', 'I'];

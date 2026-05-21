@@ -30,6 +30,8 @@ export function useLauncherInterface(params: {
   closeModelDrawer: any;
 }) {
   const { props, store, runtime, tray, composer, ui, history, handlers, shortcuts, shellRef, dockRef, clearTerminalSurface, launchAgentComposer, openAppWindow, openModelDrawer, closeModelDrawer } = params;
+  const isAgentSurface = store.composerSurface === 'agent';
+  const activeTerminalSurface = isAgentSurface ? runtime.agentTerminal : runtime.terminal;
 
   return {
     store,
@@ -39,9 +41,14 @@ export function useLauncherInterface(params: {
     terminal: {
       agentTerminal: runtime.agentTerminal,
       terminal: runtime.terminal,
-      activeTimelineBlocks: store.composerSurface === 'agent' ? runtime.agentTerminal.blocks : runtime.terminal.blocks,
-      activeTimelineError: store.composerSurface === 'agent' ? runtime.agentTerminal.error : runtime.terminal.error,
-      completionState: store.composerSurface === 'agent' ? runtime.agentTerminal.completionState : runtime.terminal.completionState,
+      activeTimelineBlocks: activeTerminalSurface.blocks,
+      activeTimelineError: activeTerminalSurface.error,
+      activeExpandedBlockIds: activeTerminalSurface.expandedBlockIds,
+      activeSelectedBlockId: activeTerminalSurface.selectedBlockId,
+      expandActiveTimelineBlock: activeTerminalSurface.expandBlock,
+      collapseActiveTimelineBlock: activeTerminalSurface.collapseBlock,
+      selectActiveTimelineBlock: activeTerminalSurface.setSelectedBlockId,
+      completionState: activeTerminalSurface.completionState,
       shellRef,
       shellSource: composer.shellSource,
       terminalComposerAction: composer.terminalComposerAction,

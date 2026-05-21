@@ -172,46 +172,83 @@ pub fn terminal_run_command(
         let _ = app.emit(EVENT_BLOCK, event);
     }
 
-    let output = run_shell_command(&session.shell, session.cwd().as_deref(), command);
+    if request.wait_for_completion == Some(false) {
+        let app_handle = app.clone();
+        let session_handle = session.clone();
+        let block_id = block.id.clone();
+        let command = command.to_string();
+        thread::spawn(move || {
+            finish_terminal_command(app_handle, session_handle, block_id, command);
+        });
+
+        return Ok(TerminalRunCommandResponse {
+            block,
+            output: String::new(),
+            pending: Some(true),
+        });
+    }
+
+    let (finished_block, output_text) =
+        finish_terminal_command(app, session, block.id.clone(), command.to_string());
+
+    Ok(TerminalRunCommandResponse {
+        block: finished_block,
+        output: output_text,
+        pending: Some(false),
+    })
+}
+
+fn finish_terminal_command(
+    app: AppHandle,
+    session: SharedTerminalSession,
+    block_id: String,
+    command: String,
+) -> (TerminalBlock, String) {
+    let output = run_shell_command(&session.shell, session.cwd().as_deref(), &command);
     let (exit_code, output_text) = match output {
         Ok((exit_code, output_text)) => (Some(exit_code), output_text),
         Err(error) => (Some(1), format!("{error}\n")),
     };
 
     if exit_code == Some(0) {
-        if let Some(next_cwd) = resolve_command_cwd_change(command, session.cwd().as_deref(), session.previous_cwd().as_deref()) {
+        if let Some(next_cwd) = resolve_command_cwd_change(&command, session.cwd().as_deref(), session.previous_cwd().as_deref()) {
             session.set_cwd(Some(next_cwd));
         }
     }
 
     if !output_text.is_empty() {
-        let _ = session.with_blocks(|blocks| blocks.append_output(&block.id, &output_text));
+        let _ = session.with_blocks(|blocks| blocks.append_output(&block_id, &output_text));
         let _ = app.emit(
             EVENT_BLOCK_OUTPUT,
             TerminalBlockOutputEvent {
                 session_id: session.id.clone(),
-                block_id: block.id.clone(),
+                block_id: block_id.clone(),
                 data: output_text.clone(),
             },
         );
     }
 
     let finished_events = session
-        .with_blocks(|blocks| blocks.finish_command(&session.id, &block.id, exit_code))
+        .with_blocks(|blocks| blocks.finish_command(&session.id, &block_id, exit_code))
         .unwrap_or_default();
     let finished_block = finished_events
         .first()
         .map(|event| event.block.clone())
-        .unwrap_or(block);
+        .unwrap_or_else(|| TerminalBlock {
+            id: block_id,
+            command,
+            output: output_text.clone(),
+            started_at: chrono::Utc::now(),
+            finished_at: Some(chrono::Utc::now()),
+            exit_code,
+            duration_ms: None,
+        });
 
     for event in finished_events {
         let _ = app.emit(EVENT_BLOCK, event);
     }
 
-    Ok(TerminalRunCommandResponse {
-        block: finished_block,
-        output: output_text,
-    })
+    (finished_block, output_text)
 }
 
 pub fn terminal_resize(

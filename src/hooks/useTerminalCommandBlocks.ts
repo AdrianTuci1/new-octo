@@ -24,6 +24,7 @@ import type {
 
 type RunCommandOptions = {
   source?: TerminalCommandSource;
+  waitForCompletion?: boolean;
 };
 
 type UseTerminalCommandBlocksOptions = {
@@ -130,8 +131,11 @@ export function useTerminalCommandBlocks(options: UseTerminalCommandBlocksOption
   }), []);
 
   const commitTimeline = useCallback((nextCommandBlocks: TerminalCommandBlock[], nextSyntheticBlocks = syntheticBlocksRef.current) => {
-    commandBlocksRef.current = sortTimelineBlocks(nextCommandBlocks.map((block) => applySharedMeta(block)));
-    syntheticBlocksRef.current = sortTimelineBlocks(nextSyntheticBlocks.map((block) => applySharedMeta(block)));
+    const normalizedCommandBlocks = sortTimelineBlocks(nextCommandBlocks.map((block) => applySharedMeta(block)));
+    const normalizedSyntheticBlocks = sortTimelineBlocks(nextSyntheticBlocks.map((block) => applySharedMeta(block)));
+
+    commandBlocksRef.current = normalizedCommandBlocks;
+    syntheticBlocksRef.current = normalizedSyntheticBlocks;
     publishCommandBlocks(commandBlocksRef.current);
     const nextBlocks = sortTimelineBlocks([
       ...commandBlocksRef.current,
@@ -148,43 +152,34 @@ export function useTerminalCommandBlocks(options: UseTerminalCommandBlocksOption
     }
 
     const currentBuffer = outputBufferRef.current;
-    let changed = false;
     const nextBuffer: Record<string, string> = {};
-
-    setBlocks((currentBlocks) => {
-      const currentCommandBlocks = currentBlocks.filter((block) => block.presentation !== 'conversation-link');
-      const currentBlockIds = new Set(currentCommandBlocks.map((block) => block.id));
-      const nextCommandBlocks = currentCommandBlocks.map((block) => {
-        const addition = currentBuffer[block.id];
-        if (!addition) {
-          return block;
-        }
-
-        changed = true;
-        return {
-          ...block,
-          output: `${block.output}${addition}`
-        };
-      });
-
-      bufferedEntries.forEach(([blockId, addition]) => {
-        if (!currentBlockIds.has(blockId)) {
-          nextBuffer[blockId] = addition;
-        }
-      });
-
-      outputBufferRef.current = nextBuffer;
-
-      if (!changed) {
-        return currentBlocks;
+    const currentCommandBlocks = commandBlocksRef.current;
+    const currentBlockIds = new Set(currentCommandBlocks.map((block) => block.id));
+    const nextCommandBlocks = currentCommandBlocks.map((block) => {
+      const addition = currentBuffer[block.id];
+      if (!addition) {
+        return block;
       }
 
-      commitTimeline(nextCommandBlocks);
-      return sortTimelineBlocks([
-        ...nextCommandBlocks,
-        ...syntheticBlocksRef.current
-      ]);
+      return {
+        ...block,
+        output: `${block.output}${addition}`
+      };
     });
+
+    bufferedEntries.forEach(([blockId, addition]) => {
+      if (!currentBlockIds.has(blockId)) {
+        nextBuffer[blockId] = addition;
+      }
+    });
+
+    outputBufferRef.current = nextBuffer;
+
+    if (nextCommandBlocks.every((block, index) => block === currentCommandBlocks[index])) {
+      return;
+    }
+
+    commitTimeline(nextCommandBlocks);
   }, [commitTimeline]);
 
   const scheduleOutputFlush = useCallback(() => {
@@ -305,45 +300,39 @@ export function useTerminalCommandBlocks(options: UseTerminalCommandBlocksOption
   }, [cwd, onSessionChange, target]);
 
   const upsertBlock = useCallback((block: TerminalBlock) => {
-    setBlocks((currentBlocks) => {
-      const currentCommandBlocks = currentBlocks.filter((currentBlock) => currentBlock.presentation !== 'conversation-link');
-      const existing = currentCommandBlocks.find((currentBlock) => currentBlock.id === block.id);
-      const pendingCommandOutput = commandInFlightRef.current ? pendingCommandOutputRef.current : '';
-      const bufferedOutput = outputBufferRef.current[block.id] ?? '';
-      delete outputBufferRef.current[block.id];
-      const pendingOutput = `${pendingOutputRef.current[block.id] ?? ''}${pendingCommandOutput}${bufferedOutput}`;
-      const canonicalBlock = existing?.finishedAt && !block.finishedAt ? existing : block;
-      const sharedMeta = sharedBlockMetaRef.current[block.id];
-      const source = existing?.source ?? sharedMeta?.source ?? blockOptionsRef.current[block.id]?.source ?? (commandInFlightRef.current && pendingCommandOutputRef.current === '' ? blockOptionsRef.current['PENDING']?.source : undefined);
-      
-      const nextBlock = applySharedMeta({
-        ...mergeBlock(canonicalBlock, `${existing?.output ?? ''}${pendingOutput}`, sharedMeta),
-        source
-      });
+    const currentCommandBlocks = commandBlocksRef.current;
+    const existing = currentCommandBlocks.find((currentBlock) => currentBlock.id === block.id);
+    const pendingCommandOutput = commandInFlightRef.current ? pendingCommandOutputRef.current : '';
+    const bufferedOutput = outputBufferRef.current[block.id] ?? '';
+    delete outputBufferRef.current[block.id];
+    const pendingOutput = `${pendingOutputRef.current[block.id] ?? ''}${pendingCommandOutput}${bufferedOutput}`;
+    const canonicalBlock = existing?.finishedAt && !block.finishedAt ? existing : block;
+    const sharedMeta = sharedBlockMetaRef.current[block.id];
+    const source = existing?.source ?? sharedMeta?.source ?? blockOptionsRef.current[block.id]?.source ?? (commandInFlightRef.current && pendingCommandOutputRef.current === '' ? blockOptionsRef.current['PENDING']?.source : undefined);
 
-      if (pendingOutput) {
-        delete pendingOutputRef.current[block.id];
-        pendingCommandOutputRef.current = '';
-      }
-
-      if (nextBlock.status === 'running') {
-        activeBlockIdRef.current = nextBlock.id;
-        commandInFlightRef.current = false;
-      } else if (activeBlockIdRef.current === nextBlock.id) {
-        activeBlockIdRef.current = null;
-      }
-
-      const nextCommandBlocks = existing
-        ? currentCommandBlocks.map((currentBlock) => (
-            currentBlock.id === nextBlock.id ? nextBlock : currentBlock
-          ))
-        : [...currentCommandBlocks, nextBlock].slice(-80);
-      commitTimeline(nextCommandBlocks);
-      return sortTimelineBlocks([
-        ...nextCommandBlocks,
-        ...syntheticBlocksRef.current
-      ]);
+    const nextBlock = applySharedMeta({
+      ...mergeBlock(canonicalBlock, `${existing?.output ?? ''}${pendingOutput}`, sharedMeta),
+      source
     });
+
+    if (pendingOutput) {
+      delete pendingOutputRef.current[block.id];
+      pendingCommandOutputRef.current = '';
+    }
+
+    if (nextBlock.status === 'running') {
+      activeBlockIdRef.current = nextBlock.id;
+      commandInFlightRef.current = false;
+    } else if (activeBlockIdRef.current === nextBlock.id) {
+      activeBlockIdRef.current = null;
+    }
+
+    const nextCommandBlocks = existing
+      ? currentCommandBlocks.map((currentBlock) => (
+          currentBlock.id === nextBlock.id ? nextBlock : currentBlock
+        ))
+      : [...currentCommandBlocks, nextBlock].slice(-80);
+    commitTimeline(nextCommandBlocks);
   }, [applySharedMeta, commitTimeline]);
 
   const appendOutput = useCallback((blockId: string, data: string) => {
@@ -706,7 +695,8 @@ export function useTerminalCommandBlocks(options: UseTerminalCommandBlocksOption
         const response = await invoke<TerminalRunCommandResponse>('terminal_run_command', {
           request: {
             sessionId: session.id,
-            command: normalized
+            command: normalized,
+            waitForCompletion: options.waitForCompletion ?? options.source !== 'user'
           }
         });
         blockOptionsRef.current[response.block.id] = options;

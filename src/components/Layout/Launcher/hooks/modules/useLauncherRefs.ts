@@ -10,6 +10,7 @@ import { useRef } from 'react';
  * - pendingConversationAnchorRef: Stores metadata for a conversation being created but not yet synced.
  * - seededConversationAnchorTimesRef: Mapping of conversation IDs to their start times for timeline linking.
  * - pendingAutoSubmitPromptRef: Holds a prompt that should be automatically submitted upon agent surface mount.
+ * - suppressComposerShellAutodetectRef: Suppresses shell autodetection while the initial seed prompt is unchanged.
  */
 export function useLauncherRefs() {
   const shellRef = useRef<HTMLElement | null>(null);
@@ -17,12 +18,14 @@ export function useLauncherRefs() {
   const pendingConversationAnchorRef = useRef<{ conversationId: string; startedAt: string } | null>(null);
   const seededConversationAnchorTimesRef = useRef<Record<string, string>>({});
   const pendingAutoSubmitPromptRef = useRef<string | null>(null);
+  const suppressComposerShellAutodetectRef = useRef<string | null>(null);
 
   return {
     shellRef,
     dockRef,
     pendingConversationAnchorRef,
     seededConversationAnchorTimesRef,
-    pendingAutoSubmitPromptRef
+    pendingAutoSubmitPromptRef,
+    suppressComposerShellAutodetectRef
   };
 }

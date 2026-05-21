@@ -23,6 +23,8 @@ pub struct ShellHistoryEntry {
 #[serde(rename_all = "camelCase")]
 pub struct TerminalRuntimeContext {
     pub node_version: Option<String>,
+    pub target_os: String,
+    pub target_arch: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -49,6 +51,8 @@ pub fn terminal_get_runtime_context(
 
     Ok(TerminalRuntimeContext {
         node_version: read_command_version("node", &cwd),
+        target_os: std::env::consts::OS.to_string(),
+        target_arch: std::env::consts::ARCH.to_string(),
     })
 }
 

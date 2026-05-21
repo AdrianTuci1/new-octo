@@ -554,7 +554,7 @@ export function useLauncherRuntime(props: LauncherProps, store: any, tray: any) 
             return;
           }
 
-          await terminalSurface.runCommand(command);
+          await terminalSurface.runCommand(command, { source: 'assistant' });
         }
       } catch (error) {
         console.warn('[LauncherRuntime] failed to run startup commands', error);
@@ -588,7 +588,7 @@ export function useLauncherRuntime(props: LauncherProps, store: any, tray: any) 
     chatRaw.clearAttachments
   ]);
 
-  const { value: queryWithoutActivator } = consumeShellModeActivator(chat.query);
+  const { consumed: hasShellActivator, value: queryWithoutActivator } = consumeShellModeActivator(chat.query);
 
   const terminalCommandBlocks = useMemo(() => terminal.blocks.filter(Utils.isCommandBlock), [terminal.blocks]);
   const agentTerminalCommandBlocks = useMemo(() => agentTerminal.blocks.filter(Utils.isCommandBlock), [agentTerminal.blocks]);
@@ -612,6 +612,7 @@ export function useLauncherRuntime(props: LauncherProps, store: any, tray: any) 
     terminal,
     agentTerminal,
     chat,
+    hasShellActivator,
     queryWithoutActivator,
     terminalCommandBlocks,
     agentTerminalCommandBlocks,
@@ -637,6 +638,7 @@ export function useLauncherRuntime(props: LauncherProps, store: any, tray: any) 
     terminal,
     agentTerminal,
     chat,
+    hasShellActivator,
     queryWithoutActivator,
     terminalCommandBlocks,
     agentTerminalCommandBlocks,

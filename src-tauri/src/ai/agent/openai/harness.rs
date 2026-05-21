@@ -932,7 +932,11 @@ fn build_chat_messages(context: &AgentHarnessContext) -> Vec<Value> {
 
     let injected_skills_text = skills::load_skills_instructions(&context.prompt, &context.messages);
 
-    let mut system_prompt = prompt::build_system_prompt(cwd);
+    let mut system_prompt = prompt::build_system_prompt(
+        cwd,
+        &context.target_os,
+        &context.target_arch
+    );
     if !injected_skills_text.is_empty() {
         system_prompt.push_str(
             "\n\n[INFORMATIE INVIZIBILA PENTRU UTILIZATOR - SKILL-URI INVOCATE SI ACTIVE]",

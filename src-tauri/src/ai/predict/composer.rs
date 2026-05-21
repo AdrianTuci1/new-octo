@@ -241,7 +241,12 @@ async fn build_composer_prediction(
     state: &ComposerSessionState,
     ai_manager: &crate::ai::AgentHarnessManager,
 ) -> Option<ComposerPredictionResponse> {
-    if mode != "shell" {
+    let can_predict_shell = mode == "shell"
+        || (request.surface == "composerBar"
+            && request.autodetect_enabled
+            && request.locked_mode.as_deref() != Some("chat")
+            && !request.query.trim().is_empty());
+    if !can_predict_shell {
         return None;
     }
 

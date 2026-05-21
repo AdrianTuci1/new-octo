@@ -157,7 +157,7 @@ export function ComposerBar({
   const [contextMenuCodeItems, setContextMenuCodeItems] = useState<ComposerContextMenuItem[]>([]);
   const [contextMenuSkillCatalog, setContextMenuSkillCatalog] = useState<SkillCatalogItem[]>([]);
   const predictionSuffix = prediction?.completionText ?? '';
-  const showShellIndicator = mode === 'shell' && shellSource === 'manual';
+  const showShellIndicator = false;
   const showSlashCommandHighlight = hasCompleteSlashCommand(query);
   const showContextMentionHighlight = hasComposerContextMentions(query);
   const contextTrigger = getTrailingComposerContextTrigger(query);
@@ -596,7 +596,7 @@ export function ComposerBar({
       return;
     }
 
-    if (event.key === 'ArrowRight' && prediction?.fullCommand && mode === 'shell') {
+    if (event.key === 'ArrowRight' && prediction?.fullCommand) {
       event.preventDefault();
       event.stopPropagation();
       onQueryChange(prediction.fullCommand);
@@ -650,8 +650,6 @@ export function ComposerBar({
       <div className={`composer-input-row ${mode === 'shell' ? 'shell-active' : ''}`}>
         <div className="composer-editor-shell">
           <div className="composer-input-wrapper">
-            {showShellIndicator && <span className="composer-shell-indicator">!</span>}
-
             <div className={`composer-textarea-container ${mode === 'shell' ? 'shell-mode' : ''} ${showShellIndicator ? 'manual-shell-mode' : ''} ${showRecommendation ? 'has-recommendation' : ''}`}>
               {showRecommendation && (
                 <div className="composer-recommendation-chip-wrapper">

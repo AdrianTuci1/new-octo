@@ -141,7 +141,8 @@ function isCommandSearchQuery(value: string) {
 export function useLauncherHandlers({
   store, tray, props, runtime, 
   seededConversationAnchorTimesRef, pendingConversationAnchorRef,
-  launchAgentComposer, clearTerminalSurface, 
+  launchAgentComposer, clearTerminalSurface,
+  suppressComposerShellAutodetectRef
 }: {
   store: any;
   tray: any;
@@ -151,6 +152,7 @@ export function useLauncherHandlers({
   pendingConversationAnchorRef: any;
   launchAgentComposer: any;
   clearTerminalSurface: any;
+  suppressComposerShellAutodetectRef: any;
 }) {
   const { 
     chat, 
@@ -195,6 +197,7 @@ export function useLauncherHandlers({
 
     tray.closeTray();
     pendingConversationAnchorRef.current = null;
+    suppressComposerShellAutodetectRef.current = null;
     store.setComposerSurface('terminal');
     store.setLocalConversationId(null);
     store.setModeLock(null);
@@ -533,12 +536,15 @@ export function useLauncherHandlers({
 
   const handleComposerQueryChange = useCallback((rawValue: string) => {
     const nextValue = consumeShellModeActivator(rawValue);
-    chat.setQuery(nextValue.value);
+    if (suppressComposerShellAutodetectRef.current !== null) {
+      suppressComposerShellAutodetectRef.current = null;
+    }
+    chat.setQuery(rawValue);
     store.setSelectedHistoryIndex(0);
     store.setSelectedCommandIndex(0);
-    if (nextValue.consumed) {
-      store.setModeLock('shell');
-    } else if (rawValue.length === 0 && store.modeLock === 'chat') {
+    if (nextValue.consumed && store.modeLock === 'shell') {
+      store.setModeLock(null);
+    } else if (!nextValue.consumed && store.modeLock !== null) {
       store.setModeLock(null);
     }
 
@@ -555,6 +561,7 @@ export function useLauncherHandlers({
     store.setModeLock,
     store.setSelectedCommandIndex,
     store.setSelectedHistoryIndex,
+    suppressComposerShellAutodetectRef,
     tray.activeTrayMode,
     tray.isTrayOpen,
     tray.toggleTray
@@ -596,18 +603,23 @@ export function useLauncherHandlers({
 
     void runCommandInSurface(
       normalized,
-      'terminal',
+      store.composerSurface === 'agent' ? 'agent' : 'terminal',
       terminal,
       agentTerminal,
       clearTerminalSurface,
       'user'
     ).then(() => {
       chat.setQuery('');
+      store.setModeLock(null);
+      store.setAutodetectedShellLatch(false);
     });
   }, [
     agentTerminal,
     chat.setQuery,
     clearTerminalSurface,
+    store.composerSurface,
+    store.setAutodetectedShellLatch,
+    store.setModeLock,
     terminal
   ]);
 

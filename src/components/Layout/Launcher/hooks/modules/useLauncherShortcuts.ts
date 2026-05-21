@@ -4,7 +4,7 @@
  */
 import { listen } from '@tauri-apps/api/event';
 import { useEffect, type KeyboardEvent } from 'react';
-import { COMMAND_ITEMS, filterCommandItems } from '../../../../../lib';
+import { COMMAND_ITEMS, consumeShellModeActivator, filterCommandItems } from '../../../../../lib';
 import * as Hooks from '../../../../../hooks';
 import type { BackendShortcutCommandEvent } from '../../../../../types/keybindings';
 import * as Utils from '../../utils';
@@ -30,6 +30,14 @@ export function useLauncherShortcuts({
   const { clearTerminalSurface, openAppWindow, launchAgentComposer } = actions;
   const { variant = 'panel' } = props;
   const visibleCommandItems = filterCommandItems(COMMAND_ITEMS, chat.query);
+  const removeShellActivator = (query: string) => consumeShellModeActivator(query).value;
+  const toggleTextShellActivator = () => {
+    const current = chat.query;
+    const consumed = consumeShellModeActivator(current);
+    store.setModeLock(null);
+    store.setAutodetectedShellLatch(false);
+    chat.setQuery(consumed.consumed ? consumed.value : `!${current}`);
+  };
 
   // 1. Internal Keyboard Logic (Advanced Keyboard Shortcuts)
   const { handleKeyDown } = Hooks.useKeyboardShortcuts({
@@ -42,18 +50,24 @@ export function useLauncherShortcuts({
     onCommandApproval: requestCommandApproval,
     onNewChat: () => {
       setResolvedPendingApproval(null);
+      refs.suppressComposerShellAutodetectRef.current = null;
       store.setModeLock(null);
       store.setComposerSurface('agent');
       clearTerminalSurface();
     },
-    onTerminalCommand: (cmd) => Utils.runCommandInSurface(
-      cmd,
-      'agent',
-      terminal,
-      agentTerminal,
-      clearTerminalSurface,
-      'user'
-    ),
+    onTerminalCommand: (cmd) => {
+      const result = Utils.runCommandInSurface(
+        cmd,
+        'agent',
+        terminal,
+        agentTerminal,
+        clearTerminalSurface,
+        'user'
+      );
+      store.setModeLock(null);
+      store.setAutodetectedShellLatch(false);
+      return result;
+    },
     isShellMode: store.composerSurface === 'terminal'
       || store.modeLock === 'shell'
       || ui.composerMode === 'shell'
@@ -67,8 +81,12 @@ export function useLauncherShortcuts({
       }
     }, 
     onCyclePrediction: () => {},
-    onExitShellMode: () => store.setModeLock(chat.query.trim().length > 0 ? 'chat' : null),
-    onToggleShellMode: () => store.setModeLock(store.modeLock === 'shell' ? 'chat' : 'shell'),
+    onExitShellMode: () => {
+      chat.setQuery(removeShellActivator(chat.query));
+      store.setModeLock(null);
+      store.setAutodetectedShellLatch(false);
+    },
+    onToggleShellMode: toggleTextShellActivator,
     onCloseTray: tray.closeTray,
     onToggleHelpTray: tray.openHelp,
     onToggleConversationsTray: tray.openConversations
@@ -161,7 +179,7 @@ export function useLauncherShortcuts({
     if (store.composerSurface === 'terminal') {
       if (event.key === 'Enter' && !event.shiftKey) {
         event.preventDefault();
-        const command = chat.query.trim();
+        const command = consumeShellModeActivator(chat.query).value.trim();
         if (!command) return;
         if (command.startsWith('/')) {
           launchAgentComposer(command, true);
