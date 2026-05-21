@@ -352,6 +352,7 @@ fn main() {
             terminal::terminal_get_composer_intelligence,
             terminal::terminal_read_file,
             terminal::terminal_write_file,
+            octomus_paths::octomus_list_tab_configs,
             memory::memory_bootstrap,
             memory::memory_put_settings,
             memory::memory_put_workspace_snapshot,
@@ -437,6 +438,12 @@ fn main() {
 
             #[cfg(desktop)]
             {
+                let tray_icon = image::load_from_memory(include_bytes!("../icons/tray-icon.png"))
+                    .ok()
+                    .map(|image| {
+                        let rgba = image.to_rgba8().into_raw();
+                        tauri::image::Image::new_owned(rgba, image.width(), image.height())
+                    });
                 let tray_menu = menus::build_tray_menu(app)?;
 
                 let mut tray = TrayIconBuilder::with_id("launcher-tray")
@@ -465,8 +472,8 @@ fn main() {
                         }
                     });
 
-                if let Some(icon) = app.default_window_icon() {
-                    tray = tray.icon(icon.clone()).icon_as_template(true);
+                if let Some(icon) = tray_icon {
+                    tray = tray.icon(icon).icon_as_template(true);
                 } else {
                     tray = tray.title("Octomus");
                 }

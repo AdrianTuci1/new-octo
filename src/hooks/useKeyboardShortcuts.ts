@@ -45,7 +45,13 @@ export function useKeyboardShortcuts(options: KeyboardShortcutOptions) {
       return;
     }
 
-    if ((event.key === 'ArrowRight' || event.key === 'Tab') && options.isShellMode && options.hasPrediction && isCaretAtEnd) {
+    if (event.key === 'ArrowRight' && options.hasPrediction && isCaretAtEnd) {
+      event.preventDefault();
+      options.onAcceptPrediction?.();
+      return;
+    }
+
+    if (event.key === 'Tab' && options.isShellMode && options.hasPrediction && isCaretAtEnd) {
       event.preventDefault();
       options.onAcceptPrediction?.();
       return;

@@ -4,6 +4,8 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use serde::Serialize;
+
 const OCTOMUS_HOME_OVERRIDE_ENV: &str = "OCTOMUS_HOME";
 const BUNDLED_SKILLS_DIR_OVERRIDE_ENV: &str = "OCTOMUS_BUNDLED_SKILLS_DIR";
 
@@ -17,6 +19,14 @@ const DEFAULT_KEYBINDINGS_CONFIG: &str = "{}\n";
 #[derive(Debug, Clone)]
 pub struct OctomusPaths {
     pub root: PathBuf,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TabConfigSummary {
+    pub display_name: String,
+    pub file_name: String,
+    pub path: String,
 }
 
 impl Default for OctomusPaths {
@@ -78,6 +88,55 @@ impl OctomusPaths {
 
         Ok(())
     }
+}
+
+#[tauri::command]
+pub fn octomus_list_tab_configs() -> Result<Vec<TabConfigSummary>, String> {
+    let paths = OctomusPaths::default();
+    let tab_configs_dir = paths.tab_configs_dir();
+
+    if !tab_configs_dir.exists() {
+        return Ok(Vec::new());
+    }
+
+    let mut configs = Vec::new();
+    for entry in fs::read_dir(&tab_configs_dir)
+        .map_err(|error| format!("failed to read tab configs directory: {error}"))?
+    {
+        let entry = entry.map_err(|error| format!("failed to read a tab config entry: {error}"))?;
+        let path = entry.path();
+
+        if !path.is_file() {
+            continue;
+        }
+
+        if path.extension().and_then(|extension| extension.to_str()) != Some("toml") {
+            continue;
+        }
+
+        let file_name = path
+            .file_name()
+            .and_then(|value| value.to_str())
+            .unwrap_or("tab-config.toml")
+            .to_string();
+        let display_name = read_tab_config_display_name(&path)
+            .unwrap_or_else(|| file_stem_to_title(&file_name));
+
+        configs.push(TabConfigSummary {
+            display_name,
+            file_name,
+            path: path.display().to_string(),
+        });
+    }
+
+    configs.sort_by(|left, right| {
+        tab_config_sort_rank(&left.file_name)
+            .cmp(&tab_config_sort_rank(&right.file_name))
+            .then_with(|| left.display_name.to_lowercase().cmp(&right.display_name.to_lowercase()))
+            .then_with(|| left.file_name.to_lowercase().cmp(&right.file_name.to_lowercase()))
+    });
+
+    Ok(configs)
 }
 
 pub fn resolve_octomus_root() -> PathBuf {
@@ -145,6 +204,69 @@ fn ensure_file_with_default(path: &Path, default_contents: &str) -> Result<(), S
             path.display()
         )
     })
+}
+
+fn read_tab_config_display_name(path: &Path) -> Option<String> {
+    let contents = fs::read_to_string(path).ok()?;
+
+    for line in contents.lines() {
+        let trimmed = line.trim();
+        let Some(raw_value) = trimmed.strip_prefix("name = ") else {
+            continue;
+        };
+
+        if let Some(name) = parse_toml_string(raw_value) {
+            let name = name.trim().to_string();
+            if !name.is_empty() {
+                return Some(name);
+            }
+        }
+    }
+
+    None
+}
+
+fn parse_toml_string(raw_value: &str) -> Option<String> {
+    let trimmed = raw_value.trim();
+    let quote = trimmed.chars().next()?;
+    if quote != '"' && quote != '\'' {
+        return None;
+    }
+
+    let end = trimmed[1..].rfind(quote)? + 1;
+    Some(trimmed[1..end].to_string())
+}
+
+fn file_stem_to_title(file_name: &str) -> String {
+    let stem = Path::new(file_name)
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .unwrap_or(file_name);
+
+    stem.split(['-', '_'])
+        .filter(|part| !part.is_empty())
+        .map(|part| {
+            let mut chars = part.chars();
+            match chars.next() {
+                Some(first) => {
+                    let mut word = first.to_uppercase().collect::<String>();
+                    word.push_str(chars.as_str());
+                    word
+                }
+                None => String::new(),
+            }
+        })
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn tab_config_sort_rank(file_name: &str) -> u8 {
+    match file_name {
+        "startup_config.toml" => 0,
+        "my_tab_config.toml" => 1,
+        _ => 2,
+    }
 }
 
 fn push_unique_dir(candidates: &mut Vec<PathBuf>, seen: &mut HashSet<PathBuf>, path: PathBuf) {

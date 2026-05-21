@@ -167,13 +167,13 @@ export function CodebaseIndexingSection() {
       <div className="settings-group code-settings-group">
         <CodeSettingsRow
           title="Codebase indexing"
-          description="Warp can automatically index code repositories as you navigate them, helping agents quickly understand context and provide solutions. Code is never stored on the server. If a codebase is unable to be indexed, Warp can still navigate your codebase and gain insights via grep and find tool calling."
+          description="Octomus can automatically index code repositories as you navigate them, helping agents quickly understand context and provide solutions. Code is never stored on the server. If a codebase is unable to be indexed, Octomus can still navigate your codebase and gain insights via grep and find tool calling."
           action={<SettingsToggle checked={codeSettings.indexing.enabled} onChange={() => patchIndexing({ enabled: !codeSettings.indexing.enabled })} />}
         />
 
         <CodeSettingsRow
           title="Index new folders by default"
-          description="When set to true, Warp will automatically index code repositories as you navigate them - helping agents quickly understand context and provide targeted solutions."
+          description="When set to true, Octomus will automatically index code repositories as you navigate them - helping agents quickly understand context and provide targeted solutions."
           action={<SettingsToggle checked={codeSettings.indexing.indexNewFoldersByDefault} onChange={() => patchIndexing({ indexNewFoldersByDefault: !codeSettings.indexing.indexNewFoldersByDefault })} />}
         />
       </div>
@@ -286,7 +286,7 @@ export function EditorCodeReviewSection() {
               value={codeSettings.editor.fileLinksEditor}
               options={[
                 { value: 'Default App', label: 'Default App' },
-                { value: 'Warp', label: 'Warp' }
+                { value: 'Warp', label: 'Octomus' }
               ]}
               onChange={(value) => patchEditor({ fileLinksEditor: value as CodeSettings['editor']['fileLinksEditor'] })}
             />
@@ -305,7 +305,7 @@ export function EditorCodeReviewSection() {
               minWidth={220}
               value={codeSettings.editor.codeReviewEditor}
               options={[
-                { value: 'Warp', label: 'Warp' },
+                { value: 'Warp', label: 'Octomus' },
                 { value: 'Default App', label: 'Default App' }
               ]}
               onChange={(value) => patchEditor({ codeReviewEditor: value as CodeSettings['editor']['codeReviewEditor'] })}
@@ -314,7 +314,7 @@ export function EditorCodeReviewSection() {
         />
 
         <CodeSettingsRow
-          title="Choose a layout to open files in Warp"
+          title="Choose a layout to open files in Octomus"
           action={(
             <SettingsSelect
               minWidth={220}
@@ -338,7 +338,7 @@ export function EditorCodeReviewSection() {
         <CodeSettingsRow
           title={(
             <>
-              Open Markdown files in Warp's Markdown Viewer by default
+              Open Markdown files in Octomus's Markdown Viewer by default
               <Info size={15} className="code-info-icon" aria-hidden="true" />
             </>
           )}

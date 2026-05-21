@@ -44,6 +44,27 @@ const SKILL_SLASH_ALIASES: Record<string, string> = {
     'Guide me using short bullet points.',
     'Explain local vs cloud environments, and say that this is the preferred path when the user wants a separate cloud tab instead of a cloud agent inside the current chat.'
   ].join('\n'),
+  '/tab-configs': [
+    '@skills/tab-configs',
+    "Respond in the user's language if the context makes it clear; otherwise use English.",
+    'Keep it short and practical.',
+    'Say only what the user can do with tab configs, what they can ask you to change, and when split view / commands / parameters help.',
+    'End with a brief offer to create a new layout or modify an existing one.'
+  ].join('\n'),
+  '/create-tab-config': [
+    '@skills/create-tab-config',
+    "Respond in the user's language if the context makes it clear; otherwise use English.",
+    'Keep it short.',
+    'Help the user create a new tab config by saying what details you need and what the next step is.',
+    'Do not explain the full schema or give long examples.'
+  ].join('\n'),
+  '/update-tab-config': [
+    '@skills/update-tab-config',
+    "Respond in the user's language if the context makes it clear; otherwise use English.",
+    'Keep it short.',
+    'Help the user update an existing tab config by saying what needs to change and what details are still missing, if any.',
+    'Do not explain the full schema or give long examples.'
+  ].join('\n'),
   '/create-mcp': [
     '@skills/add-mcp-server',
     'Guide me to add an MCP server using this skill.',

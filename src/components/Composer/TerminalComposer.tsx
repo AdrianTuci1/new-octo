@@ -170,6 +170,26 @@ export function TerminalComposer({
                 onQueryChange(nextValue);
               }}
               onKeyDown={(event) => {
+                if (event.key === 'ArrowRight' && prediction?.fullCommand) {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  onQueryChange(prediction.fullCommand);
+                  requestAnimationFrame(() => {
+                    const input = inputRef.current;
+                    if (!input) {
+                      return;
+                    }
+
+                    const caret = prediction.fullCommand.length;
+                    try {
+                      input.setSelectionRange(caret, caret);
+                    } catch {
+                      // Ignore selection errors in browsers that reject programmatic ranges.
+                    }
+                  });
+                  return;
+                }
+
                 if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
                   event.preventDefault();
                   onLaunchAgentComposer(query.trim(), true);

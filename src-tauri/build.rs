@@ -15,8 +15,49 @@ struct ShortcutEntry {
 }
 
 fn main() {
+    println!("cargo:rerun-if-changed=../assets/logo-dock.icns");
+    println!("cargo:rerun-if-changed=icons/icon.png");
+    println!("cargo:rerun-if-changed=icons/tray-icon.png");
+    sync_release_dock_icon();
     generate_shortcut_catalog();
     tauri_build::build()
+}
+
+fn sync_release_dock_icon() {
+    if env::var("CARGO_CFG_TARGET_OS").ok().as_deref() != Some("macos") {
+        return;
+    }
+
+    let manifest_dir =
+        PathBuf::from(env::var("CARGO_MANIFEST_DIR").expect("missing CARGO_MANIFEST_DIR"));
+    let dock_source = manifest_dir.join("..").join("assets").join("logo-dock.icns");
+    let dock_target = manifest_dir.join("icons").join("icon.icns");
+    let is_release = env::var("PROFILE").ok().as_deref() == Some("release");
+
+    if is_release {
+        println!("cargo:rerun-if-changed={}", dock_source.display());
+        if !dock_source.is_file() {
+            panic!("missing release dock icon source {}", dock_source.display());
+        }
+
+        fs::copy(&dock_source, &dock_target).unwrap_or_else(|error| {
+            panic!(
+                "failed to copy release dock icon from {} to {}: {error}",
+                dock_source.display(),
+                dock_target.display()
+            )
+        });
+        return;
+    }
+
+    if dock_target.exists() {
+        fs::remove_file(&dock_target).unwrap_or_else(|error| {
+            panic!(
+                "failed to remove dev dock icon {}: {error}",
+                dock_target.display()
+            )
+        });
+    }
 }
 
 fn generate_shortcut_catalog() {

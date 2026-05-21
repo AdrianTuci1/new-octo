@@ -17,9 +17,11 @@ export function useLauncherRuntime(props: LauncherProps, store: any, tray: any) 
     initialTerminalSessionId = null,
     persistTerminalSession = false,
     initialAgentTerminalSessionId = null,
+    startupCommands = [],
     terminalTarget = null,
     agentTerminalTarget = null,
     active = true,
+    initialComposerSurface = 'terminal'
   } = props;
 
   // Use selectors for store to prevent unnecessary re-renders of this orchestrator
@@ -265,6 +267,40 @@ export function useLauncherRuntime(props: LauncherProps, store: any, tray: any) 
     onNewChat,
     active
   });
+
+  const startupCommandsSignature = useMemo(() => startupCommands.join('\u0000'), [startupCommands]);
+  const startupCommandsConsumedRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!startupCommands.length || startupCommandsConsumedRef.current === startupCommandsSignature) {
+      return;
+    }
+
+    startupCommandsConsumedRef.current = startupCommandsSignature;
+    let cancelled = false;
+    const terminalSurface = initialComposerSurface === 'agent' ? agentTerminal : terminal;
+
+    void (async () => {
+      try {
+        for (const command of startupCommands) {
+          if (cancelled) {
+            return;
+          }
+
+          await terminalSurface.runCommand(command);
+        }
+      } catch (error) {
+        console.warn('[LauncherRuntime] failed to run startup commands', error);
+      } finally {
+        if (!cancelled) {
+          props.onStartupCommandsConsumed?.();
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [agentTerminal, initialComposerSurface, props, startupCommands, startupCommandsSignature, terminal]);
 
   useEffect(() => {
     chatApiRef.current = chatRaw;

@@ -790,10 +790,9 @@
   margin-left: 6px;
   border-radius: 6px;
   overflow: hidden;
-  background: rgba(74, 122, 188, 0.78);
-  box-shadow:
-    inset 0 0 0 1px rgba(255, 255, 255, 0.08),
-    0 3px 12px rgba(0, 0, 0, 0.16);
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow: none;
 }
 
 .composer-suggestion-accept-main,
@@ -802,7 +801,7 @@
   align-items: center;
   justify-content: center;
   min-height: 16px;
-  color: rgba(247, 250, 252, 0.94);
+  color: rgba(232, 236, 242, 0.88);
 }
 
 .composer-suggestion-accept-main {
@@ -812,14 +811,14 @@
 
 .composer-suggestion-accept-tail {
   width: 14px;
-  border-left: 1px solid rgba(255, 255, 255, 0.16);
+  border-left: 1px solid rgba(255, 255, 255, 0.12);
 }
 
 .composer-suggestion-accept-tail-mark {
   width: 4px;
   height: 4px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.75);
+  background: rgba(232, 236, 242, 0.78);
 }
 
 .chat-input {

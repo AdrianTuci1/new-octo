@@ -6,6 +6,7 @@ export type LauncherVariant = 'panel' | 'workspace';
 export type LauncherProps = {
   variant?: LauncherVariant;
   initialComposerSurface?: 'agent' | 'terminal';
+  startupCommands?: string[];
   initialWorkingDirectory?: string | null;
   initialTerminalSessionId?: string | null;
   initialAgentTerminalSessionId?: string | null;
@@ -27,6 +28,7 @@ export type LauncherProps = {
   onTerminalSessionChange?: (sessionId: string | null) => void;
   onAgentTerminalBlockMetaChange?: (terminalBlockMetaById: Record<string, TerminalBlockSharedMeta>) => void;
   onAgentTerminalSessionChange?: (sessionId: string | null) => void;
+  onStartupCommandsConsumed?: () => void;
   onWorkingDirectoryChange?: (path: string | null) => void;
   pendingApproval?: CommandApproval | null;
   resetOnMount?: boolean;

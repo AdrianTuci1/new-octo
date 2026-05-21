@@ -61,9 +61,9 @@ export function useLauncherShortcuts({
     isManualShellMode: store.composerSurface !== 'terminal' && store.modeLock === 'shell',
     hasPrediction: Boolean(ui.activeShellPrediction?.completionText),
     onAcceptPrediction: () => {
-      const suffix = ui.activeShellPrediction?.completionText ?? '';
-      if (suffix) {
-        chat.setQuery(chat.query + suffix);
+      const fullCommand = ui.activeShellPrediction?.fullCommand ?? '';
+      if (fullCommand) {
+        chat.setQuery(fullCommand);
       }
     }, 
     onCyclePrediction: () => {},

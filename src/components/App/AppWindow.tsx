@@ -358,6 +358,7 @@ export function AppWindow() {
         onRenameTab={app.actions.handleRenameTab}
         onSaveTabAsConfig={app.actions.handleSaveTabAsConfig}
         onSetTabTint={app.actions.handleSetTabTint}
+        onOpenTabConfig={app.actions.handleOpenTabConfig}
         onToggleSidebar={app.actions.onToggleSidebar}
         isSidebarOpen={app.chrome.isSidebarOpen}
         isAgentsActive={app.chrome.isAgentsActive}

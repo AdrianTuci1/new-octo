@@ -575,6 +575,26 @@ export function ComposerBar({
       return;
     }
 
+    if (event.key === 'ArrowRight' && prediction?.fullCommand && mode === 'shell') {
+      event.preventDefault();
+      event.stopPropagation();
+      onQueryChange(prediction.fullCommand);
+      requestAnimationFrame(() => {
+        const input = inputRef.current;
+        if (!input) {
+          return;
+        }
+
+        const caret = prediction.fullCommand.length;
+        try {
+          input.setSelectionRange(caret, caret);
+        } catch {
+          // Ignore selection errors in browsers that reject programmatic ranges.
+        }
+      });
+      return;
+    }
+
     if (event.key === 'Backspace') {
       const input = event.currentTarget;
       const selectionStart = input.selectionStart ?? query.length;

@@ -1,4 +1,4 @@
-import { Bot, FileText, MessagesSquare, Sparkles, Code2, Settings, Cloud, Clipboard, FolderOpen, GitBranch, User } from 'lucide-react';
+import { Bot, FileText, MessagesSquare, Sparkles, Code2, Settings, Cloud, Clipboard, FolderOpen, GitBranch, User, Server } from 'lucide-react';
 import { getPrimaryModifierLabel } from './platform';
 import type { HelpItem, CommandItem } from '../types/ui';
 
@@ -36,6 +36,9 @@ export const COMMAND_ITEMS: CommandItem[] = [
   { label: '/prompts', detail: 'Search saved prompts', icon: Sparkles },
   { label: '/open-skill', detail: 'Open or inspect a skill', icon: Settings },
   { label: '/open-settings-file', detail: 'Open a local Octomus settings file', icon: Settings },
+  { label: '/tab-configs', detail: 'Browse installed tab config layouts', icon: Server },
+  { label: '/create-tab-config', detail: 'Create a new tab config layout', icon: Code2 },
+  { label: '/update-tab-config', detail: 'Edit an existing tab config layout', icon: Code2 },
   { label: '/profile', detail: 'Inspect or update an agent profile', icon: User },
   { label: '/plan', detail: 'Prompt the agent to research and create a plan', icon: Code2 },
   { label: '/create-mcp', detail: 'Create or configure an MCP server', icon: Code2 },
