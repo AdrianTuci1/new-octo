@@ -235,9 +235,26 @@
 
 .message-content {
   flex: 1;
+  min-width: 0;
+  max-width: 100%;
   font-size: 13.5px;
   line-height: 1.6;
   color: var(--text-main);
+  overflow-wrap: normal;
+  word-break: normal;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+.message-content > * {
+  max-width: 100%;
+}
+
+.message-content p,
+.message-content li,
+.message-content blockquote {
+  overflow-wrap: break-word;
+  word-break: normal;
 }
 
 .message-content .chat-action-link {
@@ -251,6 +268,10 @@
   /* no underline by default */
   font-weight: 500;
   cursor: pointer;
+  overflow-wrap: break-word;
+  word-break: normal;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
   transition: all 150ms ease;
 }
 
@@ -273,6 +294,12 @@
   padding: 2px 5px;
   border-radius: 4px;
   font-weight: 500;
+  white-space: normal;
+  line-height: 1.45;
+  overflow-wrap: break-word;
+  word-break: normal;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
 }
 
 .message-content code.is-slash-command {
@@ -344,18 +371,36 @@
 /* Assistant Message - Regular & Sans */
 .message-bubble.assistant .message-content {
   font-family: inherit;
-  font-weight: 300;
+  font-weight: 400;
   color: var(--text-main);
 }
 
 /* Code Block Styling */
 .code-block-container {
   margin: 12px 0;
+  max-width: 100%;
   background: #1e1e1e;
   /* Dark solid background */
   border-radius: 8px;
   overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.code-block-container pre {
+  max-width: 100%;
+  overflow-x: auto !important;
+}
+
+.message-content table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.message-content th,
+.message-content td {
+  overflow-wrap: break-word;
+  word-break: normal;
 }
 
 .code-block-footer {
