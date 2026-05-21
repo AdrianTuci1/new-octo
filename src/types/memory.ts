@@ -62,6 +62,8 @@ export type MemoryWorkspaceSnapshot = {
     pendingApproval?: CommandApproval | null;
     terminalBlockMetaById?: Record<string, TerminalBlockSharedMeta>;
     agentTerminalBlockMetaById?: Record<string, TerminalBlockSharedMeta>;
+    terminalBlocks?: TerminalCommandBlock[];
+    agentTerminalBlocks?: TerminalCommandBlock[];
     syntheticBlocks?: TerminalCommandBlock[];
   }>;
   activeSectionId?: string | null;

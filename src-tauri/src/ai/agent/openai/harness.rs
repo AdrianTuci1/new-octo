@@ -412,6 +412,7 @@ async fn stream_chat_completion(
                 content: format!(
                     "Răspunsul anterior nu a produs o acțiune utilă pentru cererea utilizatorului. \
                     Nu mai propune plan. Dacă sarcina cere creare/modificare fișier, emite `propose_file_change`. \
+                    Dacă sarcina cere explorare recursivă, căutare de fișiere, funcții sau variabile în workspace, emite `explore_workspace`. \
                     Dacă sarcina cere rulare/verificare/test, emite `propose_terminal_command`. \
                     Dacă deja există un fișier sau un rezultat în context, continuă concret următorul pas. \
                     Cererea curentă este: {}",

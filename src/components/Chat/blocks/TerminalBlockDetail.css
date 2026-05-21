@@ -180,6 +180,14 @@
   line-height: 1.48;
 }
 
+.terminal-output-truncation-note {
+  margin-top: 2px;
+  color: rgba(244, 247, 246, 0.42);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
 
 
 /* Coordinate specific colors for failed and selected sticky context */

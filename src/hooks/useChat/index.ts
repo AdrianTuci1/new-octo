@@ -11,13 +11,15 @@ export function useChat(options: UseChatOptions = {}) {
   const onCommandApprovalRef = useRef(options.onCommandApproval);
   const onFileChangeApprovalRef = useRef(options.onFileChangeApproval);
   const onWebSearchRef = useRef(options.onWebSearch);
+  const onWorkspaceExplorationRef = useRef(options.onWorkspaceExploration);
   
   const actions = useChatActions({
     options,
     state,
     onCommandApprovalRef,
     onFileChangeApprovalRef,
-    onWebSearchRef
+    onWebSearchRef,
+    onWorkspaceExplorationRef
   });
 
   useChatEffects({
@@ -26,7 +28,8 @@ export function useChat(options: UseChatOptions = {}) {
     actions,
     onCommandApprovalRef,
     onFileChangeApprovalRef,
-    onWebSearchRef
+    onWebSearchRef,
+    onWorkspaceExplorationRef
   });
 
   return useMemo(() => ({

@@ -22,6 +22,27 @@ pub(super) fn build_tool_definitions() -> Value {
         {
             "type": "function",
             "function": {
+                "name": "explore_workspace",
+                "description": "Inspect the local workspace recursively for files, symbols, functions, or variables. Use this for codebase discovery and read-only search instead of asking for a terminal command approval.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "description": "Search text, symbol name, file name, or code concept to explore."
+                        },
+                        "maxResults": {
+                            "type": "number",
+                            "description": "Optional upper bound for returned files, from 1 to 20."
+                        }
+                    },
+                    "required": ["query"]
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
                 "name": "propose_plan",
                 "description": "Create a structured execution plan for complex implementation, debugging, or research tasks. Use this when the task clearly benefits from visible multi-step planning.",
                 "parameters": {

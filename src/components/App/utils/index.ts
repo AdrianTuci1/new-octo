@@ -24,6 +24,8 @@ export type TerminalSessionState = {
   pendingApproval: CommandApproval | null;
   terminalBlockMetaById: Record<string, TerminalBlockSharedMeta>;
   agentTerminalBlockMetaById: Record<string, TerminalBlockSharedMeta>;
+  terminalBlocks: TerminalCommandBlock[];
+  agentTerminalBlocks: TerminalCommandBlock[];
   syntheticBlocks: TerminalCommandBlock[];
 };
 
@@ -49,6 +51,8 @@ export function createEmptyTerminalSession(
     pendingApproval: null,
     terminalBlockMetaById: {},
     agentTerminalBlockMetaById: {},
+    terminalBlocks: [],
+    agentTerminalBlocks: [],
     syntheticBlocks: []
   };
 }
@@ -146,19 +150,21 @@ export function buildTerminalSessionState(tabs: WorkspaceChromeTab[]) {
 export function mergeTerminalSessions(
   tabs: WorkspaceChromeTab[],
   paneLayoutsByTabId: Record<string, WorkspacePaneLayout>,
-  current: Record<string, {
-    activeConversationId: string | null;
-    composerSurface?: 'agent' | 'terminal';
-    workingDirectory?: string | null;
-    terminalSessionId?: string | null;
+    current: Record<string, {
+      activeConversationId: string | null;
+      composerSurface?: 'agent' | 'terminal';
+      workingDirectory?: string | null;
+      terminalSessionId?: string | null;
     agentTerminalSessionId?: string | null;
     terminalTarget?: TerminalSessionTarget | null;
     agentTerminalTarget?: TerminalSessionTarget | null;
-    pendingApproval?: CommandApproval | null;
-    terminalBlockMetaById?: Record<string, TerminalBlockSharedMeta>;
-    agentTerminalBlockMetaById?: Record<string, TerminalBlockSharedMeta>;
-    syntheticBlocks?: TerminalCommandBlock[];
-  }>,
+      pendingApproval?: CommandApproval | null;
+      terminalBlockMetaById?: Record<string, TerminalBlockSharedMeta>;
+      agentTerminalBlockMetaById?: Record<string, TerminalBlockSharedMeta>;
+      terminalBlocks?: TerminalCommandBlock[];
+      agentTerminalBlocks?: TerminalCommandBlock[];
+      syntheticBlocks?: TerminalCommandBlock[];
+    }>,
   defaultWorkingDirectory: string | null,
   seededConversations: Record<string, string | null> = {}
 ) {
@@ -181,6 +187,8 @@ export function mergeTerminalSessions(
         pendingApproval: current[paneId]?.pendingApproval ?? null,
         terminalBlockMetaById: current[paneId]?.terminalBlockMetaById ?? {},
         agentTerminalBlockMetaById: current[paneId]?.agentTerminalBlockMetaById ?? {},
+        terminalBlocks: current[paneId]?.terminalBlocks ?? [],
+        agentTerminalBlocks: current[paneId]?.agentTerminalBlocks ?? [],
         syntheticBlocks: current[paneId]?.syntheticBlocks ?? []
       } satisfies TerminalSessionState
     ])

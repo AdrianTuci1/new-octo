@@ -21,6 +21,8 @@ export type ComposerContextMenuItem = {
   icon: ReactNode;
   panel?: ComposerContextMenuPanel;
   insertToken?: string;
+  kind?: 'folder' | 'file' | 'code' | 'skill' | 'rule';
+  path?: string;
 };
 
 type ComposerContextMenuProps = {

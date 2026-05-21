@@ -6,7 +6,7 @@ import { Copy, Terminal, Check } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { CodeDiffView } from './CodeDiffView';
-import { ImplementationPlanBlock, ThinkingBlock, WebSearchBlock } from './blocks';
+import { ImplementationPlanBlock, ThinkingBlock, WebSearchBlock, WorkspaceExplorationBlock } from './blocks';
 import { extractInlineFileChangeApproval, visibleChatMessageBody } from '../../hooks/useChat';
 import type { ChatMessage, ExecutionPlanArtifact } from '../../types/chat';
 import type { CommandApproval } from '../../types/terminal';
@@ -310,6 +310,15 @@ export function MessageBubble({ message, onRequestCommandApproval }: MessageBubb
                   )}
                 </div>
               )
+            : message.toolKind === 'workspace-exploration' && message.workspaceExploration
+              ? (
+                  <div className="tool-output-workspace-exploration">
+                    <WorkspaceExplorationBlock
+                      exploration={message.workspaceExploration}
+                      isStreaming={message.isStreaming}
+                    />
+                  </div>
+                )
             : message.toolKind === 'plan' && message.executionPlan
               ? (
                   <div className="tool-output-plan">

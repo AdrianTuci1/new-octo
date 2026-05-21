@@ -25,6 +25,8 @@ function createEmptyTerminalSession(): TerminalSessionState {
     pendingApproval: null,
     terminalBlockMetaById: {},
     agentTerminalBlockMetaById: {},
+    terminalBlocks: [],
+    agentTerminalBlocks: [],
     syntheticBlocks: []
   };
 }
@@ -39,6 +41,8 @@ function normalizeTerminalSession(
       ?? ((session?.activeConversationId ?? null) ? 'agent' : 'terminal'),
     terminalBlockMetaById: session?.terminalBlockMetaById ?? {},
     agentTerminalBlockMetaById: session?.agentTerminalBlockMetaById ?? {},
+    terminalBlocks: session?.terminalBlocks ?? [],
+    agentTerminalBlocks: session?.agentTerminalBlocks ?? [],
     syntheticBlocks: session?.syntheticBlocks ?? []
   };
 }
@@ -368,12 +372,30 @@ export function useLauncherAppState(): UseLauncherAppStateResult {
     }));
   }, [updateLauncherSession]);
 
+  const handleLauncherTerminalBlocksChange = useCallback((
+    terminalBlocks: TerminalCommandBlock[]
+  ) => {
+    updateLauncherSession((session) => ({
+      ...session,
+      terminalBlocks
+    }));
+  }, [updateLauncherSession]);
+
   const handleLauncherAgentTerminalBlockMetaChange = useCallback((
     terminalBlockMetaById: Record<string, TerminalBlockSharedMeta>
   ) => {
     updateLauncherSession((session) => ({
       ...session,
       agentTerminalBlockMetaById: terminalBlockMetaById
+    }));
+  }, [updateLauncherSession]);
+
+  const handleLauncherAgentTerminalBlocksChange = useCallback((
+    terminalBlocks: TerminalCommandBlock[]
+  ) => {
+    updateLauncherSession((session) => ({
+      ...session,
+      agentTerminalBlocks: terminalBlocks
     }));
   }, [updateLauncherSession]);
 
@@ -400,17 +422,21 @@ export function useLauncherAppState(): UseLauncherAppStateResult {
     onNewConversation: handleLauncherNewConversation,
     onPendingApprovalChange: handleLauncherPendingApprovalChange,
     onTerminalBlockMetaChange: handleLauncherTerminalBlockMetaChange,
+    onTerminalBlocksChange: handleLauncherTerminalBlocksChange,
     onSyntheticBlocksChange: handleLauncherSyntheticBlocksChange,
     onTerminalSessionChange: handleLauncherTerminalSessionChange,
     onAgentTerminalBlockMetaChange: handleLauncherAgentTerminalBlockMetaChange,
+    onAgentTerminalBlocksChange: handleLauncherAgentTerminalBlocksChange,
     onAgentTerminalSessionChange: handleLauncherAgentTerminalSessionChange,
     onWorkingDirectoryChange: handleLauncherWorkingDirectoryChange,
     pendingApproval: canSpotlightControlWorkspace ? effectiveLauncherSession?.pendingApproval ?? null : undefined,
     persistWorkingDirectory: !canSpotlightControlWorkspace,
     persistTerminalSession: canSpotlightControlWorkspace,
     sharedTerminalBlockMetaById: canSpotlightControlWorkspace ? effectiveLauncherSession?.terminalBlockMetaById ?? EMPTY_META : undefined,
+    sharedTerminalBlocks: canSpotlightControlWorkspace ? effectiveLauncherSession?.terminalBlocks ?? [] : undefined,
     sharedSyntheticBlocks: canSpotlightControlWorkspace ? effectiveLauncherSession?.syntheticBlocks ?? [] : undefined,
-    sharedAgentTerminalBlockMetaById: canSpotlightControlWorkspace ? effectiveLauncherSession?.agentTerminalBlockMetaById ?? EMPTY_META : undefined
+    sharedAgentTerminalBlockMetaById: canSpotlightControlWorkspace ? effectiveLauncherSession?.agentTerminalBlockMetaById ?? EMPTY_META : undefined,
+    sharedAgentTerminalBlocks: canSpotlightControlWorkspace ? effectiveLauncherSession?.agentTerminalBlocks ?? [] : undefined
   }), [
     canSpotlightControlWorkspace,
     effectiveLauncherSession,
@@ -422,8 +448,10 @@ export function useLauncherAppState(): UseLauncherAppStateResult {
     handleLauncherPendingApprovalChange,
     handleLauncherSyntheticBlocksChange,
     handleLauncherTerminalBlockMetaChange,
+    handleLauncherTerminalBlocksChange,
     handleLauncherTerminalSessionChange,
     handleLauncherWorkingDirectoryChange,
+    handleLauncherAgentTerminalBlocksChange,
     isLauncherWindowVisible
   ]);
 

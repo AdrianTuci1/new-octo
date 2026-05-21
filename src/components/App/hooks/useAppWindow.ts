@@ -808,7 +808,11 @@ export function useAppWindow() {
   }, [activePaneId, selectedTab]);
 
   const onSplitTerminal = useCallback((direction: 'right' | 'up') => {
-    const tabId = selectedTab.kind === 'terminal' ? selectedTab.id : resolveTerminalTabId();
+    const tabId = selectedTab.kind === 'terminal' ? selectedTab.id : null;
+    if (!tabId) {
+      return;
+    }
+
     const sourcePaneId = resolvePaneId(tabId);
     const nextPaneId = Utils.buildPaneId(
       tabId,
@@ -833,7 +837,7 @@ export function useAppWindow() {
       }
     }));
     setSelectedTabId(tabId);
-  }, [paneLayoutsByTabId, pathContext?.homeDir, resolvePaneId, resolveTerminalTabId, selectedTab, terminalSessions]);
+  }, [paneLayoutsByTabId, pathContext?.homeDir, resolvePaneId, selectedTab, terminalSessions]);
 
   const onCloseTab = useCallback((tabId: string) => {
     if (tabs.length <= 1) {
@@ -1024,6 +1028,38 @@ export function useAppWindow() {
         [tabId]: {
           ...current[tabId],
           agentTerminalBlockMetaById: terminalBlockMetaById
+        }
+      };
+    });
+  }, []);
+
+  const handleTerminalBlocksChange = useCallback((
+    tabId: string,
+    terminalBlocks: TerminalCommandBlock[]
+  ) => {
+    setTerminalSessions((current) => {
+      if (JSON.stringify(current[tabId]?.terminalBlocks ?? []) === JSON.stringify(terminalBlocks)) return current;
+      return {
+        ...current,
+        [tabId]: {
+          ...current[tabId],
+          terminalBlocks
+        }
+      };
+    });
+  }, []);
+
+  const handleAgentTerminalBlocksChange = useCallback((
+    tabId: string,
+    terminalBlocks: TerminalCommandBlock[]
+  ) => {
+    setTerminalSessions((current) => {
+      if (JSON.stringify(current[tabId]?.agentTerminalBlocks ?? []) === JSON.stringify(terminalBlocks)) return current;
+      return {
+        ...current,
+        [tabId]: {
+          ...current[tabId],
+          agentTerminalBlocks: terminalBlocks
         }
       };
     });
@@ -1416,8 +1452,10 @@ export function useAppWindow() {
     onSelectConversation,
     onSyntheticBlocksChange: (syntheticBlocks: TerminalCommandBlock[]) => handleSyntheticBlocksChange(paneId, syntheticBlocks),
     onTerminalBlockMetaChange: (terminalBlockMetaById: Record<string, TerminalBlockSharedMeta>) => handleTerminalBlockMetaChange(paneId, terminalBlockMetaById),
+    onTerminalBlocksChange: (terminalBlocks: TerminalCommandBlock[]) => handleTerminalBlocksChange(paneId, terminalBlocks),
     onTerminalSessionChange: (sessionId: string | null) => handleTerminalSessionChange(paneId, sessionId),
     onAgentTerminalBlockMetaChange: (terminalBlockMetaById: Record<string, TerminalBlockSharedMeta>) => handleAgentTerminalBlockMetaChange(paneId, terminalBlockMetaById),
+    onAgentTerminalBlocksChange: (terminalBlocks: TerminalCommandBlock[]) => handleAgentTerminalBlocksChange(paneId, terminalBlocks),
     onAgentTerminalSessionChange: (sessionId: string | null) => handleAgentTerminalSessionChange(paneId, sessionId),
     onWorkingDirectoryChange: (path: string | null) => handleTerminalWorkingDirectoryChange(paneId, path),
     pendingApproval: terminalSessions[paneId]?.pendingApproval ?? null,
@@ -1425,17 +1463,21 @@ export function useAppWindow() {
     persistTerminalSession: true,
     resetOnMount: true,
     sharedTerminalBlockMetaById: terminalSessions[paneId]?.terminalBlockMetaById ?? Utils.EMPTY_META,
+    sharedTerminalBlocks: terminalSessions[paneId]?.terminalBlocks ?? Utils.EMPTY_SYNTHETIC_BLOCKS,
     sharedSyntheticBlocks: terminalSessions[paneId]?.syntheticBlocks ?? Utils.EMPTY_SYNTHETIC_BLOCKS,
     sharedAgentTerminalBlockMetaById: terminalSessions[paneId]?.agentTerminalBlockMetaById ?? Utils.EMPTY_META,
+    sharedAgentTerminalBlocks: terminalSessions[paneId]?.agentTerminalBlocks ?? Utils.EMPTY_SYNTHETIC_BLOCKS,
     title: displayTabs.find((t) => t.id === tabId)?.label,
     variant: 'workspace' as const
   }), [
     activePaneId,
     displayTabs,
     handleAgentTerminalBlockMetaChange,
+    handleAgentTerminalBlocksChange,
     handleAgentTerminalSessionChange,
     handleSyntheticBlocksChange,
     handleTerminalBlockMetaChange,
+    handleTerminalBlocksChange,
     handleTerminalComposerSurfaceChange,
     handleTerminalConversationChange,
     handleTerminalPendingApprovalChange,

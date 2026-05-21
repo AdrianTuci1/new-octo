@@ -1,6 +1,7 @@
 export * from './TerminalBlockCard';
 export * from './WebSearchBlock';
 export * from './ThinkingBlock';
+export * from './WorkspaceExplorationBlock';
 export { ImplementationPlanBlock } from './ImplementationPlanBlock';
 export { CodeDisplayBlock } from './CodeDisplayBlock';
 export { MultiAgentBlock } from './MultiAgentBlock';

@@ -63,7 +63,7 @@ export function Launcher(props: LauncherProps) {
               selectedTerminalBlockId={launcher.store.composerSurface === 'agent' ? launcher.terminal.agentTerminal.selectedBlockId : launcher.terminal.terminal.selectedBlockId}
               terminalBlocks={launcher.terminal.activeTimelineBlocks}
               terminalError={launcher.terminal.activeTimelineError}
-              workingDirectory={launcher.ui.workingDirectory.currentPath}
+              workingDirectory={launcher.ui.activeSurfaceWorkingDirectory ?? launcher.ui.workingDirectory.currentPath}
               title={props.title}
             />
           </div>
@@ -138,7 +138,7 @@ export function Launcher(props: LauncherProps) {
               recommendedAction={launcher.terminal.terminalComposerAction}
               runtimeNodeVersion={launcher.ui.runtimeContext?.nodeVersion ?? null}
               showOpenInApp={launcher.ui.variant !== 'workspace'}
-              workingDirectory={launcher.ui.workingDirectory.currentPath}
+              workingDirectory={launcher.ui.activeSurfaceWorkingDirectory ?? launcher.ui.workingDirectory.currentPath}
               workingDirectoryLabel={launcher.ui.workingDirectory.buttonLabel}
               workingDirectoryListing={launcher.ui.workingDirectory.listing}
               workingDirectoryPickerOpen={launcher.ui.workingDirectory.isPickerOpen}
@@ -169,6 +169,7 @@ export function Launcher(props: LauncherProps) {
               onNavigateToParentDirectory={launcher.ui.workingDirectory.navigateToParent}
               onToggleGitBranchMenu={launcher.ui.gitContext.toggleBranchMenu}
               onToggleModelTray={() => (modelSetupRequired ? launcher.actions.openModelDrawer() : launcher.tray.toggleTray('models'))}
+              onExecuteTerminalCommand={launcher.actions.executeTerminalCommand}
               placeholder={launcher.ui.agentSettings?.input?.showInputHintText === false ? '' : placeholder}
               prediction={launcher.ui.activeShellPrediction}
               attachedFiles={launcher.chat.attachments}
@@ -179,7 +180,7 @@ export function Launcher(props: LauncherProps) {
               onRemoveAttachedFile={launcher.chat.removeAttachment}
               onClearAttachments={launcher.chat.clearAttachments}
               terminalAutoDetectEnabled={launcher.store.terminalAutoDetectEnabled && launcher.ui.agentSettings?.enabled !== false && launcher.ui.agentSettings?.input?.autodetectTerminalCommandsInAgent !== false}
-              workingDirectory={launcher.ui.workingDirectory.currentPath}
+              workingDirectory={launcher.ui.activeSurfaceWorkingDirectory ?? launcher.ui.workingDirectory.currentPath}
               workingDirectoryLabel={launcher.ui.workingDirectory.buttonLabel}
               workingDirectoryListing={launcher.ui.workingDirectory.listing}
               workingDirectoryPickerOpen={launcher.ui.workingDirectory.isPickerOpen}

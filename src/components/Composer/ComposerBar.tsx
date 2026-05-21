@@ -71,6 +71,7 @@ type ComposerBarProps = {
   onToggleModelTray: () => void;
   onCloseGitBranchMenu: () => void;
   onSelectGitBranch: (branch: string) => void;
+  onExecuteTerminalCommand?: (command: string) => void;
   onBackFromModelSetup?: () => void;
   onOpenModelSettings?: () => void;
   onHeightChange?: (height: number) => void;
@@ -133,6 +134,7 @@ export function ComposerBar({
   onToggleModelTray,
   onCloseGitBranchMenu,
   onSelectGitBranch,
+  onExecuteTerminalCommand,
   onBackFromModelSetup,
   onOpenModelSettings,
   onHeightChange,
@@ -325,6 +327,8 @@ export function ComposerBar({
                   label: entry.name,
                   description: resolveWorkspacePath(entry.path),
                   icon: entry.isDirectory ? <FolderOpen size={15} /> : <FileIcon size={15} />,
+                  kind: entry.isDirectory ? 'folder' : 'file',
+                  path: entry.path,
                   insertToken: serializeComposerContextMention(entry.isDirectory ? 'folder' : 'file', resolveWorkspacePath(entry.path))
                 }))
             : (listing as FilesystemDirectoryListing).entries
@@ -336,6 +340,8 @@ export function ComposerBar({
                   label: entry.name,
                   description: resolveWorkspacePath(entry.path),
                   icon: entry.isDirectory ? <FolderOpen size={15} /> : <FileIcon size={15} />,
+                  kind: entry.isDirectory ? 'folder' : 'file',
+                  path: entry.path,
                   insertToken: serializeComposerContextMention(entry.isDirectory ? 'folder' : 'file', resolveWorkspacePath(entry.path))
                 }));
           setContextMenuFileItems(nextItems);
@@ -447,6 +453,13 @@ export function ComposerBar({
       return;
     }
 
+    if (mode === 'shell' && item.kind === 'folder' && item.path && onExecuteTerminalCommand) {
+      const command = `cd ${shellQuotePath(item.path)}`;
+      onExecuteTerminalCommand(command);
+      closeContextMenu(true);
+      return;
+    }
+
     const insertToken = item.insertToken;
     if (!insertToken) {
       return;
@@ -475,6 +488,14 @@ export function ComposerBar({
       }
     });
   };
+
+  function shellQuotePath(value: string) {
+    if (!value.trim()) {
+      return "''";
+    }
+
+    return `'${value.replace(/'/g, "'\\''")}'`;
+  }
 
   const handleContextMenuKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (!contextMenuOpen) {

@@ -1,7 +1,15 @@
 import { useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import type { UseChatOptions } from '../types';
-import type { AgentContinueRequest, AgentStartResponse, ExecutionPlanArtifact, ExecutionPlanWorkstream, PlanExecutionUpdate } from '../../../types/chat';
+import type {
+  AgentContinueRequest,
+  AgentStartResponse,
+  ExecutionPlanArtifact,
+  ExecutionPlanWorkstream,
+  PlanExecutionUpdate,
+  WorkspaceExplorationArtifact,
+  WorkspaceExplorationSegment
+} from '../../../types/chat';
 import { useMemoryStore } from '../../../stores/memoryStore';
 import { artifactsFromMessages, chatHistoryFromMessages, titleFromConversationContent, statusFromConversationContent } from '../helpers';
 import { ensureAgentEventBridge, pendingTokenText, setAssistantRegistration } from '../bridge';
@@ -116,6 +124,7 @@ type UseChatActionsProps = {
   onCommandApprovalRef: React.MutableRefObject<UseChatOptions['onCommandApproval']>;
   onFileChangeApprovalRef: React.MutableRefObject<UseChatOptions['onFileChangeApproval']>;
   onWebSearchRef: React.MutableRefObject<UseChatOptions['onWebSearch']>;
+  onWorkspaceExplorationRef: React.MutableRefObject<UseChatOptions['onWorkspaceExploration']>;
 };
 
 function resolveAgentPrompt(rawPrompt: string) {
@@ -162,7 +171,14 @@ function resolveAgentPrompt(rawPrompt: string) {
   ].join('\n');
 }
 
-export function useChatActions({ options, state, onCommandApprovalRef, onFileChangeApprovalRef, onWebSearchRef }: UseChatActionsProps) {
+export function useChatActions({
+  options,
+  state,
+  onCommandApprovalRef,
+  onFileChangeApprovalRef,
+  onWebSearchRef,
+  onWorkspaceExplorationRef
+}: UseChatActionsProps) {
   const attachFiles = useCallback(async (files: File[]) => {
     if (!files.length) {
       return;
@@ -290,7 +306,8 @@ export function useChatActions({ options, state, onCommandApprovalRef, onFileCha
       applyPlanExecution: (update, toolCallId) => submitPlanExecution(toolCallId, update),
       onCommandApproval: (approval) => onCommandApprovalRef.current?.(approval),
       onFileChangeApproval: (approval) => onFileChangeApprovalRef.current?.(approval),
-      onWebSearch: (request) => onWebSearchRef.current?.(request)
+      onWebSearch: (request) => onWebSearchRef.current?.(request),
+      onWorkspaceExploration: (request) => onWorkspaceExplorationRef.current?.(request)
     });
 
     await ensureAgentEventBridge();
@@ -330,6 +347,7 @@ export function useChatActions({ options, state, onCommandApprovalRef, onFileCha
     onCommandApprovalRef,
     onFileChangeApprovalRef,
     onWebSearchRef,
+    onWorkspaceExplorationRef,
     options.cwd,
     options.modelId,
     options.terminalModelId,
@@ -488,7 +506,8 @@ export function useChatActions({ options, state, onCommandApprovalRef, onFileCha
       applyPlanExecution: (update, toolCallId) => submitPlanExecution(toolCallId, update),
       onCommandApproval: (approval) => onCommandApprovalRef.current?.(approval),
       onFileChangeApproval: (approval) => onFileChangeApprovalRef.current?.(approval),
-      onWebSearch: (request) => onWebSearchRef.current?.(request)
+      onWebSearch: (request) => onWebSearchRef.current?.(request),
+      onWorkspaceExploration: (request) => onWorkspaceExplorationRef.current?.(request)
     });
 
     try {
@@ -541,7 +560,7 @@ export function useChatActions({ options, state, onCommandApprovalRef, onFileCha
   const submitToolResult = async (
     toolCallId: string,
     result: string,
-    kind: 'command' | 'web-search' | 'file-change' = 'command',
+    kind: 'command' | 'web-search' | 'file-change' | 'workspace-exploration' = 'command',
     label?: string,
     webSearchResults?: Array<{ title: string; url: string; snippet?: string }>,
     toolResultOptions?: {
@@ -549,6 +568,7 @@ export function useChatActions({ options, state, onCommandApprovalRef, onFileCha
       webSearchStatus?: 'searching' | 'success' | 'error';
       fileDiffs?: import('../../../types/diff').FileDiff[];
       localAssistantSummary?: string;
+      workspaceExploration?: WorkspaceExplorationArtifact;
     }
   ) => {
     const ts = Date.now();
@@ -569,6 +589,8 @@ export function useChatActions({ options, state, onCommandApprovalRef, onFileCha
           ? 'Web Search'
           : kind === 'file-change'
             ? 'File Changes'
+            : kind === 'workspace-exploration'
+              ? 'Workspace Exploration'
             : 'Tool Output',
         body: result,
         toolKind: kind,
@@ -577,6 +599,11 @@ export function useChatActions({ options, state, onCommandApprovalRef, onFileCha
           webSearchStatus: toolResultOptions?.webSearchStatus ?? (webSearchResults ? 'success' : 'searching'),
           webSearchQuery: label,
           webSearchResults
+        } : kind === 'workspace-exploration' ? {
+          workspaceExploration: mergeWorkspaceExplorationArtifacts(
+            message.workspaceExploration,
+            toolResultOptions?.workspaceExploration
+          )
         } : {})
       }));
     } else {
@@ -587,6 +614,8 @@ export function useChatActions({ options, state, onCommandApprovalRef, onFileCha
           ? 'Web Search'
           : kind === 'file-change'
             ? 'File Changes'
+            : kind === 'workspace-exploration'
+              ? 'Workspace Exploration'
             : 'Tool Output',
         body: result,
         conversationId,
@@ -597,6 +626,11 @@ export function useChatActions({ options, state, onCommandApprovalRef, onFileCha
           webSearchStatus: toolResultOptions?.webSearchStatus ?? (webSearchResults ? 'success' : 'searching'),
           webSearchQuery: label,
           webSearchResults
+        } : kind === 'workspace-exploration' ? {
+          workspaceExploration: mergeWorkspaceExplorationArtifacts(
+            undefined,
+            toolResultOptions?.workspaceExploration
+          )
         } : {})
       });
     }
@@ -662,4 +696,40 @@ function mergeWorkstreams(
   });
 
   return Array.from(nextById.values());
+}
+
+function mergeWorkspaceExplorationArtifacts(
+  current?: WorkspaceExplorationArtifact,
+  incoming?: WorkspaceExplorationArtifact
+): WorkspaceExplorationArtifact | undefined {
+  if (!current && !incoming) {
+    return undefined;
+  }
+
+  if (!current) {
+    return incoming;
+  }
+
+  if (!incoming) {
+    return current;
+  }
+
+  const currentSegments = current.segments ?? [];
+  const incomingSegments = incoming.segments ?? [];
+  const mergedSegments: WorkspaceExplorationSegment[] = [...currentSegments, ...incomingSegments];
+
+  const mergedSearches = mergedSegments.length > 0
+    ? mergedSegments.flatMap((segment) => segment.searches)
+    : [...(current.searches ?? []), ...(incoming.searches ?? [])];
+  const mergedFiles = mergedSegments.length > 0
+    ? mergedSegments.flatMap((segment) => segment.files)
+    : [...(current.files ?? []), ...(incoming.files ?? [])];
+
+  return {
+    query: incoming.query || current.query,
+    summary: incoming.summary?.trim() || current.summary,
+    segments: mergedSegments,
+    searches: mergedSearches,
+    files: mergedFiles
+  };
 }

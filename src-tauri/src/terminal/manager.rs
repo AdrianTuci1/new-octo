@@ -1,10 +1,11 @@
-use std::{collections::HashMap, io::Read, process::Command, sync::Mutex, thread};
+use std::{collections::HashMap, io::Read, path::PathBuf, process::Command, sync::Mutex, thread};
 
 use tauri::{AppHandle, Emitter, State};
 
 use super::ansi::{clean_terminal_text, HookParser, TerminalStreamEvent};
 use super::block::TerminalBlock;
 use super::completions::{ShellCompletion, ShellCompletionFormat};
+use super::fs::home_dir;
 use super::events::{
     emit_session_state, TerminalBlockOutputEvent, TerminalCompletionResultEvent,
     TerminalCompletionUpdateEvent, TerminalCompletionsFinishedEvent,
@@ -20,6 +21,7 @@ use super::requests::{
 use super::session::{
     SharedTerminalSession, TerminalSessionInfo, TerminalSessionKind, TerminalSessionStatus,
 };
+use crate::shell_signatures::parser::parse_shell_input;
 use super::transport;
 
 #[derive(Clone)]
@@ -175,6 +177,12 @@ pub fn terminal_run_command(
         Ok((exit_code, output_text)) => (Some(exit_code), output_text),
         Err(error) => (Some(1), format!("{error}\n")),
     };
+
+    if exit_code == Some(0) {
+        if let Some(next_cwd) = resolve_command_cwd_change(command, session.cwd().as_deref(), session.previous_cwd().as_deref()) {
+            session.set_cwd(Some(next_cwd));
+        }
+    }
 
     if !output_text.is_empty() {
         let _ = session.with_blocks(|blocks| blocks.append_output(&block.id, &output_text));
@@ -411,6 +419,54 @@ fn run_shell_command(
     output_text.push_str(&String::from_utf8_lossy(&output.stderr));
 
     Ok((output.status.code().unwrap_or(1), output_text))
+}
+
+fn resolve_command_cwd_change(
+    command: &str,
+    current_cwd: Option<&str>,
+    previous_cwd: Option<&str>,
+) -> Option<String> {
+    let parsed = parse_shell_input(command);
+    let first = parsed.tokens.first()?.as_str();
+    if first != "cd" {
+        return None;
+    }
+
+    let target = parsed.tokens.get(1).map(String::as_str).unwrap_or("");
+    resolve_cd_target(target, current_cwd, previous_cwd)
+}
+
+fn resolve_cd_target(
+    target: &str,
+    current_cwd: Option<&str>,
+    previous_cwd: Option<&str>,
+) -> Option<String> {
+    let target = target.trim();
+    let home = home_dir();
+
+    let resolved = if target.is_empty() {
+        home
+    } else if target == "-" {
+        previous_cwd
+            .map(PathBuf::from)
+            .or_else(|| current_cwd.map(PathBuf::from))
+    } else if target == "~" {
+        home
+    } else if let Some(rest) = target.strip_prefix("~/") {
+        home.map(|home_dir| home_dir.join(rest))
+    } else {
+        let path = PathBuf::from(target);
+        if path.is_absolute() {
+            Some(path)
+        } else {
+            current_cwd.map(|cwd| PathBuf::from(cwd).join(path))
+        }
+    }?;
+
+    resolved
+        .canonicalize()
+        .map(|path| path.to_string_lossy().to_string())
+        .ok()
 }
 
 #[cfg(test)]

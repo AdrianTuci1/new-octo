@@ -8,7 +8,37 @@ import { normalizeAgentSettings } from '../../../../App/settings/agentSettings';
 import { normalizeCodeSettings } from '../../../../App/settings/codeSettings';
 import type { LauncherProps } from '../types';
 import type { CommandApproval, FileChangeApproval } from '../../../../../types';
-import type { WebSearchRequest, WebSearchResponse } from '../../../../../types/chat';
+import type {
+  WebSearchRequest,
+  WebSearchResponse,
+  WorkspaceExplorationRequest,
+  WorkspaceExplorationEntry,
+  WorkspaceExplorationSegment,
+  WorkspaceExplorationSearch
+} from '../../../../../types/chat';
+import type { TerminalCommandBlock } from '../../../../../types/terminal';
+
+function sortTerminalBlocksChronologically(blocks: TerminalCommandBlock[]) {
+  return [...blocks].sort((left, right) => {
+    const leftTime = Date.parse(left.startedAt || '') || 0;
+    const rightTime = Date.parse(right.startedAt || '') || 0;
+
+    if (leftTime !== rightTime) {
+      return leftTime - rightTime;
+    }
+
+    return left.id.localeCompare(right.id);
+  });
+}
+
+function dedupeTerminalBlocks(blocks: TerminalCommandBlock[]) {
+  const blockById = new Map<string, TerminalCommandBlock>();
+  blocks.forEach((block) => {
+    blockById.set(block.id, block);
+  });
+
+  return [...blockById.values()];
+}
 
 export function useLauncherRuntime(props: LauncherProps, store: any, tray: any) {
   const {
@@ -39,6 +69,11 @@ export function useLauncherRuntime(props: LauncherProps, store: any, tray: any) 
   const setComposerSurface = useLauncherStore(state => state.setComposerSurface);
   const setModeLock = useLauncherStore(state => state.setModeLock);
   const openModelDrawer = useUIStore((state) => state.openModelDrawer);
+
+  function fileNameFromPath(path: string) {
+    const normalized = path.endsWith('/') ? path.slice(0, -1) : path;
+    return normalized.split('/').pop() || normalized;
+  }
 
   const workingDirectoryRaw = Hooks.useWorkingDirectory({
     initialPath: initialWorkingDirectory,
@@ -126,8 +161,10 @@ export function useLauncherRuntime(props: LauncherProps, store: any, tray: any) 
     target: terminalTarget,
     persistSession: persistTerminalSession,
     sharedBlockMetaById: props.sharedTerminalBlockMetaById,
+    sharedCommandBlocks: props.sharedTerminalBlocks,
     sharedSyntheticBlocks: props.sharedSyntheticBlocks,
     onBlockMetaChange: props.onTerminalBlockMetaChange,
+    onCommandBlocksChange: props.onTerminalBlocksChange,
     onSyntheticBlocksChange: props.onSyntheticBlocksChange,
     onSessionChange: props.onTerminalSessionChange
   });
@@ -156,7 +193,9 @@ export function useLauncherRuntime(props: LauncherProps, store: any, tray: any) 
     target: agentTerminalTarget,
     persistSession: persistTerminalSession,
     sharedBlockMetaById: props.sharedAgentTerminalBlockMetaById,
+    sharedCommandBlocks: props.sharedAgentTerminalBlocks,
     onBlockMetaChange: props.onAgentTerminalBlockMetaChange,
+    onCommandBlocksChange: props.onAgentTerminalBlocksChange,
     onSessionChange: props.onAgentTerminalSessionChange
   });
 
@@ -178,6 +217,20 @@ export function useLauncherRuntime(props: LauncherProps, store: any, tray: any) 
     agentTerminalRaw.replaceBlocks,
     agentTerminalRaw.clearBlocks
   ]);
+
+  const activeSurfaceWorkingDirectory = store.composerSurface === 'terminal'
+    ? terminal.cwd ?? workingDirectory.currentPath
+    : agentTerminal.cwd ?? workingDirectory.currentPath;
+
+  const conversationTerminalBlocks = useMemo(
+    () => sortTerminalBlocksChronologically(
+      dedupeTerminalBlocks([
+        ...terminalRaw.blocks.filter(Utils.isCommandBlock),
+        ...agentTerminalRaw.blocks.filter(Utils.isCommandBlock)
+      ])
+    ),
+    [agentTerminalRaw.blocks, terminalRaw.blocks]
+  );
 
   const requestWebSearch = useCallback(async (request: WebSearchRequest) => {
     if (!agentSettings.enabled || !agentSettings.permissions.webSearch || !activeProfileCallWebTools) {
@@ -231,6 +284,220 @@ export function useLauncherRuntime(props: LauncherProps, store: any, tray: any) 
     }
   }, [agentSettings.enabled, agentSettings.permissions.webSearch, activeProfileCallWebTools]);
 
+  const requestWorkspaceExploration = useCallback(async (request: WorkspaceExplorationRequest) => {
+    if (!agentSettings.enabled) {
+      const createdAt = new Date().toISOString();
+      const noteEntry: WorkspaceExplorationEntry = {
+        id: `workspace-exploration-disabled-${Date.now()}`,
+        kind: 'note',
+        text: 'Workspace exploration is disabled in Agent settings.',
+        createdAt
+      };
+      void chatApiRef.current?.submitToolResult(
+        request.toolCallId,
+        'Workspace exploration is disabled in Agent settings.',
+        'workspace-exploration',
+        request.query,
+        [],
+        {
+          workspaceExploration: {
+            query: request.query,
+            summary: 'Workspace exploration is disabled in Agent settings.',
+            segments: [{
+              id: `workspace-exploration-disabled-${Date.now()}`,
+              createdAt,
+              summary: 'Workspace exploration is disabled in Agent settings.',
+              entries: [noteEntry],
+              searches: [],
+              files: []
+            }],
+            searches: [],
+            files: []
+          }
+        }
+      );
+      return;
+    }
+
+    const query = request.query.trim();
+    if (!query) {
+      return;
+    }
+
+    const cwd = workingDirectory.currentPath;
+    const maxResults = request.maxResults ?? 6;
+
+    type FilesystemSearchEntry = {
+      path: string;
+      isDirectory: boolean;
+    };
+
+    type FilesystemSearchListing = {
+      currentPath: string;
+      entries: FilesystemSearchEntry[];
+    };
+
+    type CodeIndexSearchResult = {
+      path: string;
+      snippet: string;
+      relativePath: string;
+      language: string;
+    };
+
+    try {
+      const createdAt = new Date().toISOString();
+      const searches: WorkspaceExplorationSearch[] = [];
+      const fileMap = new Map<string, { path: string; source: 'code-index' | 'filesystem'; snippet?: string }>();
+      const collectedErrors: string[] = [];
+      const entries: WorkspaceExplorationEntry[] = [];
+
+      if (codeSettings.indexing.enabled) {
+        try {
+          const results = await invoke<CodeIndexSearchResult[]>('code_index_search', {
+            query,
+            maxResults: Math.max(1, Math.min(20, maxResults))
+          });
+
+          searches.push({
+            source: 'code-index',
+            query,
+            resultCount: results.length
+          });
+          entries.push({
+            id: `workspace-exploration-${createdAt}-code-index-search`,
+            kind: 'search',
+            text: `Searched for ${query}`,
+            detail: `in code index (${results.length} match${results.length === 1 ? '' : 'es'})`,
+            createdAt
+          });
+
+          results.forEach((entry) => {
+            if (!entry.path.trim()) return;
+            if (!fileMap.has(entry.path)) {
+              fileMap.set(entry.path, {
+                path: entry.path,
+                source: 'code-index',
+                snippet: entry.snippet?.trim() || undefined
+              });
+            }
+          });
+        } catch (error) {
+          collectedErrors.push(error instanceof Error ? error.message : String(error));
+        }
+      }
+
+      try {
+        const listing = await invoke<FilesystemSearchListing>('terminal_search_directory_entries', {
+          request: {
+            path: cwd,
+            query
+          }
+        });
+
+        searches.push({
+          source: 'filesystem',
+          query,
+          resultCount: listing.entries.filter((entry) => !entry.isDirectory).length
+        });
+        entries.push({
+          id: `workspace-exploration-${createdAt}-filesystem-search`,
+          kind: 'search',
+          text: `Searched for ${query}`,
+          detail: `in workspace files (${listing.entries.filter((entry) => !entry.isDirectory).length} match${listing.entries.filter((entry) => !entry.isDirectory).length === 1 ? '' : 'es'})`,
+          createdAt
+        });
+
+        listing.entries.forEach((entry) => {
+          if (entry.isDirectory || !entry.path.trim()) return;
+          if (!fileMap.has(entry.path)) {
+            fileMap.set(entry.path, {
+              path: entry.path,
+              source: 'filesystem'
+            });
+          }
+        });
+      } catch (error) {
+        collectedErrors.push(error instanceof Error ? error.message : String(error));
+      }
+
+      const files = Array.from(fileMap.values()).slice(0, maxResults);
+      const summary = `Explored ${files.length} file${files.length === 1 ? '' : 's'}, ${searches.length} search${searches.length === 1 ? '' : 'es'}.`;
+      files.forEach((file, index) => {
+        entries.push({
+          id: `workspace-exploration-${createdAt}-file-${index}`,
+          kind: 'read',
+          text: `Read ${fileNameFromPath(file.path)}`,
+          detail: file.snippet?.trim() || undefined,
+          path: file.path,
+          createdAt
+        });
+      });
+
+      const segment: WorkspaceExplorationSegment = {
+        id: `workspace-exploration-${createdAt}`,
+        createdAt,
+        summary,
+        entries,
+        searches,
+        files
+      };
+      const formatted = [
+        summary,
+        ...(collectedErrors.length > 0 ? [`Search warnings: ${collectedErrors.join(' | ')}`] : []),
+        ...entries.map((entry) => `${entry.text}${entry.detail ? ` ${entry.detail}` : ''}`)
+      ].join('\n');
+
+      void chatApiRef.current?.submitToolResult(
+        request.toolCallId,
+        formatted,
+        'workspace-exploration',
+        request.query,
+        [],
+        {
+          workspaceExploration: {
+            query,
+            summary,
+            segments: [segment],
+            searches,
+            files
+          }
+        }
+      );
+    } catch (error) {
+      const createdAt = new Date().toISOString();
+      const noteEntry: WorkspaceExplorationEntry = {
+        id: `workspace-exploration-error-${Date.now()}`,
+        kind: 'note',
+        text: `Workspace exploration failed for "${request.query}".`,
+        detail: error instanceof Error ? error.message : String(error),
+        createdAt
+      };
+      void chatApiRef.current?.submitToolResult(
+        request.toolCallId,
+        `Workspace exploration failed for "${request.query}": ${error}`,
+        'workspace-exploration',
+        request.query,
+        [],
+        {
+          workspaceExploration: {
+            query,
+            summary: `Workspace exploration failed for "${request.query}".`,
+            segments: [{
+              id: `workspace-exploration-error-${Date.now()}`,
+              createdAt,
+              summary: `Workspace exploration failed for "${request.query}".`,
+              entries: [noteEntry],
+              searches: [],
+              files: []
+            }],
+            searches: [],
+            files: []
+          }
+        }
+      );
+    }
+  }, [agentSettings.enabled, codeSettings.indexing.enabled, workingDirectory.currentPath]);
+
   const onConversationCreated = useCallback((nextId: string) => {
     setLocalConversationId(nextId);
     if (hasControlledConversation) props.onConversationChange?.(nextId);
@@ -259,10 +526,11 @@ export function useLauncherRuntime(props: LauncherProps, store: any, tray: any) 
       openModelDrawer();
     },
     onCloseTray: tray.closeTray,
-    terminalBlocks: agentTerminal.blocks,
+    terminalBlocks: conversationTerminalBlocks,
     onCommandApproval: requestCommandApproval,
     onFileChangeApproval: requestFileChangeApproval,
     onWebSearch: requestWebSearch,
+    onWorkspaceExploration: requestWorkspaceExploration,
     onConversationCreated,
     onNewChat,
     active
@@ -347,6 +615,8 @@ export function useLauncherRuntime(props: LauncherProps, store: any, tray: any) 
     queryWithoutActivator,
     terminalCommandBlocks,
     agentTerminalCommandBlocks,
+    conversationTerminalBlocks,
+    activeSurfaceWorkingDirectory,
     hasControlledConversation,
     hasControlledPendingApproval,
   }), [
@@ -370,6 +640,8 @@ export function useLauncherRuntime(props: LauncherProps, store: any, tray: any) 
     queryWithoutActivator,
     terminalCommandBlocks,
     agentTerminalCommandBlocks,
+    conversationTerminalBlocks,
+    activeSurfaceWorkingDirectory,
     hasControlledConversation,
     hasControlledPendingApproval,
   ]);

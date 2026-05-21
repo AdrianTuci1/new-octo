@@ -588,6 +588,29 @@ export function useLauncherHandlers({
     terminal
   ]);
 
+  const executeTerminalCommand = useCallback((command: string) => {
+    const normalized = command.trim();
+    if (!normalized) {
+      return;
+    }
+
+    void runCommandInSurface(
+      normalized,
+      'terminal',
+      terminal,
+      agentTerminal,
+      clearTerminalSurface,
+      'user'
+    ).then(() => {
+      chat.setQuery('');
+    });
+  }, [
+    agentTerminal,
+    chat.setQuery,
+    clearTerminalSurface,
+    terminal
+  ]);
+
   const handleComposerRecommendationClick = useCallback((action: any) => {
     chat.setQuery(action.value);
   }, [chat.setQuery]);
@@ -631,6 +654,7 @@ export function useLauncherHandlers({
     handleComposerRecommendationClick,
     handleToggleCommands,
     handleToggleTerminalAutoDetect,
-    handleHistoryEntrySelect
+    handleHistoryEntrySelect,
+    executeTerminalCommand
   };
 }

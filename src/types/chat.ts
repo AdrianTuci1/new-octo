@@ -19,10 +19,11 @@ export type ChatMessage = {
   thinkingDurationSeconds?: number;
   hasNativeThinking?: boolean;
   parentMessageId?: string;
-  toolKind?: 'command' | 'web-search' | 'plan' | 'file-change';
+  toolKind?: 'command' | 'web-search' | 'plan' | 'file-change' | 'workspace-exploration';
   webSearchStatus?: 'searching' | 'success' | 'error';
   webSearchQuery?: string;
   webSearchResults?: WebSearchResult[];
+  workspaceExploration?: WorkspaceExplorationArtifact;
   executionPlan?: ExecutionPlanArtifact;
   followUpSuggestion?: {
     label: string;
@@ -79,6 +80,50 @@ export type WebSearchResult = {
 };
 
 export type WebSearchRequest = {
+  toolCallId: string;
+  query: string;
+  maxResults?: number;
+};
+
+export type WorkspaceExplorationSearch = {
+  source: 'code-index' | 'filesystem';
+  query: string;
+  resultCount: number;
+};
+
+export type WorkspaceExplorationFile = {
+  path: string;
+  source: 'code-index' | 'filesystem';
+  snippet?: string;
+};
+
+export type WorkspaceExplorationEntry = {
+  id: string;
+  kind: 'search' | 'read' | 'note';
+  text: string;
+  detail?: string;
+  path?: string;
+  createdAt: string;
+};
+
+export type WorkspaceExplorationSegment = {
+  id: string;
+  createdAt: string;
+  summary?: string;
+  entries: WorkspaceExplorationEntry[];
+  searches: WorkspaceExplorationSearch[];
+  files: WorkspaceExplorationFile[];
+};
+
+export type WorkspaceExplorationArtifact = {
+  query: string;
+  summary?: string;
+  segments: WorkspaceExplorationSegment[];
+  searches: WorkspaceExplorationSearch[];
+  files: WorkspaceExplorationFile[];
+};
+
+export type WorkspaceExplorationRequest = {
   toolCallId: string;
   query: string;
   maxResults?: number;

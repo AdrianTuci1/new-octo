@@ -30,6 +30,7 @@ function outputFor(block: TerminalCommandBlock) {
 const WORKFLOWS_STORAGE_KEY = 'octomus.savedTerminalWorkflows';
 const BOOKMARKS_STORAGE_KEY = 'octomus.bookmarkedTerminalBlocks';
 const AGENT_CONTEXT_STORAGE_KEY = 'octomus.agentContextTerminalBlocks';
+const MAX_VISIBLE_OUTPUT_CHARS = 120_000;
 
 function readStringSet(key: string) {
   if (typeof window === 'undefined') return new Set<string>();
@@ -288,6 +289,40 @@ export function TerminalBlockDetail({
     return filteredLines.trim() === '' ? 0 : filteredLines.split('\n').length;
   }, [filteredLines, filterText]);
 
+  const renderedOutput = useMemo(() => {
+    const sourceOutput = filterText.trim() ? filteredLines : rawOutput;
+    if (
+      !sourceOutput ||
+      sourceOutput === '(Invalid RegExp)' ||
+      sourceOutput === '(No matching lines)' ||
+      sourceOutput.length <= MAX_VISIBLE_OUTPUT_CHARS
+    ) {
+      return sourceOutput || (filterText.trim() ? '(No matching lines)' : rawOutput);
+    }
+
+    const visiblePrefixChars = Math.floor(MAX_VISIBLE_OUTPUT_CHARS / 2);
+    const visibleSuffixChars = MAX_VISIBLE_OUTPUT_CHARS - visiblePrefixChars;
+    const omittedChars = sourceOutput.length - MAX_VISIBLE_OUTPUT_CHARS;
+
+    return [
+      sourceOutput.slice(0, visiblePrefixChars),
+      '',
+      `… truncated ${omittedChars.toLocaleString()} characters for performance …`,
+      '',
+      sourceOutput.slice(-visibleSuffixChars)
+    ].join('\n');
+  }, [filterText, filteredLines, rawOutput]);
+
+  const isOutputTruncated = useMemo(() => {
+    const sourceOutput = filterText.trim() ? filteredLines : rawOutput;
+    return (
+      !!sourceOutput &&
+      sourceOutput !== '(Invalid RegExp)' &&
+      sourceOutput !== '(No matching lines)' &&
+      sourceOutput.length > MAX_VISIBLE_OUTPUT_CHARS
+    );
+  }, [filterText, filteredLines, rawOutput]);
+
   const className = [
     'terminal-block-detail',
     failed ? 'failed' : '',
@@ -422,10 +457,16 @@ export function TerminalBlockDetail({
               </div>
             </div>
           )}
+
+          {isOutputTruncated && (
+            <div className="terminal-output-truncation-note">
+              Output trimmed for performance. Copy/share still uses the full buffer.
+            </div>
+          )}
         </header>
 
         <pre ref={outputRef} className="terminal-block-output">
-          {filteredLines || (filterText.trim() ? '(No matching lines)' : rawOutput)}
+          {renderedOutput}
         </pre>
       </div>
 
