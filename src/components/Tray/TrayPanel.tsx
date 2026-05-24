@@ -6,147 +6,74 @@ import { TrayFooter } from './TrayFooter';
 import { TrayHelp } from './TrayHelp';
 import { TrayHistory } from './TrayHistory';
 import { TrayModels } from './TrayModels';
-import type { HistoryEntry, HistoryTab } from '../../types/history';
-import type { ModelSpec } from '../../types/model';
-import type { CommandItem, ComposerMode, HelpItem, ShellModeSource, TrayContentMode } from '../../types/ui';
+import { useLauncherContext } from '../Layout/Launcher/LauncherContext';
 
-type TrayPanelProps = {
-  isOpen: boolean;
-  showFooter?: boolean;
-  showOpenInApp?: boolean;
-  activeMode: TrayContentMode;
-  commandSearchQuery: string;
-  helpItems: HelpItem[];
-  commandItems: CommandItem[];
-  selectedCommandIndex: number;
-  historyEntries: HistoryEntry[];
-  conversations: TrayConversationEntry[];
-  activeConversationId: string | null;
-  conversationSearchQuery: string;
-  historyTab: HistoryTab;
-  modelTab: 'all' | 'saved';
-  modelEntries: ModelSpec[];
-  selectedHistoryIndex: number;
-  selectedModelId: string | null;
-  selectedModelIndex: number;
-  inputMode: ComposerMode;
-  shellSource: ShellModeSource | null;
-  shellShortcutTokens: string[];
-  onExitShellMode: () => void;
-  onHistoryTabChange: (tab: HistoryTab) => void;
-  onSelectHistoryEntry: (entry: HistoryEntry) => void;
-  onSelectConversation: (conversationId: string) => void;
-  onConversationSearchChange: (value: string) => void;
-  onNewConversation: () => void;
-  onSelectModel: (modelId: string) => void;
-  onModelTabChange: (tab: 'all' | 'saved') => void;
-  onToggleHelp: () => void;
-  onToggleCommands: () => void;
-  onToggleConversations: () => void;
-  onInsertCommand: (command: string) => void;
-  onOpenApp?: () => void;
-  onOpenModelSettings?: () => void;
-};
+export function TrayPanel() {
+  const { launcher } = useLauncherContext();
+  const view = launcher.views.trayPanel;
 
-export function TrayPanel({
-  isOpen,
-  showFooter = true,
-  showOpenInApp = false,
-  activeMode,
-  commandSearchQuery,
-  helpItems,
-  commandItems,
-  selectedCommandIndex,
-  historyEntries,
-  conversations,
-  activeConversationId,
-  conversationSearchQuery,
-  historyTab,
-  modelTab,
-  modelEntries,
-  selectedHistoryIndex,
-  selectedModelId,
-  selectedModelIndex,
-  inputMode,
-  shellSource,
-  shellShortcutTokens,
-  onExitShellMode,
-  onHistoryTabChange,
-  onSelectHistoryEntry,
-  onSelectConversation,
-  onConversationSearchChange,
-  onNewConversation,
-  onSelectModel,
-  onModelTabChange,
-  onToggleHelp,
-  onToggleCommands,
-  onToggleConversations,
-  onInsertCommand,
-  onOpenApp,
-  onOpenModelSettings
-}: TrayPanelProps) {
   return (
-    <div className={`tray-region ${isOpen ? 'open' : 'closed'}`}>
+    <div className={`tray-region ${view.isOpen ? 'open' : 'closed'}`}>
       <div className="tray-body">
-        {activeMode === 'help' && <TrayHelp items={helpItems} />}
-        {activeMode === 'commands' && (
+        {view.activeMode === 'help' && <TrayHelp items={view.helpItems} />}
+        {view.activeMode === 'commands' && (
           <TrayCommands
-            items={commandItems}
-            query={commandSearchQuery}
-            selectedIndex={selectedCommandIndex}
-            onInsertCommand={onInsertCommand}
+            items={view.commandItems}
+            query={view.commandSearchQuery}
+            selectedIndex={view.selectedCommandIndex}
+            onInsertCommand={view.onInsertCommand}
           />
         )}
-        {activeMode === 'history' && (
+        {view.activeMode === 'history' && (
           <TrayHistory
-            activeTab={historyTab}
-            entries={historyEntries}
-            onSelectEntry={onSelectHistoryEntry}
-            onTabChange={onHistoryTabChange}
-            selectedIndex={selectedHistoryIndex}
+            activeTab={view.historyTab}
+            entries={view.historyEntries}
+            onSelectEntry={view.onSelectHistoryEntry}
+            onTabChange={view.onHistoryTabChange}
+            selectedIndex={view.selectedHistoryIndex}
           />
         )}
-        {activeMode === 'models' && (
+        {view.activeMode === 'models' && (
           <TrayModels
-            activeTab={modelTab}
-            models={modelEntries}
-            onOpenModelSettings={onOpenModelSettings}
-            onSelectModel={onSelectModel}
-            onTabChange={onModelTabChange}
-            selectedIndex={selectedModelIndex}
-            selectedModelId={selectedModelId}
+            activeTab={view.modelTab}
+            models={view.modelEntries}
+            onOpenModelSettings={view.onOpenModelSettings}
+            onSelectModel={view.onSelectModel}
+            onTabChange={view.onModelTabChange}
+            selectedIndex={view.selectedModelIndex}
+            selectedModelId={view.selectedModelId}
           />
         )}
-        {activeMode === 'conversations' && (
+        {view.activeMode === 'conversations' && (
           <TrayConversations
-            activeConversationId={activeConversationId}
-            conversations={conversations}
-            searchQuery={conversationSearchQuery}
-            onNewConversation={onNewConversation}
-            onSearchQueryChange={onConversationSearchChange}
-            onSelectConversation={onSelectConversation}
+            activeConversationId={view.activeConversationId}
+            conversations={view.conversations}
+            searchQuery={view.conversationSearchQuery}
+            onNewConversation={view.onNewConversation}
+            onSearchQueryChange={view.onConversationSearchChange}
+            onSelectConversation={view.onSelectConversation}
           />
         )}
       </div>
 
-      {showFooter && (
-        <div className={`tray-footer ${isOpen ? 'expanded' : 'collapsed'}`}>
-          {!isOpen && (
+      {view.showFooter && (
+        <div className={`tray-footer ${view.isOpen ? 'expanded' : 'collapsed'}`}>
+          {!view.isOpen && (
             <div className="tray-footer-compact-row">
               <TrayFooter
-                activeMode={activeMode}
-                inputMode={inputMode}
+                activeMode={view.activeMode}
+                inputMode={view.inputMode}
                 isOpen={false}
-                onExitShellMode={onExitShellMode}
-                onToggleCommands={onToggleCommands}
-                onToggleConversations={onToggleConversations}
-                onToggleHelp={onToggleHelp}
-                shellShortcutTokens={shellShortcutTokens}
-                shellSource={shellSource}
+                onExitShellMode={view.onExitShellMode}
+                onToggleCommands={view.onToggleCommands}
+                onToggleConversations={view.onToggleConversations}
+                onToggleHelp={view.onToggleHelp}
+                shellShortcutTokens={view.shellShortcutTokens}
+                shellSource={view.shellSource}
               />
 
-              {showOpenInApp && onOpenApp && (
-                <button className="tray-open-app-button" type="button" onClick={onOpenApp}>
+              {view.showOpenInApp && view.onOpenApp && (
+                <button className="tray-open-app-button" type="button" onClick={view.onOpenApp}>
                   <span className="mode-button tray-open-app-shortcut" aria-hidden="true">
                     <Command size={10} />
                   </span>
@@ -157,23 +84,23 @@ export function TrayPanel({
             </div>
           )}
 
-          {isOpen && (
+          {view.isOpen && (
             <>
               <div className="tray-footer-open-row">
                 <TrayFooter
-                  activeMode={activeMode}
-                  inputMode={inputMode}
+                  activeMode={view.activeMode}
+                  inputMode={view.inputMode}
                   isOpen={true}
-                  onExitShellMode={onExitShellMode}
-                  onToggleCommands={onToggleCommands}
-                  onToggleConversations={onToggleConversations}
-                  onToggleHelp={onToggleHelp}
-                  shellShortcutTokens={shellShortcutTokens}
-                  shellSource={shellSource}
+                  onExitShellMode={view.onExitShellMode}
+                  onToggleCommands={view.onToggleCommands}
+                  onToggleConversations={view.onToggleConversations}
+                  onToggleHelp={view.onToggleHelp}
+                  shellShortcutTokens={view.shellShortcutTokens}
+                  shellSource={view.shellSource}
                 />
 
-                {showOpenInApp && onOpenApp && (
-                  <button className="tray-open-app-button" type="button" onClick={onOpenApp}>
+                {view.showOpenInApp && view.onOpenApp && (
+                  <button className="tray-open-app-button" type="button" onClick={view.onOpenApp}>
                     <span className="mode-button tray-open-app-shortcut" aria-hidden="true">
                       <Command size={10} />
                     </span>

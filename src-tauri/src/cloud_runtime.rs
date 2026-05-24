@@ -287,7 +287,11 @@ fn start_custom_vm_run(
             "SSH private key is missing from secure storage for this cloud profile".to_string()
         })?;
         let key_path = write_ephemeral_private_key(&profile_id, &private_key)?;
-        command.arg("-i").arg(&key_path).arg("-o").arg("IdentitiesOnly=yes");
+        command
+            .arg("-i")
+            .arg(&key_path)
+            .arg("-o")
+            .arg("IdentitiesOnly=yes");
         key_path_to_remove = Some(key_path);
     }
 
@@ -436,7 +440,11 @@ fn build_remote_agent_script(launch_response: &BuildCloudRunLaunchResponse) -> S
     script.push_str("export PATH=\"$octomus_dir:$PATH\"\n");
 
     for var in &launch_response.environment {
-        script.push_str(&format!("export {}={}\n", var.name, shell_quote(&var.value)));
+        script.push_str(&format!(
+            "export {}={}\n",
+            var.name,
+            shell_quote(&var.value)
+        ));
     }
 
     script.push_str("exec ");

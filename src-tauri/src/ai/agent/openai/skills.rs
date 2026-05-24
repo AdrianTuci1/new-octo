@@ -51,7 +51,11 @@ pub fn list_available_skills() -> Vec<SkillCatalogItem> {
             let content = fs::read_to_string(&skill_md_path).ok()?;
             let (parsed_name, description) = parse_skill_metadata(&content);
             Some(SkillCatalogItem {
-                name: if parsed_name.is_empty() { skill_name } else { parsed_name },
+                name: if parsed_name.is_empty() {
+                    skill_name
+                } else {
+                    parsed_name
+                },
                 description,
                 path: skill_dir.to_string_lossy().to_string(),
             })
@@ -173,9 +177,12 @@ fn parse_skill_metadata(content: &str) -> (String, String) {
         return (String::new(), String::new());
     }
 
-    let Some(end_idx) = lines.iter().enumerate().skip(1).find_map(|(index, line)| {
-        line.trim().eq("---").then_some(index)
-    }) else {
+    let Some(end_idx) = lines
+        .iter()
+        .enumerate()
+        .skip(1)
+        .find_map(|(index, line)| line.trim().eq("---").then_some(index))
+    else {
         return (String::new(), String::new());
     };
 
@@ -186,7 +193,11 @@ fn parse_skill_metadata(content: &str) -> (String, String) {
     while index < frontmatter_lines.len() {
         let line = frontmatter_lines[index].trim_end();
         if let Some(value) = line.strip_prefix("name:") {
-            name = value.trim().trim_matches('"').trim_matches('\'').to_string();
+            name = value
+                .trim()
+                .trim_matches('"')
+                .trim_matches('\'')
+                .to_string();
         } else if let Some(value) = line.strip_prefix("description:") {
             let value = value.trim();
             if matches!(value, ">" | "|" | ">-" | "|-") {

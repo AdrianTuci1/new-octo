@@ -1,12 +1,11 @@
 import './ModelSetupOverlay.css';
 import { Command } from 'lucide-react';
+import { useLauncherContext } from '../Layout/Launcher/LauncherContext';
 
-type ModelSetupOverlayProps = {
-  onBack: () => void;
-  onOpenModelSettings: () => void;
-};
+export function ModelSetupOverlay() {
+  const { launcher } = useLauncherContext();
+  const { onBack, onOpenModelSettings } = launcher.views.modelSetupOverlay;
 
-export function ModelSetupOverlay({ onBack, onOpenModelSettings }: ModelSetupOverlayProps) {
   return (
     <section className="composer-setup-overlay" aria-label="Model setup required">
       <div className="composer-setup-overlay-content" role="status" aria-live="polite">
@@ -43,4 +42,3 @@ export function ModelSetupOverlay({ onBack, onOpenModelSettings }: ModelSetupOve
     </section>
   );
 }
-

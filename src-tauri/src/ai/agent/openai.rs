@@ -6,5 +6,5 @@ pub mod skills;
 mod tools;
 mod utils;
 
-pub use config::{OpenAiCompatibleConfig, DEFAULT_BASE_URL, DEFAULT_MODEL_ID, OPENROUTER_URL};
+pub use config::OpenAiCompatibleConfig;
 pub use harness::OpenAiCompatibleHarness;

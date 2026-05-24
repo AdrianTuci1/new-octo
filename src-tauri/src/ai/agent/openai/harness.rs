@@ -64,6 +64,7 @@ async fn stream_chat_completion(
     let mut forced_final_answer_retry_used = false;
     let mut forced_follow_up_retry_used = false;
     let mut forced_action_retry_used = false;
+    let mut forced_file_change_cleanup_retry_used = false;
 
     while attempt < 3 {
         sink.status(
@@ -157,6 +158,7 @@ async fn stream_chat_completion(
         let mut current_tool_args = String::new();
         let mut emitted_follow_up_tool_call = false;
         let mut emitted_action_tool_call = false;
+        let mut emitted_file_change_tool_call = false;
         let mut ignored_plan_tool_call = false;
         let mut usage = None;
         let mut sse_buffer = String::new();
@@ -317,6 +319,9 @@ async fn stream_chat_completion(
                             emitted_follow_up_tool_call = true;
                         } else {
                             emitted_action_tool_call = true;
+                            if current_tool_name == "propose_file_change" {
+                                emitted_file_change_tool_call = true;
+                            }
                         }
 
                         sink.tool_call(AgentToolCall {
@@ -402,6 +407,15 @@ async fn stream_chat_completion(
         let visible_response = streamed.trim();
         let reasoning_response = streamed_reasoning.trim();
         let pseudo_plan_response = is_pseudo_plan_response(visible_response);
+        let should_force_file_change_retry = prompt_requests_file_change(&context.prompt)
+            && response_looks_like_inline_code(visible_response)
+            && !emitted_action_tool_call
+            && !forced_action_retry_used;
+        let should_force_file_change_cleanup_retry = should_retry_file_change_duplicate_code(
+            visible_response,
+            emitted_file_change_tool_call,
+            forced_file_change_cleanup_retry_used,
+        );
         if (visible_response.is_empty() || pseudo_plan_response)
             && !emitted_action_tool_call
             && (ignored_plan_tool_call || pseudo_plan_response || reasoning_response.is_empty())
@@ -415,6 +429,44 @@ async fn stream_chat_completion(
                     Dacă sarcina cere explorare recursivă, căutare de fișiere, funcții sau variabile în workspace, emite `explore_workspace`. \
                     Dacă sarcina cere rulare/verificare/test, emite `propose_terminal_command`. \
                     Dacă deja există un fișier sau un rezultat în context, continuă concret următorul pas. \
+                    Cererea curentă este: {}",
+                    context.prompt
+                ),
+                tool_call_id: None,
+                tool_calls: None,
+            });
+            forced_action_retry_used = true;
+            attempt += 1;
+            continue;
+        }
+
+        if should_force_file_change_cleanup_retry {
+            negotiation_messages.push(AgentInputMessage {
+                role: "system".to_string(),
+                content: format!(
+                    "Ai emis deja `propose_file_change`, dar ai repetat codul sau diff-ul în răspunsul vizibil. \
+                    Reîncearcă și păstrează doar un mesaj foarte scurt pentru utilizator, fără code block, fără a repeta conținutul fișierului și fără a dubla diff-ul. \
+                    UI-ul afișează deja blocul de fișier nativ. \
+                    Nu emite `suggest_follow_up` în această încercare. \
+                    Cererea curentă este: {}",
+                    context.prompt
+                ),
+                tool_call_id: None,
+                tool_calls: None,
+            });
+            forced_file_change_cleanup_retry_used = true;
+            attempt += 1;
+            continue;
+        }
+
+        if should_force_file_change_retry {
+            negotiation_messages.push(AgentInputMessage {
+                role: "system".to_string(),
+                content: format!(
+                    "Cererea utilizatorului cere creare sau generare de cod într-un fișier local, dar ai răspuns cu cod vizibil în chat. \
+                    Reîncearcă folosind `propose_file_change` în loc de code block. \
+                    Alege un nume de fișier scurt și rezonabil dacă utilizatorul nu a dat unul explicit. \
+                    Nu emite `suggest_follow_up` în această încercare. \
                     Cererea curentă este: {}",
                     context.prompt
                 ),
@@ -801,12 +853,77 @@ fn prompt_supports_plan(prompt: &str) -> bool {
     plan_keywords.iter().any(|keyword| prompt.contains(keyword))
 }
 
+fn prompt_requests_file_change(prompt: &str) -> bool {
+    let prompt = prompt.to_lowercase();
+    let creation_keywords = [
+        "create",
+        "creeaza",
+        "creează",
+        "generate",
+        "genereaza",
+        "generează",
+        "write",
+        "scrie",
+        "implement",
+        "build",
+        "fa ",
+        "fă ",
+    ];
+    let file_targets = [
+        "file",
+        "fișier",
+        "fisier",
+        "script",
+        ".py",
+        ".ts",
+        ".tsx",
+        ".js",
+        ".rs",
+        ".go",
+        ".java",
+        ".json",
+        "python",
+        "component",
+        "module",
+        "functie",
+        "funcție",
+        "generator",
+        "class",
+    ];
+
+    creation_keywords
+        .iter()
+        .any(|keyword| prompt.contains(keyword))
+        && file_targets.iter().any(|keyword| prompt.contains(keyword))
+}
+
+fn response_looks_like_inline_code(visible_response: &str) -> bool {
+    let normalized = visible_response.trim_start();
+    normalized.contains("```")
+        || normalized.starts_with("def ")
+        || normalized.starts_with("class ")
+        || normalized.starts_with("function ")
+        || normalized.starts_with("const ")
+        || normalized.starts_with("let ")
+        || normalized.starts_with("import ")
+}
+
 fn should_retry_follow_up_only(
     visible_response: &str,
     emitted_follow_up_tool_call: bool,
     forced_follow_up_retry_used: bool,
 ) -> bool {
     visible_response.is_empty() && emitted_follow_up_tool_call && !forced_follow_up_retry_used
+}
+
+fn should_retry_file_change_duplicate_code(
+    visible_response: &str,
+    emitted_file_change_tool_call: bool,
+    forced_file_change_cleanup_retry_used: bool,
+) -> bool {
+    emitted_file_change_tool_call
+        && response_looks_like_inline_code(visible_response)
+        && !forced_file_change_cleanup_retry_used
 }
 
 fn is_pseudo_plan_response(visible_response: &str) -> bool {
@@ -932,11 +1049,8 @@ fn build_chat_messages(context: &AgentHarnessContext) -> Vec<Value> {
 
     let injected_skills_text = skills::load_skills_instructions(&context.prompt, &context.messages);
 
-    let mut system_prompt = prompt::build_system_prompt(
-        cwd,
-        &context.target_os,
-        &context.target_arch
-    );
+    let mut system_prompt =
+        prompt::build_system_prompt(cwd, &context.target_os, &context.target_arch);
     if !injected_skills_text.is_empty() {
         system_prompt.push_str(
             "\n\n[INFORMATIE INVIZIBILA PENTRU UTILIZATOR - SKILL-URI INVOCATE SI ACTIVE]",
@@ -1203,7 +1317,8 @@ fn cancelled_outcome(prompt: &str, streamed: &str) -> AgentHarnessOutcome {
 mod tests {
     use super::{
         guardian_intercepted_tool_calls, longest_tag_suffix_len, normalize_outbound_tool_calls,
-        prompt_supports_terminal_command, should_retry_follow_up_only,
+        prompt_supports_terminal_command, should_retry_file_change_duplicate_code,
+        should_retry_follow_up_only,
     };
     use serde_json::json;
 
@@ -1220,6 +1335,30 @@ mod tests {
         assert!(!should_retry_follow_up_only("Rezumat util", true, false));
         assert!(!should_retry_follow_up_only("", false, false));
         assert!(!should_retry_follow_up_only("", true, true));
+    }
+
+    #[test]
+    fn file_change_cleanup_retry_depends_on_duplicate_visible_code() {
+        assert!(should_retry_file_change_duplicate_code(
+            "```python\nprint('hi')\n```",
+            true,
+            false
+        ));
+        assert!(!should_retry_file_change_duplicate_code(
+            "Am pregătit fișierul pentru review.",
+            true,
+            false
+        ));
+        assert!(!should_retry_file_change_duplicate_code(
+            "```python\nprint('hi')\n```",
+            false,
+            false
+        ));
+        assert!(!should_retry_file_change_duplicate_code(
+            "```python\nprint('hi')\n```",
+            true,
+            true
+        ));
     }
 
     #[test]

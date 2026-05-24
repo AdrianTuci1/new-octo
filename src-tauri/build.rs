@@ -30,7 +30,10 @@ fn sync_release_dock_icon() {
 
     let manifest_dir =
         PathBuf::from(env::var("CARGO_MANIFEST_DIR").expect("missing CARGO_MANIFEST_DIR"));
-    let dock_source = manifest_dir.join("..").join("assets").join("logo-dock.icns");
+    let dock_source = manifest_dir
+        .join("..")
+        .join("assets")
+        .join("logo-dock.icns");
     let dock_target = manifest_dir.join("icons").join("icon.icns");
     let is_release = env::var("PROFILE").ok().as_deref() == Some("release");
 

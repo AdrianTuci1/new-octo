@@ -44,6 +44,8 @@ export function useLauncherActions({
     
     runtime.setResolvedPendingApproval(null);
     store.setModeLock(null);
+    store.setAutodetectedShellLatch(false);
+    store.setAllowSingleCharacterCommandPrediction(false);
     tray.closeTray();
     store.setComposerSurface('agent');
     runtime.chat.clearMessages();

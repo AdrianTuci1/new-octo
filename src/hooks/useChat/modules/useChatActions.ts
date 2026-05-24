@@ -5,6 +5,7 @@ import type {
   AgentContinueRequest,
   AgentStartResponse,
   ExecutionPlanArtifact,
+  FileDiffPreviewStatus,
   ExecutionPlanWorkstream,
   PlanExecutionUpdate,
   WorkspaceExplorationArtifact,
@@ -572,6 +573,7 @@ export function useChatActions({
       deferFollowUp?: boolean;
       webSearchStatus?: 'searching' | 'success' | 'error';
       fileDiffs?: import('../../../types/diff').FileDiff[];
+      fileChangeStatus?: FileDiffPreviewStatus;
       localAssistantSummary?: string;
       workspaceExploration?: WorkspaceExplorationArtifact;
     }
@@ -600,6 +602,7 @@ export function useChatActions({
         body: result,
         toolKind: kind,
         fileDiffs: toolResultOptions?.fileDiffs ?? message.fileDiffs,
+        fileChangeStatus: toolResultOptions?.fileChangeStatus ?? message.fileChangeStatus,
         ...(kind === 'web-search' ? {
           webSearchStatus: toolResultOptions?.webSearchStatus ?? (webSearchResults ? 'success' : 'searching'),
           webSearchQuery: label,
@@ -627,6 +630,7 @@ export function useChatActions({
         toolCallId,
         toolKind: kind,
         fileDiffs: toolResultOptions?.fileDiffs,
+        fileChangeStatus: toolResultOptions?.fileChangeStatus,
         ...(kind === 'web-search' ? {
           webSearchStatus: toolResultOptions?.webSearchStatus ?? (webSearchResults ? 'success' : 'searching'),
           webSearchQuery: label,

@@ -1204,6 +1204,62 @@
   max-height: min(52vh, 420px);
 }
 
+.command-approval-file-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.command-approval-file-tabs {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.command-approval-file-tab {
+  min-height: 30px;
+  padding: 0 10px;
+  border-radius: 9px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(244, 247, 246, 0.86);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.command-approval-file-tab.active {
+  border-color: rgba(64, 198, 255, 0.7);
+  background: rgba(64, 198, 255, 0.16);
+  color: #f4f7f6;
+}
+
+.command-approval-file-editor-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.command-approval-file-editor-path {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: rgba(244, 247, 246, 0.7);
+  word-break: break-all;
+}
+
+.command-approval-file-editor-note {
+  font-size: 12px;
+  color: rgba(244, 247, 246, 0.52);
+}
+
+.command-approval-monaco-shell {
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  background: #101315;
+}
+
 .command-approval-accept-group {
   position: relative;
   display: inline-flex;

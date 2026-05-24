@@ -39,36 +39,37 @@ pub fn predict_from_history(
     history: &[crate::terminal::ShellHistoryEntry],
 ) -> Option<CommandPrediction> {
     let normalized_input = input.to_lowercase();
-    let mut same_dir_matches = Vec::new();
-    let mut other_matches = Vec::new();
+    let mut best_prediction: Option<CommandPrediction> = None;
+    let mut best_score = i64::MIN;
 
     for entry in history {
-        if !entry.value.to_lowercase().starts_with(&normalized_input) {
+        let candidate = entry.value.trim();
+        if !candidate.to_lowercase().starts_with(&normalized_input) {
             continue;
         }
-        if entry.value.trim().len() <= input.trim().len() {
+        if candidate.len() <= input.trim().len() || candidate.ends_with('\\') {
             continue;
         }
 
+        let same_dir = is_same_working_directory(cwd, entry.pwd.as_deref());
+        let parsed_at = chrono::DateTime::parse_from_rfc3339(&entry.executed_at)
+            .map(|value| value.timestamp())
+            .unwrap_or(0);
+        let score = (if same_dir { 1_000_000 } else { 0 }) + parsed_at + candidate.len() as i64;
         let prediction = CommandPrediction {
             input: input.to_string(),
-            suggestion: entry.value.trim().to_string(),
-            confidence: if is_same_working_directory(cwd, entry.pwd.as_deref()) {
-                0.95
-            } else {
-                0.85
-            },
+            suggestion: candidate.to_string(),
+            confidence: if same_dir { 0.95 } else { 0.85 },
             kind: PredictionKind::History,
         };
 
-        if is_same_working_directory(cwd, entry.pwd.as_deref()) {
-            same_dir_matches.push(prediction);
-        } else {
-            other_matches.push(prediction);
+        if score > best_score {
+            best_score = score;
+            best_prediction = Some(prediction);
         }
     }
 
-    same_dir_matches.into_iter().chain(other_matches).next()
+    best_prediction
 }
 
 pub fn get_zero_state_suggestions(cwd: &str) -> Vec<String> {
@@ -102,23 +103,6 @@ pub fn get_zero_state_suggestions(cwd: &str) -> Vec<String> {
     }
 
     suggestions
-}
-
-fn is_command_still_valid(command: &str) -> bool {
-    let parts: Vec<&str> = command.split_whitespace().collect();
-    if parts.is_empty() {
-        return false;
-    }
-
-    // Check if the primary executable exists in PATH or at absolute path
-    let exec = parts[0];
-    if exec.starts_with('/') || exec.starts_with("./") || exec.starts_with("../") {
-        std::path::Path::new(exec).exists()
-    } else {
-        // If it's a simple command name, it was once in history so it was valid.
-        // We'll trust it for now unless we want to do a full PATH lookup here.
-        true
-    }
 }
 
 pub fn predict_from_sequences(

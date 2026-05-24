@@ -35,8 +35,8 @@ export function useWorkingDirectory(options: UseWorkingDirectoryOptions = {}) {
         setHomeDir(context.homeDir);
         const preferredPath = normalizedInitialPath
           ?? (rememberSelection ? rememberedDirectory?.trim() || null : null)
-          ?? context.homeDir
-          ?? context.currentDir;
+          ?? context.currentDir
+          ?? context.homeDir;
 
         setCurrentPath((current) => current ?? preferredPath);
         setBrowserPath((current) => current ?? preferredPath);

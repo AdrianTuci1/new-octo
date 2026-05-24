@@ -1,7 +1,7 @@
 import { useMemo, useEffect } from 'react';
 import * as Hooks from '../../../../../hooks';
 import * as Utils from '../../utils';
-import { applyShellActivatorToPrediction } from '../../../../../lib';
+import { applyShellActivatorToPrediction, isImmediateShellCommandCandidate } from '../../../../../lib';
 import type { ShellModeSource } from '../../../../../types';
 
 const FOLLOW_UP_MIN_CONFIDENCE = 0.7;
@@ -38,6 +38,9 @@ export function useLauncherComposer(params: ComposerStateParams) {
     store.terminalAutoDetectEnabled &&
     agentSettings?.input?.autodetectTerminalCommandsInAgent !== false &&
     !isNaturalLanguageDenylisted(queryWithoutActivator, agentSettings?.input?.naturalLanguageDenylist);
+  const immediateShellCandidate = !isTerminalSurface
+    && autodetectEnabled
+    && isImmediateShellCommandCandidate(queryWithoutActivator, availableShellCommands);
   const intelligenceTerminalBlocks = isTerminalSurface ? terminalCommandBlocks : agentTerminalCommandBlocks;
   const terminalSurfaceCwd = terminal.cwd ?? workingDirectory.currentPath;
   const activeMessages = isTerminalSurface
@@ -94,6 +97,16 @@ export function useLauncherComposer(params: ComposerStateParams) {
       };
     }
 
+    if (
+      immediateShellCandidate &&
+      !suppressComposerShellAutodetect
+    ) {
+      return {
+        mode: 'shell' as const,
+        shellSource: 'autodetected' as const
+      };
+    }
+
     const baseComposerState = {
       mode: composerIntelligence.mode,
       shellSource: composerIntelligence.shellSource
@@ -113,7 +126,7 @@ export function useLauncherComposer(params: ComposerStateParams) {
       store.modeLock === null &&
       store.autodetectedShellLatch &&
       baseComposerState.mode === 'chat' &&
-      Utils.isSingleTokenShellCandidate(chat.query)
+      immediateShellCandidate
     ) {
       return {
         mode: 'shell' as const,
@@ -128,7 +141,8 @@ export function useLauncherComposer(params: ComposerStateParams) {
     store.autodetectedShellLatch,
     chat.query,
     hasShellActivator,
-    suppressComposerShellAutodetect
+    suppressComposerShellAutodetect,
+    immediateShellCandidate
   ]);
 
   const composerMode = composerState.mode;
@@ -227,24 +241,25 @@ export function useLauncherComposer(params: ComposerStateParams) {
       return;
     }
 
-    if (composerIntelligence.mode === 'shell' && composerIntelligence.shellSource === 'autodetected') {
+    if (
+      immediateShellCandidate ||
+      (composerIntelligence.mode === 'shell' && composerIntelligence.shellSource === 'autodetected')
+    ) {
       if (store.autodetectedShellLatch !== true) {
         store.setAutodetectedShellLatch(true);
       }
       return;
     }
 
-    if (!Utils.isSingleTokenShellCandidate(chat.query)) {
-      if (store.autodetectedShellLatch !== false) {
-        store.setAutodetectedShellLatch(false);
-      }
+    if (store.autodetectedShellLatch !== false) {
+      store.setAutodetectedShellLatch(false);
     }
   }, [
     composerIntelligence.mode,
     composerIntelligence.shellSource,
     store.modeLock,
-    chat.query,
     autodetectEnabled,
+    immediateShellCandidate,
     store.autodetectedShellLatch,
     store.setAutodetectedShellLatch,
     hasShellActivator,

@@ -1,4 +1,4 @@
-use std::{fs, path::Path, process::Command};
+use std::{fs, process::Command};
 
 use super::utils::command_exists_in_path;
 use super::CommandScope;

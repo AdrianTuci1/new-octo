@@ -1,4 +1,6 @@
 import type { FileDiff } from './diff';
+import type { FileDiffPreviewStatus } from '../lib/fileDiffs';
+export type { FileDiffPreviewStatus } from '../lib/fileDiffs';
 
 export type ChatMessage = {
   id: string;
@@ -15,6 +17,7 @@ export type ChatMessage = {
   toolCallId?: string;
   toolCalls?: any[];
   fileDiffs?: FileDiff[];
+  fileChangeStatus?: FileDiffPreviewStatus;
   messageKind?: 'default' | 'reasoning';
   thinkingDurationSeconds?: number;
   hasNativeThinking?: boolean;
@@ -90,6 +93,7 @@ export type CloudAgentLaunchRequest = {
   prompt: string;
   provider?: 'custom-vm' | 'modal' | string | null;
   profileId?: string | null;
+  cwd?: string | null;
   repo?: string | null;
   baseBranch?: string | null;
   workBranch?: string | null;

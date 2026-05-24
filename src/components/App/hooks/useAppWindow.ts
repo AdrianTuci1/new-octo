@@ -152,6 +152,7 @@ export function useAppWindow() {
     : null;
   const selectedPaneIds = selectedPaneLayout ? Utils.collectPaneIdsFromLayout(selectedPaneLayout) : [];
   const activePaneId = selectedPaneLayout?.activePaneId ?? selectedPaneIds[0] ?? null;
+  const defaultWorkingDirectory = pathContext?.currentDir ?? pathContext?.homeDir ?? null;
   const activeConversationId = activePaneId
     ? terminalSessions[activePaneId]?.activeConversationId ?? null
     : null;
@@ -268,7 +269,7 @@ export function useAppWindow() {
     const activeConversationRecord = conversationId ? memoryConversationRecords[conversationId] ?? null : null;
     const latestPromptTitle = useLatestPromptTabNames ? latestUserPromptTitle(activeConversationRecord) : null;
     const pathLabel = formatCompactPathLabel(
-      session?.workingDirectory ?? pathContext?.homeDir ?? pathContext?.currentDir ?? null,
+      session?.workingDirectory ?? defaultWorkingDirectory,
       pathContext?.homeDir ?? null
     );
 
@@ -314,7 +315,7 @@ export function useAppWindow() {
             tabId,
             {
               ...session,
-              workingDirectory: session.workingDirectory ?? context.homeDir
+              workingDirectory: session.workingDirectory ?? context.currentDir ?? context.homeDir
             } satisfies TerminalSessionState
           ])
         ));
@@ -401,13 +402,13 @@ export function useAppWindow() {
           return;
         }
 
-        nextSessions[paneId] = Utils.createEmptyTerminalSession(pathContext?.homeDir ?? null);
+        nextSessions[paneId] = Utils.createEmptyTerminalSession(defaultWorkingDirectory);
         changed = true;
       });
 
       return changed ? nextSessions : current;
     });
-  }, [paneLayoutsByTabId, pathContext?.homeDir, tabs]);
+  }, [defaultWorkingDirectory, paneLayoutsByTabId, tabs]);
 
   useEffect(() => {
     if (memoryStatus !== 'ready' || !didRestoreWorkspaceRef.current || isClosingWorkspaceRef.current) {
@@ -480,11 +481,11 @@ export function useAppWindow() {
     }));
     setTerminalSessions((current) => ({
       ...current,
-      [nextTab.id]: options.terminalSession ?? Utils.createEmptyTerminalSession(pathContext?.homeDir ?? null)
+      [nextTab.id]: options.terminalSession ?? Utils.createEmptyTerminalSession(defaultWorkingDirectory)
     }));
     setNextTerminalIndex((value) => value + 1);
     return nextTab;
-  }, [nextTerminalIndex, pathContext, preserveActiveTabColor, selectedTab.tintColor]);
+  }, [defaultWorkingDirectory, nextTerminalIndex, preserveActiveTabColor, selectedTab.tintColor]);
 
   const handleOpenTabConfig = useCallback(async (configPath: string) => {
     try {
@@ -618,7 +619,7 @@ export function useAppWindow() {
     }
 
     const session = {
-      ...Utils.createEmptyTerminalSession(pathContext?.homeDir ?? null),
+      ...Utils.createEmptyTerminalSession(defaultWorkingDirectory),
       terminalTarget: toTerminalTarget(profile),
       agentTerminalTarget: toTerminalTarget(profile)
     };
@@ -631,13 +632,14 @@ export function useAppWindow() {
     createTerminalTab,
     memorySettings?.values,
     openSettingsSectionInternal,
-    pathContext?.homeDir,
+    defaultWorkingDirectory,
     setIsCloudProfileDrawerOpen,
     setSelectedCloudProfileIdForEdit
   ]);
 
   const startCloudAgentTab = useCallback(async (options: {
     prompt?: string | null;
+    cwd?: string | null;
     repo?: string | null;
     baseBranch?: string | null;
     workBranch?: string | null;
@@ -663,12 +665,16 @@ export function useAppWindow() {
     }
 
     const target = toTerminalTarget(profile);
+    const workspacePath = options.cwd?.trim()
+      || (activePaneId ? terminalSessions[activePaneId]?.workingDirectory?.trim() || '' : '')
+      || defaultWorkingDirectory
+      || '/workspace';
     const sessionInfo = await invoke<TerminalSessionInfo>('cloud_runtime_start_run', {
       request: {
         sessionId: `cloud_run_${Date.now()}`,
         provider: profile.provider,
         harness: 'octomus',
-        workspace: '/workspace',
+        workspace: workspacePath,
         prompt,
         repo: options.repo?.trim() || null,
         baseBranch: options.baseBranch?.trim() || 'main',
@@ -681,7 +687,8 @@ export function useAppWindow() {
     const tab = createTerminalTab({
       label: `${profile.title || 'Cloud'} Agent`,
       terminalSession: {
-        ...Utils.createEmptyTerminalSession(pathContext?.homeDir ?? null),
+        ...Utils.createEmptyTerminalSession(workspacePath),
+        workingDirectory: workspacePath,
         composerSurface: 'agent',
         terminalTarget: target,
         agentTerminalTarget: target,
@@ -691,12 +698,14 @@ export function useAppWindow() {
     setSelectedTabId(tab.id);
     return sessionInfo;
   }, [
+    activePaneId,
     createTerminalTab,
+    defaultWorkingDirectory,
     memorySettings?.values,
     openSettingsSectionInternal,
-    pathContext?.homeDir,
     setIsCloudProfileDrawerOpen,
-    setSelectedCloudProfileIdForEdit
+    setSelectedCloudProfileIdForEdit,
+    terminalSessions
   ]);
 
   const onSelectConversation = useCallback((conversationId: string) => {
@@ -756,7 +765,7 @@ export function useAppWindow() {
         tabId,
         Object.values(paneLayoutsByTabId).flatMap((layout) => Utils.collectPaneIdsFromLayout(layout))
       );
-      const sourceSession = terminalSessions[sourcePaneId] ?? Utils.createEmptyTerminalSession(pathContext?.homeDir ?? null);
+      const sourceSession = terminalSessions[sourcePaneId] ?? Utils.createEmptyTerminalSession(defaultWorkingDirectory);
 
       setTerminalSessions((current) => ({
         ...current,
@@ -793,7 +802,7 @@ export function useAppWindow() {
     createTerminalTab,
     memoryConversationsById,
     paneLayoutsByTabId,
-    pathContext?.homeDir,
+    defaultWorkingDirectory,
     preferredConversationLayout,
     resolvePaneId,
     resolveTerminalTabId,
@@ -882,7 +891,7 @@ export function useAppWindow() {
       tabId,
       Object.values(paneLayoutsByTabId).flatMap((layout) => Utils.collectPaneIdsFromLayout(layout))
     );
-    const sourceSession = terminalSessions[sourcePaneId] ?? Utils.createEmptyTerminalSession(pathContext?.homeDir ?? null);
+    const sourceSession = terminalSessions[sourcePaneId] ?? Utils.createEmptyTerminalSession(defaultWorkingDirectory);
 
     setPaneLayoutsByTabId((current) => ({
       ...current,
@@ -901,7 +910,7 @@ export function useAppWindow() {
       }
     }));
     setSelectedTabId(tabId);
-  }, [paneLayoutsByTabId, pathContext?.homeDir, resolvePaneId, selectedTab, terminalSessions]);
+  }, [defaultWorkingDirectory, paneLayoutsByTabId, resolvePaneId, selectedTab, terminalSessions]);
 
   const onCloseTab = useCallback((tabId: string) => {
     if (tabs.length <= 1) {
@@ -1223,7 +1232,7 @@ export function useAppWindow() {
       tabId,
       Object.values(paneLayoutsByTabId).flatMap((layout) => Utils.collectPaneIdsFromLayout(layout))
     );
-    const sourceSession = terminalSessions[sourcePaneId] ?? Utils.createEmptyTerminalSession(pathContext?.homeDir ?? null);
+    const sourceSession = terminalSessions[sourcePaneId] ?? Utils.createEmptyTerminalSession(defaultWorkingDirectory);
 
     setTerminalSessions((current) => ({
       ...current,
@@ -1243,7 +1252,7 @@ export function useAppWindow() {
       )
     }));
     setSelectedTabId(tabId);
-  }, [paneLayoutsByTabId, pathContext?.homeDir, resolvePaneId, resolveTerminalTabId, selectedTab, terminalSessions]);
+  }, [defaultWorkingDirectory, paneLayoutsByTabId, resolvePaneId, resolveTerminalTabId, selectedTab, terminalSessions]);
 
   const handleRenameTab = useCallback((tabId: string) => {
     const tab = tabs.find((candidate) => candidate.id === tabId);
@@ -1497,7 +1506,7 @@ export function useAppWindow() {
     startupCommands: paneStartupCommandsByPaneId[paneId] ?? [],
     terminalTarget: terminalSessions[paneId]?.terminalTarget ?? null,
     agentTerminalTarget: terminalSessions[paneId]?.agentTerminalTarget ?? null,
-    initialWorkingDirectory: terminalSessions[paneId]?.workingDirectory ?? pathContext?.homeDir ?? null,
+    initialWorkingDirectory: terminalSessions[paneId]?.workingDirectory ?? defaultWorkingDirectory,
     onStartupCommandsConsumed: () => {
       setPaneStartupCommandsByPaneId((current) => {
         if (!(paneId in current)) {
@@ -1550,7 +1559,7 @@ export function useAppWindow() {
     handleTerminalWorkingDirectoryChange,
     onNewConversation,
     onSelectConversation,
-    pathContext?.homeDir,
+    defaultWorkingDirectory,
     selectedTab.id,
     startCloudAgentTab,
     terminalSessions,
@@ -1566,8 +1575,8 @@ export function useAppWindow() {
       launcherTabId,
       selectedTab,
       activeWorkingDirectory: selectedTab.kind === 'terminal' 
-        ? terminalSessions[activePaneId ?? selectedTab.id]?.workingDirectory ?? pathContext?.homeDir ?? null
-        : pathContext?.homeDir ?? null
+        ? terminalSessions[activePaneId ?? selectedTab.id]?.workingDirectory ?? defaultWorkingDirectory
+        : defaultWorkingDirectory
     },
     workspace: {
       activePaneId,

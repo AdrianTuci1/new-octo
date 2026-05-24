@@ -9,7 +9,6 @@ use std::{
     fmt::{self, Display},
     ops::Range,
     path::PathBuf,
-    sync::LazyLock,
 };
 use strsim::jaro_winkler;
 

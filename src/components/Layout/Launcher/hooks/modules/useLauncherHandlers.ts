@@ -52,6 +52,23 @@ function appliedFileChangeSummary(diffs: FileDiff[], requestedSummary?: string) 
   return `Am aplicat modificările pentru ${diffs.length} fișiere.`;
 }
 
+function rejectedFileChangeBody(diffs: FileDiff[]) {
+  if (diffs.length === 1) {
+    const diff = diffs[0];
+    if (diff.diffType.kind === 'create') {
+      return `Request canceled. File not created: \`${diff.filePath}\`.`;
+    }
+
+    if (diff.diffType.kind === 'delete') {
+      return `Request canceled. File not deleted: \`${diff.filePath}\`.`;
+    }
+
+    return `Request canceled. Changes not applied to \`${diff.filePath}\`.`;
+  }
+
+  return `Request canceled. Changes were not applied to ${diffs.length} files.`;
+}
+
 function agentContinuationInstruction(kind: 'command' | 'file-change') {
   if (kind === 'file-change') {
     return [
@@ -346,21 +363,11 @@ export function useLauncherHandlers({
   }, [setResolvedPendingApproval, store.setComposerSurface, store.setModeLock]);
 
   const handlePendingApprovalEdit = useCallback((approval: CommandApproval) => {
-    if (approval.kind === 'file-change') {
-      setResolvedPendingApproval(null);
-      store.setComposerSurface('agent');
-      store.setModeLock(null);
-      openFileDiffsInEditor(approval.fileDiffs, runtime.workingDirectory.currentPath);
-      return;
-    }
-
     if ('command' in approval) {
       store.setComposerSurface('agent');
       store.setModeLock(null);
     }
   }, [
-    runtime.workingDirectory.currentPath,
-    setResolvedPendingApproval,
     store.setComposerSurface,
     store.setModeLock
   ]);
@@ -379,7 +386,7 @@ export function useLauncherHandlers({
     const toolCallId = approval.kind === 'topic-change'
       ? null
       : approval.toolCallId ?? resolvedPendingApproval?.toolCallId ?? null;
-    if (!toolCallId) {
+    if (!toolCallId && approval.kind !== 'file-change') {
       return;
     }
 
@@ -388,13 +395,22 @@ export function useLauncherHandlers({
       : 'command' in approval
         ? approval.command
         : undefined;
+    const rejectedBody = approval.kind === 'file-change'
+      ? rejectedFileChangeBody(approval.fileDiffs)
+      : 'The user rejected the proposed command. Do not run it; suggest a safer alternative if needed.';
     void chat.submitToolResult(
-      toolCallId,
+      toolCallId ?? `local-file-change-rejected-${Date.now()}`,
+      rejectedBody,
+      approval.kind === 'file-change' ? 'file-change' : 'command',
+      label,
+      undefined,
       approval.kind === 'file-change'
-        ? 'The user rejected the proposed file changes.'
-        : 'The user rejected the proposed command. Do not run it; suggest a safer alternative if needed.',
-      'command',
-      label
+        ? {
+            fileDiffs: approval.fileDiffs,
+            fileChangeStatus: 'rejected',
+            deferFollowUp: !toolCallId
+          }
+        : undefined
     );
   }, [
     chat.submitToolResult,
@@ -437,6 +453,7 @@ export function useLauncherHandlers({
           undefined,
           {
             fileDiffs: approval.fileDiffs,
+            fileChangeStatus: 'accepted',
             deferFollowUp: !toolCallId,
             localAssistantSummary: !toolCallId
               ? appliedFileChangeSummary(approval.fileDiffs, approval.summary)

@@ -23,6 +23,7 @@ export type LauncherProps = {
   onNewConversation?: (options?: { seedPrompt?: string }) => string | null | void;
   onCloudAgentLaunch?: (options?: {
     prompt?: string | null;
+    cwd?: string | null;
     repo?: string | null;
     baseBranch?: string | null;
     workBranch?: string | null;

@@ -37,24 +37,40 @@ impl<'a> TerminalCompletionContext<'a> {
             return model::predict_from_sequences(self.last_command, self.history_entries);
         }
 
+        let parsed = parse_shell_input(self.input);
+        let has_multi_token_prefix = parsed.tokens.len() > 1;
+        let history_prediction =
+            model::predict_from_history(trimmed, self.cwd, self.history_entries);
+
         if self.should_prefer_path_completion() {
-            if let Some(prediction) = self.predict_path_completion() {
-                return Some(prediction);
+            if let Some(path_prediction) = self.predict_path_completion() {
+                if let Some(history_prediction) = history_prediction.as_ref() {
+                    if should_prefer_history_prediction_over_path(
+                        &parsed,
+                        history_prediction,
+                        &path_prediction,
+                    ) {
+                        return Some(history_prediction.clone());
+                    }
+                }
+
+                return Some(path_prediction);
+            }
+
+            if let Some(history_prediction) = history_prediction.clone() {
+                return Some(history_prediction);
             }
         }
 
-        let parsed = parse_shell_input(self.input);
-        let has_multi_token_prefix = parsed.tokens.len() > 1;
-
         if !has_multi_token_prefix {
-            return model::predict_from_history(trimmed, self.cwd, self.history_entries)
+            return history_prediction
                 .or_else(|| self.predict_signature_completion())
                 .or_else(|| self.predict_path_completion())
                 .or_else(|| self.predict_from_executables());
         }
 
-        self.predict_signature_completion()
-            .or_else(|| model::predict_from_history(trimmed, self.cwd, self.history_entries))
+        history_prediction
+            .or_else(|| self.predict_signature_completion())
             .or_else(|| self.predict_path_completion())
             .or_else(|| self.predict_from_executables())
     }
@@ -92,4 +108,32 @@ impl<'a> TerminalCompletionContext<'a> {
 
         model::predict_from_executables(self.input.trim(), self.available_commands)
     }
+}
+
+fn should_prefer_history_prediction_over_path(
+    parsed: &super::parser::ParsedShellInput,
+    history_prediction: &CommandPrediction,
+    path_prediction: &CommandPrediction,
+) -> bool {
+    if parsed.has_trailing_whitespace {
+        return false;
+    }
+
+    let current_token = parsed
+        .tokens
+        .last()
+        .map(String::as_str)
+        .unwrap_or_default()
+        .trim();
+    if current_token.is_empty() {
+        return false;
+    }
+
+    let history_tokens = parse_shell_input(&history_prediction.suggestion)
+        .tokens
+        .len();
+    let path_tokens = parse_shell_input(&path_prediction.suggestion).tokens.len();
+
+    history_tokens > path_tokens
+        && history_prediction.suggestion.len() > path_prediction.suggestion.len()
 }

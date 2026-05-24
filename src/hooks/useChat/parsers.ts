@@ -237,7 +237,12 @@ function parseLegacyFunctionArgs(payload: string) {
 }
 
 function pendingLegacyFollowUpPrefixLength(value: string) {
-  const prefixes = ['<tool_call|>suggest_follow_up(', 'suggest_follow_up('];
+  const prefixes = [
+    '<tool_call|>suggest_follow_up(',
+    'suggest_follow_up(',
+    '<tool_call|>suggest_follow__follow_up(',
+    'suggest_follow__follow_up('
+  ];
   let bestLength = 0;
 
   for (const prefix of prefixes) {
@@ -254,7 +259,8 @@ function pendingLegacyFollowUpPrefixLength(value: string) {
 }
 
 function extractLegacyFunctionFollowUpSuggestion(raw: string) {
-  const markerMatch = /(?:<tool_call\|>\s*)?suggest_follow_up\s*\(/i.exec(raw);
+  const markerMatch = /(?:`?\s*)?(?:<tool_call\|>\s*)?suggest_follow__follow_up\s*\(/i.exec(raw)
+    ?? /(?:`?\s*)?(?:<tool_call\|>\s*)?suggest_follow_up\s*\(/i.exec(raw);
   if (!markerMatch) {
     const pendingLength = pendingLegacyFollowUpPrefixLength(raw);
     if (pendingLength === 0) {

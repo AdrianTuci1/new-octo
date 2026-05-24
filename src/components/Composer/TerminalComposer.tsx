@@ -1,121 +1,49 @@
 import { ArrowRight, Command, CornerDownLeft, Sparkles, SquareTerminal } from 'lucide-react';
-import type { KeyboardEventHandler } from 'react';
 import { GitBranchPicker } from './GitBranchPicker';
-import { hasCompleteSlashCommand, SlashCommandHighlight } from './SlashCommandHighlight';
-import { useComposerBar } from './useComposerBar';
+import { SlashCommandHighlight } from './SlashCommandHighlight';
 import { WorkingDirectoryPicker } from './WorkingDirectoryPicker';
-import { hasComposerContextMentions } from './contextMentions';
-import type { RecommendedComposerAction, ShellPrediction } from '../../lib/composerIntelligence';
-import type { FilesystemDirectoryListing } from '../../types/filesystem';
-import type { GitRepoContext } from '../../types/git';
-import type { TerminalCompletionState } from '../../types/terminal';
+import { useLauncherContext } from '../Layout/Launcher/LauncherContext';
+import type { TerminalShellCompletion } from '../../types/terminal';
+import { useTerminalComposerController } from './useTerminalComposerController';
 import './TerminalComposer.css';
 
-type TerminalComposerProps = {
-  query: string;
-  gitContext: GitRepoContext | null;
-  gitBranchMenuOpen: boolean;
-  workingDirectory: string | null;
-  workingDirectoryLabel: string;
-  workingDirectoryPickerOpen: boolean;
-  workingDirectoryListing: FilesystemDirectoryListing | null;
-  workingDirectorySearch: string;
-  runtimeNodeVersion: string | null;
-  prediction: ShellPrediction | null;
-  recommendedAction: RecommendedComposerAction | null;
-  completionState?: TerminalCompletionState | null;
-  onQueryChange: (query: string) => void;
-  onKeyDown: KeyboardEventHandler<HTMLTextAreaElement>;
-  onRecommendedActionClick: (action: RecommendedComposerAction) => void;
-  onToggleWorkingDirectoryPicker: () => void;
-  onCloseWorkingDirectoryPicker: () => void;
-  onWorkingDirectorySearchChange: (query: string) => void;
-  onNavigateToParentDirectory: () => void;
-  onSelectWorkingDirectory: (path: string) => void;
-  onToggleGitBranchMenu: () => void;
-  onCloseGitBranchMenu: () => void;
-  onSelectGitBranch: (branch: string) => void;
-  onOpenCommandsTray: () => void;
-  onLaunchAgentComposer: (seedPrompt?: string, autoSubmit?: boolean) => void;
-  onOpenApp?: () => void;
-  onHeightChange?: (height: number) => void;
-  showOpenInApp?: boolean;
-};
-
-export function TerminalComposer({
-  query,
-  gitContext,
-  gitBranchMenuOpen,
-  workingDirectory,
-  workingDirectoryLabel,
-  workingDirectoryPickerOpen,
-  workingDirectoryListing,
-  workingDirectorySearch,
-  runtimeNodeVersion,
-  prediction,
-  recommendedAction,
-  completionState = null,
-  onQueryChange,
-  onKeyDown,
-  onRecommendedActionClick,
-  onToggleWorkingDirectoryPicker,
-  onCloseWorkingDirectoryPicker,
-  onWorkingDirectorySearchChange,
-  onNavigateToParentDirectory,
-  onSelectWorkingDirectory,
-  onToggleGitBranchMenu,
-  onCloseGitBranchMenu,
-  onSelectGitBranch,
-  onOpenCommandsTray,
-  onLaunchAgentComposer,
-  onOpenApp,
-  onHeightChange,
-  showOpenInApp = false
-}: TerminalComposerProps) {
-  const { inputRef, shellRef } = useComposerBar(query, onHeightChange, { autoFocus: true });
-  const showRecommendation = Boolean(recommendedAction) && query.trim().length === 0;
-  const predictionSuffix = prediction?.completionText ?? '';
-  const showSlashCommandHighlight = hasCompleteSlashCommand(query);
-  const showContextMentionHighlight = hasComposerContextMentions(query);
-  const completionItems = completionState?.completions ?? [];
-  const showCompletionPanel = Boolean(completionState) && (
-    completionState?.status === 'running' ||
-    completionItems.length > 0 ||
-    completionState?.promptVisible
-  );
+export function TerminalComposer() {
+  const { launcher } = useLauncherContext();
+  const view = launcher.views.terminalComposer;
+  const controller = useTerminalComposerController(view);
 
   return (
-    <div ref={shellRef} className="composer-shell terminal-composer-shell">
+    <div ref={controller.shellRef} className="composer-shell terminal-composer-shell">
       <div className="terminal-composer-context-row">
-        {gitContext && runtimeNodeVersion && (
-          <div className="terminal-runtime-chip" title={`Node ${runtimeNodeVersion}`}>
+        {view.gitContext && view.runtimeNodeVersion && (
+          <div className="terminal-runtime-chip" title={`Node ${view.runtimeNodeVersion}`}>
             <SquareTerminal size={12} />
-            <span>{runtimeNodeVersion}</span>
+            <span>{view.runtimeNodeVersion}</span>
           </div>
         )}
 
         <WorkingDirectoryPicker
-          buttonLabel={workingDirectoryLabel}
-          currentPath={workingDirectory}
-          isOpen={workingDirectoryPickerOpen}
+          buttonLabel={view.workingDirectoryLabel}
+          currentPath={view.workingDirectory}
+          isOpen={view.workingDirectoryPickerOpen}
           isCompact={true}
-          listing={workingDirectoryListing}
-          onClose={onCloseWorkingDirectoryPicker}
-          onNavigateToParent={onNavigateToParentDirectory}
-          onSearchQueryChange={onWorkingDirectorySearchChange}
-          onSelectDirectory={onSelectWorkingDirectory}
-          onToggle={onToggleWorkingDirectoryPicker}
-          searchQuery={workingDirectorySearch}
+          listing={view.workingDirectoryListing}
+          onClose={view.onCloseWorkingDirectoryPicker}
+          onNavigateToParent={view.onNavigateToParentDirectory}
+          onSearchQueryChange={view.onWorkingDirectorySearchChange}
+          onSelectDirectory={view.onSelectWorkingDirectory}
+          onToggle={view.onToggleWorkingDirectoryPicker}
+          searchQuery={view.workingDirectorySearch}
         />
 
-        {gitContext && (
+        {view.gitContext && (
           <GitBranchPicker
-            branches={gitContext.branches}
-            currentBranch={gitContext.currentBranch}
-            isOpen={gitBranchMenuOpen}
-            onClose={onCloseGitBranchMenu}
-            onSelectBranch={onSelectGitBranch}
-            onToggle={onToggleGitBranchMenu}
+            branches={view.gitContext.branches}
+            currentBranch={view.gitContext.currentBranch}
+            isOpen={view.gitBranchMenuOpen}
+            onClose={view.onCloseGitBranchMenu}
+            onSelectBranch={view.onSelectGitBranch}
+            onToggle={view.onToggleGitBranchMenu}
           />
         )}
 
@@ -123,17 +51,17 @@ export function TerminalComposer({
 
       <div className="terminal-composer-body">
         <div className="composer-input-wrapper terminal-composer-input-wrapper">
-          <div className={`composer-textarea-container terminal-composer-textarea-container ${showRecommendation ? 'has-recommendation' : ''}`}>
-            {showRecommendation && recommendedAction && (
+          <div className={`composer-textarea-container terminal-composer-textarea-container ${controller.showRecommendation ? 'has-recommendation' : ''}`}>
+            {controller.showRecommendation && view.recommendedAction && (
               <div className="composer-recommendation-chip-wrapper terminal-recommendation-wrapper">
                 <button
                   className="composer-recommendation-chip"
-                  onClick={() => onRecommendedActionClick(recommendedAction)}
+                  onClick={() => view.onRecommendedActionClick(view.recommendedAction)}
                   type="button"
-                  title={recommendedAction.description}
+                  title={view.recommendedAction.description}
                 >
                   <Sparkles size={12} className="recommendation-icon" />
-                  <span className="recommendation-label">{recommendedAction.value}</span>
+                  <span className="recommendation-label">{view.recommendedAction.value}</span>
                   <span className="recommendation-accept-group" aria-hidden="true">
                     <span className="recommendation-accept-key">↑</span>
                     <span className="recommendation-accept-key">
@@ -144,11 +72,11 @@ export function TerminalComposer({
               </div>
             )}
 
-            {predictionSuffix && (
+            {controller.predictionSuffix && (
               <div className="composer-suggestion-overlay" aria-hidden="true">
-                <span className="composer-suggestion-prefix">{query}</span>
-                <span className="composer-suggestion-text">{predictionSuffix}</span>
-                <span className="composer-suggestion-accept-group" title={prediction?.hint}>
+                <span className="composer-suggestion-prefix">{view.query}</span>
+                <span className="composer-suggestion-text">{controller.predictionSuffix}</span>
+                <span className="composer-suggestion-accept-group" title={view.prediction?.hint}>
                   <span className="composer-suggestion-accept-main">
                     <ArrowRight size={11} />
                   </span>
@@ -159,79 +87,39 @@ export function TerminalComposer({
               </div>
             )}
 
-            <SlashCommandHighlight query={query} extraClassName="terminal-composer-input-highlight" />
+            <SlashCommandHighlight query={view.query} extraClassName="terminal-composer-input-highlight" />
 
             <textarea
-              ref={inputRef}
-              className={`chat-input terminal-chat-input ${showRecommendation ? 'has-recommendation' : ''} ${showSlashCommandHighlight ? 'has-slash-command-highlight' : ''} ${showContextMentionHighlight ? 'has-context-highlight' : ''}`.trim()}
-              value={query}
+              ref={controller.inputRef}
+              className={`chat-input terminal-chat-input ${controller.showRecommendation ? 'has-recommendation' : ''} ${controller.showSlashCommandHighlight ? 'has-slash-command-highlight' : ''} ${controller.showContextMentionHighlight ? 'has-context-highlight' : ''}`.trim()}
+              value={view.query}
               onChange={(event) => {
                 const nextValue = event.target.value;
-                onQueryChange(nextValue);
+                view.onQueryChange(nextValue);
               }}
-              onKeyDown={(event) => {
-                if (event.key === 'ArrowRight' && prediction?.fullCommand) {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  onQueryChange(prediction.fullCommand);
-                  requestAnimationFrame(() => {
-                    const input = inputRef.current;
-                    if (!input) {
-                      return;
-                    }
-
-                    const caret = prediction.fullCommand.length;
-                    try {
-                      input.setSelectionRange(caret, caret);
-                    } catch {
-                      // Ignore selection errors in browsers that reject programmatic ranges.
-                    }
-                  });
-                  return;
-                }
-
-                if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
-                  event.preventDefault();
-                  onLaunchAgentComposer(query.trim(), true);
-                  return;
-                }
-
-                if (event.key === 'Enter' && query.trim() === '/agent') {
-                  event.preventDefault();
-                  onLaunchAgentComposer();
-                  return;
-                }
-
-                if (event.key === 'Enter' && query.trim() === '/') {
-                  event.preventDefault();
-                  onOpenCommandsTray();
-                  return;
-                }
-
-                onKeyDown(event);
-              }}
+              onKeyDown={controller.handleKeyDown}
               rows={2}
               placeholder="Run commands"
             />
 
-            {showCompletionPanel && completionState && (
+            {controller.showCompletionPanel && view.completionState && (
               <div className="terminal-completions-panel" role="status" aria-live="polite">
                 <div className="terminal-completions-header">
                   <span className="terminal-completions-eyebrow">shell completions</span>
-                  {completionState.format && (
-                    <span className="terminal-completions-pill">{completionState.format}</span>
+                  {view.completionState.format && (
+                    <span className="terminal-completions-pill">{view.completionState.format}</span>
                   )}
-                  {completionState.promptVisible && (
+                  {view.completionState.promptVisible && (
                     <span className="terminal-completions-pill terminal-completions-pill-emphasis">prompt</span>
                   )}
-                  {completionState.status === 'finished' && (
+                  {view.completionState.status === 'finished' && (
                     <span className="terminal-completions-pill">done</span>
                   )}
                 </div>
 
-                {completionItems.length > 0 ? (
+                {controller.completionItems.length > 0 ? (
                   <div className="terminal-completions-list">
-                    {completionItems.slice(0, 6).map((completion) => (
+                    {controller.completionItems.slice(0, 6).map((completion: TerminalShellCompletion) => (
                       <div className="terminal-completion-item" key={`${completion.name}:${completion.description ?? ''}`}>
                         <span className="terminal-completion-name">{completion.name}</span>
                         {completion.description && (
@@ -246,8 +134,8 @@ export function TerminalComposer({
                   </div>
                 )}
 
-                {completionState.lastValue && (
-                  <div className="terminal-completions-footnote">{completionState.lastValue}</div>
+                {view.completionState.lastValue && (
+                  <div className="terminal-completions-footnote">{view.completionState.lastValue}</div>
                 )}
               </div>
             )}
@@ -263,8 +151,8 @@ export function TerminalComposer({
             <span>conversation</span>
           </div>
 
-          {showOpenInApp && onOpenApp && (
-            <button className="terminal-open-app-button" type="button" onClick={onOpenApp}>
+          {view.showOpenInApp && view.onOpenApp && (
+            <button className="terminal-open-app-button" type="button" onClick={view.onOpenApp}>
               <Command size={12} />
               <span className="terminal-open-app-key-letter">x</span>
               <span>open in app</span>

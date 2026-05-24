@@ -119,8 +119,8 @@ pub fn octomus_list_tab_configs() -> Result<Vec<TabConfigSummary>, String> {
             .and_then(|value| value.to_str())
             .unwrap_or("tab-config.toml")
             .to_string();
-        let display_name = read_tab_config_display_name(&path)
-            .unwrap_or_else(|| file_stem_to_title(&file_name));
+        let display_name =
+            read_tab_config_display_name(&path).unwrap_or_else(|| file_stem_to_title(&file_name));
 
         configs.push(TabConfigSummary {
             display_name,
@@ -132,8 +132,16 @@ pub fn octomus_list_tab_configs() -> Result<Vec<TabConfigSummary>, String> {
     configs.sort_by(|left, right| {
         tab_config_sort_rank(&left.file_name)
             .cmp(&tab_config_sort_rank(&right.file_name))
-            .then_with(|| left.display_name.to_lowercase().cmp(&right.display_name.to_lowercase()))
-            .then_with(|| left.file_name.to_lowercase().cmp(&right.file_name.to_lowercase()))
+            .then_with(|| {
+                left.display_name
+                    .to_lowercase()
+                    .cmp(&right.display_name.to_lowercase())
+            })
+            .then_with(|| {
+                left.file_name
+                    .to_lowercase()
+                    .cmp(&right.file_name.to_lowercase())
+            })
     });
 
     Ok(configs)

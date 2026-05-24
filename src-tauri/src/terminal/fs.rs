@@ -1,4 +1,8 @@
-use std::{collections::BTreeSet, env, fs, path::{Path, PathBuf}};
+use std::{
+    collections::BTreeSet,
+    env, fs,
+    path::{Path, PathBuf},
+};
 
 use serde::{Deserialize, Serialize};
 use walkdir::WalkDir;
@@ -292,7 +296,10 @@ pub fn resolve_request_path(path: Option<String>) -> Result<PathBuf, String> {
 #[cfg(test)]
 mod tests {
     use super::{terminal_list_directory_entries, ListDirectoryEntriesRequest};
-    use std::{fs, time::{SystemTime, UNIX_EPOCH}};
+    use std::{
+        fs,
+        time::{SystemTime, UNIX_EPOCH},
+    };
 
     #[test]
     fn directory_list_matches_substrings_in_names_and_paths() {
@@ -311,9 +318,13 @@ mod tests {
             path: Some(temp_root.to_string_lossy().to_string()),
             query: Some("bar".to_string()),
             directories_only: Some(false),
-        }).expect("directory listing should succeed");
+        })
+        .expect("directory listing should succeed");
 
-        assert!(listing.entries.iter().any(|entry| entry.name == "composer_bar.rs"));
+        assert!(listing
+            .entries
+            .iter()
+            .any(|entry| entry.name == "composer_bar.rs"));
 
         let _ = fs::remove_dir_all(temp_root);
     }
@@ -333,15 +344,21 @@ mod tests {
         fs::create_dir_all(&matching_dir).expect("matching directory should be created");
         fs::write(&matching_file, "fn main() {}").expect("matching file should exist");
 
-        let listing = super::terminal_search_directory_entries(super::SearchDirectoryEntriesRequest {
-            path: Some(temp_root.to_string_lossy().to_string()),
-            query: "bar".to_string(),
-        }).expect("search listing should succeed");
+        let listing =
+            super::terminal_search_directory_entries(super::SearchDirectoryEntriesRequest {
+                path: Some(temp_root.to_string_lossy().to_string()),
+                query: "bar".to_string(),
+            })
+            .expect("search listing should succeed");
 
         let mut found_file = false;
         let mut found_directory = false;
 
-        fn visit(entries: &[super::FilesystemSearchEntry], found_file: &mut bool, found_directory: &mut bool) {
+        fn visit(
+            entries: &[super::FilesystemSearchEntry],
+            found_file: &mut bool,
+            found_directory: &mut bool,
+        ) {
             for entry in entries {
                 if entry.name == "composer_bar.rs" {
                     *found_file = true;

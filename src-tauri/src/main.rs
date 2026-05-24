@@ -176,6 +176,7 @@ fn show_settings_window<R: Runtime>(app: &AppHandle<R>) {
     }
 }
 
+#[allow(dead_code)]
 fn show_onboarding_window<R: Runtime>(app: &AppHandle<R>) {
     hide_launcher(app);
     hide_settings(app);

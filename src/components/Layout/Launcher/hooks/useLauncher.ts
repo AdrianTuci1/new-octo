@@ -57,3 +57,5 @@ export function useLauncher(props: LauncherProps) {
     dockRef: refs.dockRef
   });
 }
+
+export type LauncherViewModel = ReturnType<typeof useLauncher>;

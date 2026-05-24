@@ -4,6 +4,7 @@ export * from './ThinkingBlock';
 export * from './WorkspaceExplorationBlock';
 export { ImplementationPlanBlock } from './ImplementationPlanBlock';
 export { CodeDisplayBlock } from './CodeDisplayBlock';
+export { FileArtifactBlock } from './FileArtifactBlock';
 export { MultiAgentBlock } from './MultiAgentBlock';
 
 export function CodeDiffBlock() {

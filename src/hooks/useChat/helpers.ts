@@ -103,6 +103,7 @@ export function sameMessages(left: ChatMessage[], right: ChatMessage[]) {
       && candidate.toolCallId === message.toolCallId
       && JSON.stringify(candidate.toolCalls ?? []) === JSON.stringify(message.toolCalls ?? [])
       && candidate.toolKind === message.toolKind
+      && candidate.fileChangeStatus === message.fileChangeStatus
       && candidate.webSearchStatus === message.webSearchStatus
       && candidate.webSearchQuery === message.webSearchQuery
       && JSON.stringify(candidate.webSearchResults ?? []) === JSON.stringify(message.webSearchResults ?? [])

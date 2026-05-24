@@ -41,6 +41,132 @@ function dedupeTerminalBlocks(blocks: TerminalCommandBlock[]) {
   return [...blockById.values()];
 }
 
+const WORKSPACE_QUERY_STOP_WORDS = new Set([
+  'a',
+  'ai',
+  'al',
+  'ale',
+  'all',
+  'and',
+  'are',
+  'as',
+  'at',
+  'ca',
+  'cat',
+  'ce',
+  'cum',
+  'cu',
+  'de',
+  'despre',
+  'din',
+  'do',
+  'does',
+  'este',
+  'for',
+  'how',
+  'in',
+  'is',
+  'it',
+  'la',
+  'mod',
+  'ne',
+  'of',
+  'on',
+  'pe',
+  'prin',
+  'restul',
+  'sau',
+  'si',
+  'sunt',
+  'the',
+  'to',
+  'ul',
+  'un',
+  'una',
+  'unei',
+  'unor',
+  'va'
+]);
+
+function normalizeWorkspaceToken(token: string) {
+  const trimmed = token
+    .trim()
+    .replace(/^[^A-Za-z0-9]+|[^A-Za-z0-9]+$/g, '');
+
+  if (!trimmed) {
+    return '';
+  }
+
+  const normalized = trimmed
+    .split(/[-_]/g)
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase()
+    .replace(/\b([a-z0-9]+?)(?:ului|elor|ilor|urile|urilor|ul|le|lor)\b/g, '$1')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  return normalized;
+}
+
+function buildWorkspaceSearchQueries(query: string, maxQueries = 4) {
+  const normalizedQuery = query.replace(/\s+/g, ' ').trim();
+  const queries: string[] = [];
+  const seen = new Set<string>();
+
+  const pushQuery = (value: string) => {
+    const cleaned = value.replace(/\s+/g, ' ').trim();
+    const key = cleaned.toLowerCase();
+    if (!cleaned || seen.has(key)) {
+      return;
+    }
+    seen.add(key);
+    queries.push(cleaned);
+  };
+
+  if (normalizedQuery && normalizedQuery.split(/\s+/).length <= 6) {
+    pushQuery(normalizedQuery);
+  }
+
+  const normalizedTokens = (normalizedQuery.match(/[A-Za-z0-9][A-Za-z0-9_-]*/g) ?? [])
+    .flatMap((token) => normalizeWorkspaceToken(token).split(/\s+/g))
+    .map((token) => token.trim())
+    .filter((token) => token.length >= 2 && !WORKSPACE_QUERY_STOP_WORDS.has(token));
+
+  normalizedTokens
+    .filter((token) => token.length >= 4)
+    .forEach(pushQuery);
+
+  if (normalizedTokens.length >= 2) {
+    pushQuery(`${normalizedTokens[0]} ${normalizedTokens[1]}`);
+  }
+
+  if (queries.length === 0 && normalizedQuery) {
+    pushQuery(normalizedQuery);
+  }
+
+  return queries.slice(0, Math.max(1, maxQueries));
+}
+
+function displayWorkspacePath(path: string, cwd?: string | null) {
+  const normalizedPath = path.trim();
+  const normalizedCwd = cwd?.trim();
+  if (!normalizedPath || !normalizedCwd) {
+    return normalizedPath;
+  }
+
+  const prefix = normalizedCwd.endsWith('/') ? normalizedCwd : `${normalizedCwd}/`;
+  if (normalizedPath === normalizedCwd) {
+    return '.';
+  }
+
+  if (normalizedPath.startsWith(prefix)) {
+    return normalizedPath.slice(prefix.length);
+  }
+
+  return normalizedPath;
+}
+
 export function useLauncherRuntime(props: LauncherProps, store: any, tray: any) {
   const {
     initialWorkingDirectory = null,
@@ -289,6 +415,7 @@ export function useLauncherRuntime(props: LauncherProps, store: any, tray: any) 
     try {
       const result = await props.onCloudAgentLaunch?.({
         prompt: request.prompt,
+        cwd: workingDirectory.currentPath,
         repo: request.repo,
         baseBranch: request.baseBranch,
         workBranch: request.workBranch,
@@ -312,7 +439,7 @@ export function useLauncherRuntime(props: LauncherProps, store: any, tray: any) 
         { cloudAgentStatus: 'error' }
       );
     }
-  }, [props]);
+  }, [props, workingDirectory.currentPath]);
 
   const requestWorkspaceExploration = useCallback(async (request: WorkspaceExplorationRequest) => {
     if (!agentSettings.enabled) {
@@ -356,6 +483,7 @@ export function useLauncherRuntime(props: LauncherProps, store: any, tray: any) 
 
     const cwd = workingDirectory.currentPath;
     const maxResults = request.maxResults ?? 6;
+    const searchQueries = buildWorkspaceSearchQueries(query);
 
     type FilesystemSearchEntry = {
       path: string;
@@ -382,32 +510,71 @@ export function useLauncherRuntime(props: LauncherProps, store: any, tray: any) 
       const entries: WorkspaceExplorationEntry[] = [];
 
       if (codeSettings.indexing.enabled) {
+        for (const searchQuery of searchQueries) {
+          try {
+            const results = await invoke<CodeIndexSearchResult[]>('code_index_search', {
+              query: searchQuery,
+              maxResults: Math.max(1, Math.min(20, maxResults))
+            });
+
+            searches.push({
+              source: 'code-index',
+              query: searchQuery,
+              resultCount: results.length
+            });
+            entries.push({
+              id: `workspace-exploration-${createdAt}-code-index-search-${searches.length}`,
+              kind: 'search',
+              text: `Searched for ${searchQuery}`,
+              detail: `in code index (${results.length} match${results.length === 1 ? '' : 'es'})`,
+              createdAt
+            });
+
+            results.forEach((entry) => {
+              if (!entry.path.trim()) return;
+              if (!fileMap.has(entry.path)) {
+                fileMap.set(entry.path, {
+                  path: entry.path,
+                  source: 'code-index',
+                  snippet: entry.snippet?.trim() || undefined
+                });
+              }
+            });
+          } catch (error) {
+            collectedErrors.push(error instanceof Error ? error.message : String(error));
+          }
+        }
+      }
+
+      for (const searchQuery of searchQueries) {
         try {
-          const results = await invoke<CodeIndexSearchResult[]>('code_index_search', {
-            query,
-            maxResults: Math.max(1, Math.min(20, maxResults))
+          const listing = await invoke<FilesystemSearchListing>('terminal_search_directory_entries', {
+            request: {
+              path: cwd,
+              query: searchQuery
+            }
           });
 
+          const resultCount = listing.entries.filter((entry) => !entry.isDirectory).length;
           searches.push({
-            source: 'code-index',
-            query,
-            resultCount: results.length
+            source: 'filesystem',
+            query: searchQuery,
+            resultCount
           });
           entries.push({
-            id: `workspace-exploration-${createdAt}-code-index-search`,
+            id: `workspace-exploration-${createdAt}-filesystem-search-${searches.length}`,
             kind: 'search',
-            text: `Searched for ${query}`,
-            detail: `in code index (${results.length} match${results.length === 1 ? '' : 'es'})`,
+            text: `Searched for ${searchQuery}`,
+            detail: `in workspace files (${resultCount} match${resultCount === 1 ? '' : 'es'})`,
             createdAt
           });
 
-          results.forEach((entry) => {
-            if (!entry.path.trim()) return;
+          listing.entries.forEach((entry) => {
+            if (entry.isDirectory || !entry.path.trim()) return;
             if (!fileMap.has(entry.path)) {
               fileMap.set(entry.path, {
                 path: entry.path,
-                source: 'code-index',
-                snippet: entry.snippet?.trim() || undefined
+                source: 'filesystem'
               });
             }
           });
@@ -416,48 +583,24 @@ export function useLauncherRuntime(props: LauncherProps, store: any, tray: any) 
         }
       }
 
-      try {
-        const listing = await invoke<FilesystemSearchListing>('terminal_search_directory_entries', {
-          request: {
-            path: cwd,
-            query
-          }
-        });
-
-        searches.push({
-          source: 'filesystem',
-          query,
-          resultCount: listing.entries.filter((entry) => !entry.isDirectory).length
-        });
+      const files = Array.from(fileMap.values()).slice(0, maxResults);
+      if (files.length === 0) {
         entries.push({
-          id: `workspace-exploration-${createdAt}-filesystem-search`,
-          kind: 'search',
-          text: `Searched for ${query}`,
-          detail: `in workspace files (${listing.entries.filter((entry) => !entry.isDirectory).length} match${listing.entries.filter((entry) => !entry.isDirectory).length === 1 ? '' : 'es'})`,
+          id: `workspace-exploration-${createdAt}-no-results`,
+          kind: 'note',
+          text: `No matching files found for "${query}".`,
+          detail: `Tried search queries: ${searchQueries.join(', ')}`,
           createdAt
         });
-
-        listing.entries.forEach((entry) => {
-          if (entry.isDirectory || !entry.path.trim()) return;
-          if (!fileMap.has(entry.path)) {
-            fileMap.set(entry.path, {
-              path: entry.path,
-              source: 'filesystem'
-            });
-          }
-        });
-      } catch (error) {
-        collectedErrors.push(error instanceof Error ? error.message : String(error));
       }
-
-      const files = Array.from(fileMap.values()).slice(0, maxResults);
       const summary = `Explored ${files.length} file${files.length === 1 ? '' : 's'}, ${searches.length} search${searches.length === 1 ? '' : 'es'}.`;
       files.forEach((file, index) => {
+        const displayPath = displayWorkspacePath(file.path, cwd);
         entries.push({
           id: `workspace-exploration-${createdAt}-file-${index}`,
           kind: 'read',
-          text: `Read ${fileNameFromPath(file.path)}`,
-          detail: file.snippet?.trim() || undefined,
+          text: `Found ${displayPath || fileNameFromPath(file.path)}`,
+          detail: file.snippet?.trim() || `via ${file.source}`,
           path: file.path,
           createdAt
         });
@@ -473,8 +616,13 @@ export function useLauncherRuntime(props: LauncherProps, store: any, tray: any) 
       };
       const formatted = [
         summary,
+        searchQueries.length > 1 ? `Search queries: ${searchQueries.join(', ')}` : '',
         ...(collectedErrors.length > 0 ? [`Search warnings: ${collectedErrors.join(' | ')}`] : []),
-        ...entries.map((entry) => `${entry.text}${entry.detail ? ` ${entry.detail}` : ''}`)
+        ...entries.map((entry) => [
+          entry.text,
+          entry.path ? `Path: ${displayWorkspacePath(entry.path, cwd)}` : '',
+          entry.detail ? `Detail: ${entry.detail}` : ''
+        ].filter(Boolean).join('\n'))
       ].join('\n');
 
       void chatApiRef.current?.submitToolResult(

@@ -127,7 +127,7 @@ async fn build_terminal_ghost_prediction(
         available_commands,
     } = request;
     let query = input;
-    let cutoff = Utc::now() - Duration::days(180);
+    let cutoff = Utc.timestamp_opt(0, 0).single().unwrap_or_else(Utc::now);
     let mut history_entries = Vec::<ShellHistoryEntry>::new();
 
     history_entries.extend(read_zsh_history(cutoff));
@@ -159,6 +159,7 @@ async fn build_terminal_ghost_prediction(
     ))
 }
 
+#[cfg(test)]
 fn predict_terminal_ghost_from_history(
     input: &str,
     cwd: Option<&str>,
@@ -191,6 +192,7 @@ fn predict_terminal_ghost_from_history_with_commands(
     .predict()
 }
 
+#[cfg(test)]
 fn predict_terminal_path_completion(
     input: &str,
     cwd: Option<&str>,
@@ -332,7 +334,8 @@ fn read_zsh_history(cutoff: DateTime<Utc>) -> Vec<ShellHistoryEntry> {
         return Vec::new();
     };
 
-    let count = contents.lines().count();
+    let logical_lines = collect_history_logical_lines(&contents);
+    let count = logical_lines.len();
     println!(
         "[History] Reading Zsh history: {} lines from {:?}",
         count, path
@@ -342,12 +345,14 @@ fn read_zsh_history(cutoff: DateTime<Utc>) -> Vec<ShellHistoryEntry> {
     let mut previous_working_dir: Option<PathBuf> = None;
     let mut entries = Vec::new();
 
-    for line in contents.lines() {
+    for (index, line) in logical_lines.iter().enumerate() {
         let trimmed_line = line.trim();
         if trimmed_line.is_empty() {
             continue;
         }
 
+        let fallback_timestamp =
+            Utc::now() - Duration::seconds((count.saturating_sub(index)) as i64);
         let (executed_at, value) = if trimmed_line.starts_with(": ") {
             // Extended format: : 1234567890:0;command
             if let Some(rest) = trimmed_line.strip_prefix(": ") {
@@ -360,17 +365,17 @@ fn read_zsh_history(cutoff: DateTime<Utc>) -> Vec<ShellHistoryEntry> {
                             .unwrap_or_else(Utc::now);
                         (time, command.trim())
                     } else {
-                        (Utc::now(), command_part.trim())
+                        (fallback_timestamp, command_part.trim())
                     }
                 } else {
-                    (Utc::now(), rest.trim())
+                    (fallback_timestamp, rest.trim())
                 }
             } else {
-                (Utc::now(), trimmed_line)
+                (fallback_timestamp, trimmed_line)
             }
         } else {
             // Simple format: command
-            (Utc::now(), trimmed_line)
+            (fallback_timestamp, trimmed_line)
         };
 
         if executed_at < cutoff {
@@ -399,6 +404,43 @@ fn read_zsh_history(cutoff: DateTime<Utc>) -> Vec<ShellHistoryEntry> {
     }
 
     entries
+}
+
+fn collect_history_logical_lines(contents: &str) -> Vec<String> {
+    let mut logical_lines = Vec::new();
+    let mut pending = String::new();
+
+    for raw_line in contents.lines() {
+        let trimmed_end = raw_line.trim_end();
+        if trimmed_end.trim().is_empty() {
+            continue;
+        }
+
+        let has_continuation = trimmed_end.ends_with('\\');
+        let segment = trimmed_end.trim_end_matches('\\').trim();
+        if segment.is_empty() {
+            continue;
+        }
+
+        if pending.is_empty() {
+            pending.push_str(segment);
+        } else {
+            pending.push(' ');
+            pending.push_str(segment);
+        }
+
+        if has_continuation {
+            continue;
+        }
+
+        logical_lines.push(std::mem::take(&mut pending));
+    }
+
+    if !pending.is_empty() {
+        logical_lines.push(pending);
+    }
+
+    logical_lines
 }
 
 fn read_bash_history(cutoff: DateTime<Utc>) -> Vec<ShellHistoryEntry> {
@@ -799,10 +841,59 @@ mod tests {
             None,
             &history,
         )
-        .expect("signature completion should exist");
+        .expect("history completion should exist");
 
-        assert!(prediction.suggestion.starts_with("modal run"));
-        assert_ne!(prediction.suggestion, "modal run");
+        assert_eq!(prediction.suggestion, "modal run train --epochs 10");
+        assert_eq!(
+            prediction.kind,
+            crate::ai::predict::model::PredictionKind::History
+        );
+    }
+
+    #[test]
+    fn terminal_ghost_prefers_full_history_over_partial_path_completion_when_token_is_started() {
+        let temp_root = std::env::temp_dir().join(format!(
+            "octomus-ghost-history-priority-{}",
+            uuid::Uuid::new_v4()
+        ));
+        std::fs::create_dir_all(&temp_root).expect("temp directory should be created");
+
+        let script_path = temp_root.join("modal_training.py");
+        std::fs::write(&script_path, "print('hello')").expect("script should be written");
+
+        let cwd = temp_root.to_string_lossy().to_string();
+        let history = vec![ShellHistoryEntry {
+            value: "modal run modal_training.py --bundle-r2-uri s3://statsparrot-data/system/r2-system/training/sentinel/generated/latest".to_string(),
+            executed_at: "2026-05-24T10:00:00Z".to_string(),
+            source: "zsh".to_string(),
+            pwd: Some(cwd.clone()),
+        }];
+
+        let prediction =
+            predict_terminal_ghost_from_history("modal run modal_t", Some(&cwd), None, &history)
+                .expect("history completion should win once the file token has started");
+
+        assert_eq!(
+            prediction.suggestion,
+            "modal run modal_training.py --bundle-r2-uri s3://statsparrot-data/system/r2-system/training/sentinel/generated/latest"
+        );
+
+        let _ = std::fs::remove_file(&script_path);
+        let _ = std::fs::remove_dir_all(&temp_root);
+    }
+
+    #[test]
+    fn zsh_history_collapses_multiline_commands_into_single_entry() {
+        let contents = "python3 -m modal run modal_training.py \\\\\n  --executor gpu-a10g \\\\\n  --epochs 50\nnpm run dev\n";
+
+        let lines = collect_history_logical_lines(contents);
+
+        assert_eq!(lines.len(), 2);
+        assert_eq!(
+            lines[0],
+            "python3 -m modal run modal_training.py --executor gpu-a10g --epochs 50"
+        );
+        assert_eq!(lines[1], "npm run dev");
     }
 
     #[test]

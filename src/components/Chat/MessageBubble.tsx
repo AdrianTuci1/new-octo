@@ -6,11 +6,12 @@ import { Copy, Terminal, Check } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { CodeDiffView } from './CodeDiffView';
-import { ImplementationPlanBlock, ThinkingBlock, WebSearchBlock, WorkspaceExplorationBlock } from './blocks';
+import { FileArtifactBlock, ImplementationPlanBlock, ThinkingBlock, WebSearchBlock, WorkspaceExplorationBlock } from './blocks';
 import { extractInlineFileChangeApproval, visibleChatMessageBody } from '../../hooks/useChat';
 import type { ChatMessage, ExecutionPlanArtifact } from '../../types/chat';
 import type { CommandApproval } from '../../types/terminal';
 import type { FileDiff } from '../../types/diff';
+import { type FileDiffPreviewStatus } from '../../lib/fileDiffs';
 import { useEditorStore } from '../../stores/editorStore';
 import { ProfileAvatar } from '../App/profile/ProfileAvatar';
 import { useProfileSettings } from '../App/settings/useProfileSettings';
@@ -146,6 +147,15 @@ export function MessageBubble({ message, onRequestCommandApproval }: MessageBubb
       ? extractFileProposalFromMarkdown(rawVisibleBodyWithArtifacts)
       : { visibleBody: rawVisibleBodyWithArtifacts, fileDiffs: [] as FileDiff[] }
   ), [message.isStreaming, message.role, rawVisibleBodyWithArtifacts]);
+  const displayFileDiffs = message.fileDiffs?.length
+    ? message.fileDiffs
+    : extractedFileProposal.fileDiffs;
+  const filePreviewStatus: FileDiffPreviewStatus = message.fileChangeStatus
+    ?? (message.toolKind === 'file-change'
+      ? 'accepted'
+      : displayFileDiffs.length > 0
+        ? 'pending'
+        : 'pending');
   const emittedFileProposalIdsRef = useRef(new Set<string>());
   const rawVisibleBody = extractedFileProposal.visibleBody;
   const visibleBody = highlightSlashCommandsInMarkdown(rawVisibleBody);
@@ -354,9 +364,12 @@ export function MessageBubble({ message, onRequestCommandApproval }: MessageBubb
           </ReactMarkdown>
         )}
 
-        {message.fileDiffs && message.fileDiffs.length > 0 && (
+        {displayFileDiffs.length > 0 && (
           <div className="message-diffs">
-            <CodeDiffView diffs={message.fileDiffs} status={message.toolKind === 'file-change' ? 'accepted' : 'pending'} />
+            <FileDiffPreviewGroup
+              diffs={displayFileDiffs}
+              status={filePreviewStatus}
+            />
           </div>
         )}
       </div>
@@ -405,6 +418,32 @@ function resolveLocalPathFromHref(href: string) {
 function fileNameFromPath(path: string) {
   const normalizedPath = path.endsWith('/') ? path.slice(0, -1) : path;
   return normalizedPath.split('/').pop() || normalizedPath;
+}
+
+function FileDiffPreviewGroup({
+  diffs,
+  status
+}: {
+  diffs: FileDiff[];
+  status: FileDiffPreviewStatus;
+}) {
+  const createDiffs = diffs.filter((diff) => diff.diffType.kind === 'create');
+  const nonCreateDiffs = diffs.filter((diff) => diff.diffType.kind !== 'create');
+
+  return (
+    <>
+      {createDiffs.length > 0 ? (
+        <FileArtifactBlock
+          key={`create:${createDiffs.map((diff) => diff.filePath).join('|')}:${status}`}
+          diffs={createDiffs}
+          status={status}
+        />
+      ) : null}
+      {nonCreateDiffs.length > 0 ? (
+        <CodeDiffView diffs={nonCreateDiffs} status={status} />
+      ) : null}
+    </>
+  );
 }
 
 async function openLocalPath(

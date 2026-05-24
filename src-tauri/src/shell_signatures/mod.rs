@@ -1,7 +1,6 @@
 use std::{
     collections::{BTreeSet, HashMap, HashSet},
     hash::{Hash, Hasher},
-    path::Path,
     sync::{Mutex, OnceLock},
 };
 
@@ -497,9 +496,9 @@ end
 complete -o default -F _python_argcomplete pipx
 "#;
 
-        let zsh_parsed = scripts::parse_completion_script(Path::new("_gh"), zsh);
-        let fish_parsed = scripts::parse_completion_script(Path::new("gh.fish"), fish);
-        let bash_parsed = scripts::parse_completion_script(Path::new("pipx"), bash);
+        let zsh_parsed = scripts::parse_completion_script(std::path::Path::new("_gh"), zsh);
+        let fish_parsed = scripts::parse_completion_script(std::path::Path::new("gh.fish"), fish);
+        let bash_parsed = scripts::parse_completion_script(std::path::Path::new("pipx"), bash);
 
         assert!(zsh_parsed.command_names.contains("gh"));
         assert!(fish_parsed.command_names.contains("gh"));
@@ -515,7 +514,7 @@ complete -o default -F _python_argcomplete pipx
 #compdef gpg gpgv gpg2=gpg
 "#;
 
-        let parsed = scripts::parse_completion_script(Path::new("_python"), zsh);
+        let parsed = scripts::parse_completion_script(std::path::Path::new("_python"), zsh);
         if utils::command_exists_in_path("python3") {
             assert!(parsed.command_names.contains("python3"));
         }

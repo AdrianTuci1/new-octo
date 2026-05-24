@@ -5,7 +5,6 @@ use tauri::{AppHandle, Emitter, State};
 use super::ansi::{clean_terminal_text, HookParser, TerminalStreamEvent};
 use super::block::TerminalBlock;
 use super::completions::{ShellCompletion, ShellCompletionFormat};
-use super::fs::home_dir;
 use super::events::{
     emit_session_state, TerminalBlockOutputEvent, TerminalCompletionResultEvent,
     TerminalCompletionUpdateEvent, TerminalCompletionsFinishedEvent,
@@ -14,6 +13,7 @@ use super::events::{
     EVENT_COMPLETIONS_FINISHED, EVENT_COMPLETIONS_PROMPT, EVENT_COMPLETIONS_STARTED,
     EVENT_COMPLETION_RESULT, EVENT_COMPLETION_UPDATE, EVENT_DATA, EVENT_EXIT, EVENT_SESSION_CWD,
 };
+use super::fs::home_dir;
 use super::requests::{
     CreateTerminalSessionRequest, ResizeTerminalSessionRequest, RunTerminalCommandRequest,
     TerminalRunCommandResponse, TerminalSessionRequest, WriteTerminalSessionRequest,
@@ -21,8 +21,8 @@ use super::requests::{
 use super::session::{
     SharedTerminalSession, TerminalSessionInfo, TerminalSessionKind, TerminalSessionStatus,
 };
-use crate::shell_signatures::parser::parse_shell_input;
 use super::transport;
+use crate::shell_signatures::parser::parse_shell_input;
 
 #[derive(Clone)]
 pub struct ManagedTerminalSession {
@@ -211,7 +211,11 @@ fn finish_terminal_command(
     };
 
     if exit_code == Some(0) {
-        if let Some(next_cwd) = resolve_command_cwd_change(&command, session.cwd().as_deref(), session.previous_cwd().as_deref()) {
+        if let Some(next_cwd) = resolve_command_cwd_change(
+            &command,
+            session.cwd().as_deref(),
+            session.previous_cwd().as_deref(),
+        ) {
             session.set_cwd(Some(next_cwd));
         }
     }

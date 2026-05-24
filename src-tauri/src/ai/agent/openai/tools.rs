@@ -23,13 +23,13 @@ pub(super) fn build_tool_definitions() -> Value {
             "type": "function",
             "function": {
                 "name": "explore_workspace",
-                "description": "Inspect the local workspace recursively for files, symbols, functions, or variables. Use this for codebase discovery and read-only search instead of asking for a terminal command approval.",
+                "description": "Inspect the local workspace recursively for files, symbols, functions, or variables. Use this for codebase discovery and read-only search instead of asking for a terminal command approval. Pass concise identifier-like search terms, not the entire user sentence.",
                 "parameters": {
                     "type": "object",
                     "properties": {
                         "query": {
                             "type": "string",
-                            "description": "Search text, symbol name, file name, or code concept to explore."
+                            "description": "Short search text, symbol name, file name, or code concept to explore. Prefer focused keywords like `Launcher`, `useLauncher`, or `chat bridge`."
                         },
                         "maxResults": {
                             "type": "number",
