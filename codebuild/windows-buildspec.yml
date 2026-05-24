@@ -1,0 +1,28 @@
+version: 0.2
+env:
+  shell: powershell.exe
+phases:
+  install:
+    commands:
+      - $ErrorActionPreference = 'Stop'
+      - if (-not (Get-Command cargo.exe -ErrorAction SilentlyContinue)) { $rustup = Join-Path $env:TEMP 'rustup-init.exe'; Invoke-WebRequest https://win.rustup.rs/x86_64 -OutFile $rustup; Start-Process -Wait -FilePath $rustup -ArgumentList '-y --profile minimal' }
+      - $env:Path = "$env:USERPROFILE\.cargo\bin;$env:Path"
+      - rustup toolchain install stable --profile minimal
+      - rustup default stable
+      - if (-not (Get-Command node.exe -ErrorAction SilentlyContinue)) { choco install nodejs-lts -y }
+      - $env:Path = "C:\Program Files\nodejs;$env:Path"
+  pre_build:
+    commands:
+      - npm ci
+  build:
+    commands:
+      - $cargo = Join-Path $env:USERPROFILE '.cargo\bin\cargo.exe'
+      - npx tauri build --runner $cargo --bundles $env:RELEASE_BUNDLES
+      - New-Item -ItemType Directory -Force release-output | Out-Null
+      - Get-ChildItem src-tauri\target\release\bundle\nsis\*.exe | Copy-Item -Destination release-output -Force
+      - Get-ChildItem src-tauri\target\release\bundle\msi\*.msi | Copy-Item -Destination release-output -Force
+artifacts:
+  base-directory: release-output
+  files:
+    - '**/*'
+  discard-paths: yes

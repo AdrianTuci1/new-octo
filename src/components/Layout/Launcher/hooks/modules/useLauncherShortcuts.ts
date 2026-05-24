@@ -4,7 +4,12 @@
  */
 import { listen } from '@tauri-apps/api/event';
 import { useEffect, type KeyboardEvent } from 'react';
-import { COMMAND_ITEMS, consumeShellModeActivator, filterCommandItems } from '../../../../../lib';
+import {
+  COMMAND_ITEMS,
+  consumeShellModeActivator,
+  filterCommandItems,
+  isImmediateShellCommandCandidate
+} from '../../../../../lib';
 import * as Hooks from '../../../../../hooks';
 import type { BackendShortcutCommandEvent } from '../../../../../types/keybindings';
 import * as Utils from '../../utils';
@@ -31,12 +36,41 @@ export function useLauncherShortcuts({
   const { variant = 'panel' } = props;
   const visibleCommandItems = filterCommandItems(COMMAND_ITEMS, chat.query);
   const removeShellActivator = (query: string) => consumeShellModeActivator(query).value;
-  const toggleTextShellActivator = () => {
+  const autodetectEnabled = store.terminalAutoDetectEnabled
+    && runtime.agentSettings?.enabled !== false
+    && runtime.agentSettings?.input?.autodetectTerminalCommandsInAgent !== false;
+  const shouldTreatComposerQueryAsShell = store.composerSurface === 'terminal'
+    || store.modeLock === 'shell'
+    || runtime.hasShellActivator
+    || ui.composerMode === 'shell'
+    || store.autodetectedShellLatch
+    || (autodetectEnabled && isImmediateShellCommandCandidate(runtime.queryWithoutActivator, runtime.availableShellCommands));
+
+  const toggleShellModeOverride = () => {
     const current = chat.query;
     const consumed = consumeShellModeActivator(current);
-    store.setModeLock(null);
+
+    if (consumed.consumed) {
+      chat.setQuery(consumed.value);
+      store.setModeLock(null);
+      store.setAutodetectedShellLatch(false);
+      return;
+    }
+
+    if (store.modeLock === 'shell') {
+      store.setModeLock('chat');
+      store.setAutodetectedShellLatch(false);
+      return;
+    }
+
+    if (store.modeLock === 'chat') {
+      store.setModeLock('shell');
+      store.setAutodetectedShellLatch(false);
+      return;
+    }
+
+    store.setModeLock(ui.composerMode === 'shell' || store.autodetectedShellLatch ? 'chat' : 'shell');
     store.setAutodetectedShellLatch(false);
-    chat.setQuery(consumed.consumed ? consumed.value : `!${current}`);
   };
 
   // 1. Internal Keyboard Logic (Advanced Keyboard Shortcuts)
@@ -68,10 +102,7 @@ export function useLauncherShortcuts({
       store.setAutodetectedShellLatch(false);
       return result;
     },
-    isShellMode: store.composerSurface === 'terminal'
-      || store.modeLock === 'shell'
-      || ui.composerMode === 'shell'
-      || store.autodetectedShellLatch,
+    isShellMode: shouldTreatComposerQueryAsShell,
     isManualShellMode: store.composerSurface !== 'terminal' && store.modeLock === 'shell',
     hasPrediction: Boolean(ui.activeShellPrediction?.completionText),
     onAcceptPrediction: () => {
@@ -86,7 +117,7 @@ export function useLauncherShortcuts({
       store.setModeLock(null);
       store.setAutodetectedShellLatch(false);
     },
-    onToggleShellMode: toggleTextShellActivator,
+    onToggleShellMode: toggleShellModeOverride,
     onCloseTray: tray.closeTray,
     onToggleHelpTray: tray.openHelp,
     onToggleConversationsTray: tray.openConversations

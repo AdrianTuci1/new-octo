@@ -59,6 +59,12 @@ const DEFAULT_RESPONSE: BackendResponse = {
   recommendedAction: null
 };
 
+const MAX_INTELLIGENCE_MESSAGES = 8;
+const MAX_INTELLIGENCE_MESSAGE_BODY_CHARS = 1_500;
+const MAX_INTELLIGENCE_TERMINAL_BLOCKS = 5;
+const MAX_INTELLIGENCE_TERMINAL_OUTPUT_HEAD_CHARS = 1_200;
+const MAX_INTELLIGENCE_TERMINAL_OUTPUT_TAIL_CHARS = 1_200;
+
 export function useComposerIntelligence(options: ComposerIntelligenceOptions) {
   const {
     contextKey,
@@ -111,6 +117,22 @@ export function useComposerIntelligence(options: ComposerIntelligenceOptions) {
   useEffect(() => {
     setSelectedPredictionIndex(0);
   }, [contextKey, cwd, terminalBlocks.length]);
+
+  const compactMessages = useMemo(() => {
+    return messages.slice(-MAX_INTELLIGENCE_MESSAGES).map((message) => ({
+      role: message.role,
+      body: compactText(message.body, MAX_INTELLIGENCE_MESSAGE_BODY_CHARS)
+    }));
+  }, [messages]);
+
+  const compactTerminalBlocks = useMemo(() => {
+    return terminalBlocks.slice(-MAX_INTELLIGENCE_TERMINAL_BLOCKS).map((block) => ({
+      command: block.command,
+      output: compactTerminalOutput(block.output),
+      exitCode: block.exitCode ?? null,
+      status: block.status
+    }));
+  }, [terminalBlocks]);
 
   useEffect(() => {
     const generation = generationRef.current + 1;
@@ -168,16 +190,8 @@ export function useComposerIntelligence(options: ComposerIntelligenceOptions) {
           gitBranch,
           availableCommands,
           historyEntries,
-          terminalBlocks: terminalBlocks.map((block) => ({
-            command: block.command,
-            output: block.output,
-            exitCode: block.exitCode ?? null,
-            status: block.status
-          })),
-          messages: messages.map((message) => ({
-            role: message.role,
-            body: message.body
-          })),
+          terminalBlocks: compactTerminalBlocks,
+          messages: compactMessages,
           lockedMode,
           autodetectEnabled,
           allowSingleCharacterPrediction,
@@ -221,10 +235,10 @@ export function useComposerIntelligence(options: ComposerIntelligenceOptions) {
     forceShellMode,
     historyEntries,
     lockedMode,
-    messages,
+    compactMessages,
     query,
     surface,
-    terminalBlocks
+    compactTerminalBlocks
   ]);
 
   useEffect(() => {
@@ -248,4 +262,30 @@ export function useComposerIntelligence(options: ComposerIntelligenceOptions) {
       setSelectedPredictionIndex((currentIndex) => (currentIndex + 1) % count);
     }
   };
+}
+
+function compactText(value: string, maxChars: number) {
+  const trimmed = value.trim();
+  if (trimmed.length <= maxChars) {
+    return trimmed;
+  }
+
+  return `${trimmed.slice(0, maxChars).trimEnd()}\n…`;
+}
+
+function compactTerminalOutput(output?: string | null) {
+  const normalized = (output ?? '').trim();
+  if (
+    normalized.length <=
+    MAX_INTELLIGENCE_TERMINAL_OUTPUT_HEAD_CHARS + MAX_INTELLIGENCE_TERMINAL_OUTPUT_TAIL_CHARS
+  ) {
+    return normalized;
+  }
+
+  const head = normalized.slice(0, MAX_INTELLIGENCE_TERMINAL_OUTPUT_HEAD_CHARS).trimEnd();
+  const tail = normalized
+    .slice(Math.max(0, normalized.length - MAX_INTELLIGENCE_TERMINAL_OUTPUT_TAIL_CHARS))
+    .trimStart();
+
+  return `${head}\n…\n${tail}`;
 }

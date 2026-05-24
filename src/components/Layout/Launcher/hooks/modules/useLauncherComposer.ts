@@ -1,4 +1,3 @@
-
 import { useMemo, useEffect } from 'react';
 import * as Hooks from '../../../../../hooks';
 import * as Utils from '../../utils';
@@ -122,7 +121,15 @@ export function useLauncherComposer(params: ComposerStateParams) {
       };
     }
     return baseComposerState;
-  }, [composerIntelligence.mode, composerIntelligence.shellSource, store.modeLock, store.autodetectedShellLatch, chat.query, hasShellActivator, suppressComposerShellAutodetect]);
+  }, [
+    composerIntelligence.mode,
+    composerIntelligence.shellSource,
+    store.modeLock,
+    store.autodetectedShellLatch,
+    chat.query,
+    hasShellActivator,
+    suppressComposerShellAutodetect
+  ]);
 
   const composerMode = composerState.mode;
   const shellSource: ShellModeSource | null = composerState.shellSource;
@@ -232,7 +239,17 @@ export function useLauncherComposer(params: ComposerStateParams) {
         store.setAutodetectedShellLatch(false);
       }
     }
-  }, [composerIntelligence.mode, composerIntelligence.shellSource, store.modeLock, chat.query, autodetectEnabled, store.autodetectedShellLatch, store.setAutodetectedShellLatch, hasShellActivator, suppressComposerShellAutodetect]);
+  }, [
+    composerIntelligence.mode,
+    composerIntelligence.shellSource,
+    store.modeLock,
+    chat.query,
+    autodetectEnabled,
+    store.autodetectedShellLatch,
+    store.setAutodetectedShellLatch,
+    hasShellActivator,
+    suppressComposerShellAutodetect
+  ]);
 
   useEffect(() => {
     if (composerMode !== 'shell' || chat.query.trim().length === 0) {

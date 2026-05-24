@@ -542,9 +542,7 @@ export function useLauncherHandlers({
     chat.setQuery(rawValue);
     store.setSelectedHistoryIndex(0);
     store.setSelectedCommandIndex(0);
-    if (nextValue.consumed && store.modeLock === 'shell') {
-      store.setModeLock(null);
-    } else if (!nextValue.consumed && store.modeLock !== null) {
+    if (nextValue.consumed && store.modeLock === 'chat') {
       store.setModeLock(null);
     }
 

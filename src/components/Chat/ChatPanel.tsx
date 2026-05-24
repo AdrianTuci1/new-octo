@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ArrowDown, ArrowUp, X } from 'lucide-react';
 import { ChatEmptyState, ChatTopbar } from './layout';
 import { useChatPanelScroll } from './hooks/useChatPanelScroll';
@@ -176,7 +176,10 @@ export function ChatPanel({
   title = 'New agent conversation'
 }: ChatPanelProps) {
   const { profile } = useProfileSettings();
-  const baseTimelineItems = buildTimelineItems(messages, terminalBlocks, terminalError);
+  const baseTimelineItems = useMemo(
+    () => buildTimelineItems(messages, terminalBlocks, terminalError),
+    [messages, terminalBlocks, terminalError]
+  );
   const timelineItems = USE_MOCK ? MOCK_TIMELINE_ITEMS : baseTimelineItems;
   const activePendingApproval = USE_MOCK ? MOCK_PENDING_APPROVAL : pendingApproval;
   const hasContent = USE_MOCK || messages.length > 0 || terminalBlocks.length > 0 || Boolean(terminalError) || Boolean(activePendingApproval);
@@ -199,9 +202,27 @@ export function ChatPanel({
   const [matches, setMatches] = useState<HTMLSpanElement[]>([]);
   const [activeIndex, setActiveIndex] = useState(-1);
 
-  // Perform highlight whenever search parameters, messages, blocks, or pending approvals change
+  // Only run DOM highlighting while find is open and a query exists. For large
+  // streaming terminal outputs this avoids expensive DOM normalization work on
+  // every chunk when search is not active.
   useEffect(() => {
     if (!scrollRef.current) return;
+
+    if (!isFindOpen || !searchQuery) {
+      const existingHighlights = scrollRef.current.querySelectorAll('.chat-search-highlight');
+      existingHighlights.forEach((el) => {
+        const parent = el.parentNode;
+        if (parent) {
+          parent.replaceChild(document.createTextNode(el.textContent || ''), el);
+        }
+      });
+      if (existingHighlights.length > 0) {
+        scrollRef.current.normalize();
+      }
+      setMatches([]);
+      setActiveIndex(-1);
+      return;
+    }
 
     const foundSpans = performHighlight(
       scrollRef.current,
@@ -218,7 +239,7 @@ export function ChatPanel({
     } else {
       setActiveIndex(-1);
     }
-  }, [searchQuery, caseSensitive, useRegex, wholeWord, messages, terminalBlocks, activePendingApproval]);
+  }, [isFindOpen, searchQuery, caseSensitive, useRegex, wholeWord, messages, terminalBlocks, activePendingApproval, scrollRef]);
 
   // Handle active match changes (scrolling and active class highlight)
   useEffect(() => {
