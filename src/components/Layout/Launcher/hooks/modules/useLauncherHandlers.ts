@@ -155,6 +155,43 @@ function isCommandSearchQuery(value: string) {
   return trimmed.startsWith('/') && !trimmed.includes(' ');
 }
 
+function shellQuotePath(path: string) {
+  if (!path) {
+    return "''";
+  }
+
+  return `'${path.replace(/'/g, `'\\''`)}'`;
+}
+
+function buildChangeDirectoryCommand(
+  currentPath: string | null | undefined,
+  nextPath: string,
+  preferParentShortcut = false
+) {
+  const normalizedCurrentPath = currentPath?.trim() || null;
+  const normalizedNextPath = nextPath.trim();
+
+  if (!normalizedNextPath) {
+    return '';
+  }
+
+  if (preferParentShortcut && normalizedCurrentPath) {
+    return 'cd ..';
+  }
+
+  if (normalizedCurrentPath) {
+    const prefix = normalizedCurrentPath.endsWith('/') ? normalizedCurrentPath : `${normalizedCurrentPath}/`;
+    if (normalizedNextPath.startsWith(prefix)) {
+      const relativePath = normalizedNextPath.slice(prefix.length);
+      if (relativePath) {
+        return `cd ${shellQuotePath(relativePath)}`;
+      }
+    }
+  }
+
+  return `cd ${shellQuotePath(normalizedNextPath)}`;
+}
+
 export function useLauncherHandlers({
   store, tray, props, runtime, 
   seededConversationAnchorTimesRef, pendingConversationAnchorRef,
@@ -175,6 +212,8 @@ export function useLauncherHandlers({
     chat, 
     terminal, 
     agentTerminal, 
+    workingDirectory,
+    activeSurfaceWorkingDirectory,
     resolvedConversationId, 
     resolvedPendingApproval, 
     setResolvedPendingApproval,
@@ -610,6 +649,56 @@ export function useLauncherHandlers({
     terminal
   ]);
 
+  const changeWorkingDirectoryFromPicker = useCallback((nextPath: string, preferParentShortcut = false) => {
+    const normalizedNextPath = nextPath.trim();
+    if (!normalizedNextPath) {
+      return;
+    }
+
+    const currentPath = activeSurfaceWorkingDirectory?.trim() || workingDirectory.currentPath?.trim() || null;
+    if (currentPath === normalizedNextPath) {
+      workingDirectory.closePicker();
+      return;
+    }
+
+    const command = buildChangeDirectoryCommand(currentPath, normalizedNextPath, preferParentShortcut);
+    if (!command) {
+      workingDirectory.closePicker();
+      return;
+    }
+
+    void runCommandInSurface(
+      command,
+      store.composerSurface === 'agent' ? 'agent' : 'terminal',
+      terminal,
+      agentTerminal,
+      clearTerminalSurface,
+      'user'
+    ).finally(() => {
+      workingDirectory.closePicker();
+    });
+  }, [
+    activeSurfaceWorkingDirectory,
+    agentTerminal,
+    clearTerminalSurface,
+    store.composerSurface,
+    terminal,
+    workingDirectory
+  ]);
+
+  const handleNavigateToParentDirectory = useCallback(() => {
+    const parentPath = workingDirectory.listing?.parentPath?.trim();
+    if (!parentPath) {
+      return;
+    }
+
+    changeWorkingDirectoryFromPicker(parentPath, true);
+  }, [changeWorkingDirectoryFromPicker, workingDirectory.listing?.parentPath]);
+
+  const handleSelectWorkingDirectory = useCallback((path: string) => {
+    changeWorkingDirectoryFromPicker(path, false);
+  }, [changeWorkingDirectoryFromPicker]);
+
   const executeTerminalCommand = useCallback((command: string) => {
     const normalized = command.trim();
     if (!normalized) {
@@ -682,6 +771,8 @@ export function useLauncherHandlers({
     handleToggleCommands,
     handleToggleTerminalAutoDetect,
     handleHistoryEntrySelect,
+    handleNavigateToParentDirectory,
+    handleSelectWorkingDirectory,
     executeTerminalCommand
   };
 }

@@ -48,6 +48,7 @@ type BackendResponse = {
 type BackendGhostPrediction = {
   input: string;
   suggestion: string;
+  suggestions?: string[];
   confidence: number;
   kind: string;
 };
@@ -127,11 +128,12 @@ export function useComposerIntelligence(options: ComposerIntelligenceOptions) {
     return {
       fullCommand: activePredictionSuggestion,
       completionText: activePredictionSuggestion.slice(query.length),
+      suggestions: response.prediction?.suggestions ?? [activePredictionSuggestion],
       hint: (response.prediction?.suggestions?.length ?? 0) > 1
         ? 'Tab, Right Arrow, or Down Arrow to accept'
         : 'Tab or Right Arrow to accept'
     };
-  }, [activePredictionSuggestion, query, trimmedQuery.length, response.prediction?.suggestions?.length, surface]);
+  }, [activePredictionSuggestion, query, trimmedQuery.length, response.prediction?.suggestions, surface]);
 
   useEffect(() => {
     setSelectedPredictionIndex(0);
@@ -184,7 +186,7 @@ export function useComposerIntelligence(options: ComposerIntelligenceOptions) {
               prediction: nextPrediction
                 ? {
                     suggestion: nextPrediction.suggestion,
-                    suggestions: [nextPrediction.suggestion],
+                    suggestions: normalizeGhostSuggestions(nextPrediction),
                     kind: nextPrediction.kind
                   }
                 : null,
@@ -249,7 +251,7 @@ export function useComposerIntelligence(options: ComposerIntelligenceOptions) {
             prediction: nextGhostPrediction
               ? {
                   suggestion: nextGhostPrediction.suggestion,
-                  suggestions: [nextGhostPrediction.suggestion],
+                  suggestions: normalizeGhostSuggestions(nextGhostPrediction),
                   kind: nextGhostPrediction.kind
                 }
               : nextResponse.prediction
@@ -313,6 +315,22 @@ export function useComposerIntelligence(options: ComposerIntelligenceOptions) {
       setSelectedPredictionIndex((currentIndex) => (currentIndex + 1) % count);
     }
   };
+}
+
+function normalizeGhostSuggestions(prediction: BackendGhostPrediction) {
+  const seen = new Set<string>();
+  const suggestions = [prediction.suggestion, ...(prediction.suggestions ?? [])]
+    .map((suggestion) => suggestion.trim())
+    .filter((suggestion) => {
+      if (!suggestion || seen.has(suggestion)) {
+        return false;
+      }
+
+      seen.add(suggestion);
+      return true;
+    });
+
+  return suggestions.length > 0 ? suggestions : [prediction.suggestion];
 }
 
 function compactText(value: string, maxChars: number) {

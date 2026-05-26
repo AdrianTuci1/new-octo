@@ -1,4 +1,5 @@
 use std::{
+    collections::BTreeSet,
     fs,
     path::{Path, PathBuf},
 };
@@ -9,6 +10,8 @@ use tauri::State;
 
 use super::fs::{home_dir, resolve_request_path, PathRequest};
 use super::manager::TerminalManager;
+
+const MAX_TERMINAL_GHOST_SUGGESTIONS: usize = 24;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -36,6 +39,16 @@ pub struct TerminalPredictionRequest {
     pub available_commands: Vec<String>,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TerminalGhostPrediction {
+    pub input: String,
+    pub suggestion: String,
+    pub confidence: f32,
+    pub kind: crate::ai::predict::model::PredictionKind,
+    pub suggestions: Vec<String>,
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct GhostConversationTerminalBlock {
@@ -60,7 +73,7 @@ pub async fn terminal_get_prediction(
     terminal_manager: State<'_, TerminalManager>,
     memory_manager: State<'_, crate::memory::OctomusMemoryManager>,
     request: TerminalPredictionRequest,
-) -> Result<Option<crate::ai::predict::CommandPrediction>, String> {
+) -> Result<Option<TerminalGhostPrediction>, String> {
     build_terminal_ghost_prediction(terminal_manager.inner(), memory_manager.inner(), request).await
 }
 
@@ -79,6 +92,23 @@ pub async fn terminal_get_composer_intelligence(
 
 pub fn terminal_get_recent_history() -> Result<Vec<ShellHistoryEntry>, String> {
     let cutoff = Utc::now() - Duration::days(180);
+    let mut entries = load_global_shell_history(cutoff);
+
+    // Keep enough ordered history to preserve command sequences for prediction
+    // while still bounding the payload size sent to the frontend.
+    if entries.len() > 5_000 {
+        entries.truncate(5_000);
+    }
+
+    Ok(entries)
+}
+
+pub fn terminal_get_prediction_shell_history() -> Vec<ShellHistoryEntry> {
+    let cutoff = Utc.timestamp_opt(0, 0).single().unwrap_or_else(Utc::now);
+    load_global_shell_history(cutoff)
+}
+
+fn load_global_shell_history(cutoff: DateTime<Utc>) -> Vec<ShellHistoryEntry> {
     let mut raw_entries = Vec::new();
 
     raw_entries.extend(read_zsh_history(cutoff));
@@ -86,7 +116,7 @@ pub fn terminal_get_recent_history() -> Result<Vec<ShellHistoryEntry>, String> {
     raw_entries.extend(read_fish_history(cutoff));
     sort_history_entries_by_recency(&mut raw_entries);
 
-    let mut entries = raw_entries
+    raw_entries
         .into_iter()
         .filter_map(|entry| {
             let normalized_value = entry.value.trim().to_string();
@@ -101,38 +131,26 @@ pub fn terminal_get_recent_history() -> Result<Vec<ShellHistoryEntry>, String> {
                 pwd: entry.pwd,
             })
         })
-        .collect::<Vec<_>>();
-
-    // Sort by most recent
-    entries.sort_by(|a, b| b.executed_at.cmp(&a.executed_at));
-
-    // Keep enough ordered history to preserve command sequences for prediction
-    // while still bounding the payload size sent to the frontend.
-    if entries.len() > 400 {
-        entries.truncate(400);
-    }
-
-    Ok(entries)
+        .collect()
 }
 
 async fn build_terminal_ghost_prediction(
     terminal_manager: &TerminalManager,
     memory_manager: &crate::memory::OctomusMemoryManager,
     request: TerminalPredictionRequest,
-) -> Result<Option<crate::ai::predict::CommandPrediction>, String> {
+) -> Result<Option<TerminalGhostPrediction>, String> {
     let TerminalPredictionRequest {
         session_id,
         input,
         cwd,
         available_commands,
     } = request;
+    let available_commands = merge_available_commands(available_commands);
     let query = input;
     let cutoff = Utc.timestamp_opt(0, 0).single().unwrap_or_else(Utc::now);
     let mut history_entries = Vec::<ShellHistoryEntry>::new();
 
-    history_entries.extend(read_zsh_history(cutoff));
-    history_entries.extend(read_bash_history(cutoff));
-    history_entries.extend(read_fish_history(cutoff));
+    history_entries.extend(terminal_get_prediction_shell_history());
     history_entries.extend(load_application_history(memory_manager, cutoff));
     history_entries.extend(load_session_history(
         terminal_manager,
@@ -150,13 +168,35 @@ async fn build_terminal_ghost_prediction(
         .find(|block| block.status == "finished")
         .map(|block| block.command.as_str());
 
-    Ok(predict_terminal_ghost_from_history_with_commands(
+    let prediction = predict_terminal_ghost_from_history_with_commands(
         &query,
         cwd.as_deref(),
         last_command,
         &history_entries,
         &available_commands,
-    ))
+    );
+
+    Ok(prediction.map(|prediction| {
+        let history_suggestions = collect_terminal_ghost_suggestions(
+            &query,
+            cwd.as_deref(),
+            &history_entries,
+            &available_commands,
+            &prediction.suggestion,
+        );
+        TerminalGhostPrediction::from_prediction(prediction, history_suggestions)
+    }))
+}
+
+fn merge_available_commands(available_commands: Vec<String>) -> Vec<String> {
+    let mut commands = available_commands
+        .into_iter()
+        .map(|command| command.trim().to_string())
+        .filter(|command| !command.is_empty())
+        .collect::<BTreeSet<_>>();
+
+    commands.extend(super::fs::discover_shell_command_names());
+    commands.into_iter().collect()
 }
 
 #[cfg(test)]
@@ -175,6 +215,29 @@ fn predict_terminal_ghost_from_history(
     )
 }
 
+#[cfg(test)]
+fn predict_terminal_ghost_response_from_history(
+    input: &str,
+    cwd: Option<&str>,
+    last_command: Option<&str>,
+    history_entries: &[ShellHistoryEntry],
+) -> Option<TerminalGhostPrediction> {
+    let prediction =
+        predict_terminal_ghost_from_history(input, cwd, last_command, history_entries)?;
+    let suggestions = collect_terminal_ghost_suggestions(
+        input,
+        cwd,
+        history_entries,
+        &[],
+        &prediction.suggestion,
+    );
+
+    Some(TerminalGhostPrediction::from_prediction(
+        prediction,
+        suggestions,
+    ))
+}
+
 fn predict_terminal_ghost_from_history_with_commands(
     input: &str,
     cwd: Option<&str>,
@@ -190,6 +253,66 @@ fn predict_terminal_ghost_from_history_with_commands(
         available_commands,
     )
     .predict()
+}
+
+fn collect_terminal_ghost_suggestions(
+    input: &str,
+    cwd: Option<&str>,
+    history_entries: &[ShellHistoryEntry],
+    available_commands: &[String],
+    primary_suggestion: &str,
+) -> Vec<String> {
+    let ranked_history = crate::ai::predict::model::collect_ranked_history_prefix_matches(
+        input,
+        cwd,
+        history_entries,
+        MAX_TERMINAL_GHOST_SUGGESTIONS,
+    );
+    let mut suggestions = Vec::new();
+    push_unique_suggestion(&mut suggestions, primary_suggestion);
+    for suggestion in ranked_history {
+        push_unique_suggestion(&mut suggestions, &suggestion);
+    }
+    for suggestion in crate::ai::predict::model::collect_executable_prefix_matches(
+        input,
+        available_commands,
+        MAX_TERMINAL_GHOST_SUGGESTIONS,
+    ) {
+        push_unique_suggestion(&mut suggestions, &suggestion);
+    }
+    suggestions
+}
+
+fn push_unique_suggestion(suggestions: &mut Vec<String>, value: &str) {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return;
+    }
+
+    if suggestions.iter().any(|existing| existing == trimmed) {
+        return;
+    }
+
+    suggestions.push(trimmed.to_string());
+}
+
+impl TerminalGhostPrediction {
+    fn from_prediction(
+        prediction: crate::ai::predict::CommandPrediction,
+        mut suggestions: Vec<String>,
+    ) -> Self {
+        if suggestions.is_empty() {
+            suggestions.push(prediction.suggestion.clone());
+        }
+
+        Self {
+            input: prediction.input,
+            suggestion: prediction.suggestion,
+            confidence: prediction.confidence,
+            kind: prediction.kind,
+            suggestions,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -768,6 +891,64 @@ mod tests {
             prediction.kind,
             crate::ai::predict::model::PredictionKind::History
         );
+    }
+
+    #[test]
+    fn terminal_ghost_response_includes_ranked_full_history_suggestions_for_bare_npm() {
+        let history = vec![
+            ShellHistoryEntry {
+                value: "npm run deploy:frontend".to_string(),
+                executed_at: "2026-05-24T18:00:00Z".to_string(),
+                source: "zsh".to_string(),
+                pwd: Some("/repo".to_string()),
+            },
+            ShellHistoryEntry {
+                value: "npm run deploy:backend".to_string(),
+                executed_at: "2026-05-24T17:00:00Z".to_string(),
+                source: "zsh".to_string(),
+                pwd: Some("/repo".to_string()),
+            },
+            ShellHistoryEntry {
+                value: "npm run clean".to_string(),
+                executed_at: "2026-05-23T18:00:00Z".to_string(),
+                source: "zsh".to_string(),
+                pwd: Some("/repo".to_string()),
+            },
+            ShellHistoryEntry {
+                value: "npm run clean".to_string(),
+                executed_at: "2026-05-23T17:00:00Z".to_string(),
+                source: "zsh".to_string(),
+                pwd: Some("/repo".to_string()),
+            },
+        ];
+
+        let prediction =
+            predict_terminal_ghost_response_from_history("npm", Some("/repo"), None, &history)
+                .expect("terminal ghost should expose history suggestions");
+
+        assert_eq!(prediction.suggestion, "npm run clean");
+        assert_eq!(
+            prediction.suggestions,
+            vec![
+                "npm run clean",
+                "npm run deploy:frontend",
+                "npm run deploy:backend"
+            ]
+        );
+    }
+
+    #[test]
+    fn terminal_ghost_suggestions_include_available_global_commands() {
+        let suggestions = collect_terminal_ghost_suggestions(
+            "mod",
+            Some("/repo"),
+            &[],
+            &["modal".to_string(), "modular-cli".to_string()],
+            "modal",
+        );
+
+        assert_eq!(suggestions[0], "modal");
+        assert!(suggestions.contains(&"modular-cli".to_string()));
     }
 
     #[test]

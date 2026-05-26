@@ -455,6 +455,7 @@ export function useTerminalCommandBlocks(options: UseTerminalCommandBlocksOption
       const activeSession = sessionRef.current;
       if (!activeSession || event.payload.sessionId !== activeSession.id) return;
 
+      sessionOriginCwdRef.current = event.payload.cwd ?? null;
       sessionRef.current = {
         ...activeSession,
         cwd: event.payload.cwd ?? null
@@ -479,6 +480,7 @@ export function useTerminalCommandBlocks(options: UseTerminalCommandBlocksOption
       sessionRef.current = nextSessionInfo;
       setSessionInfo(nextSessionInfo);
       if (event.payload.cwd !== undefined) {
+        sessionOriginCwdRef.current = event.payload.cwd ?? null;
         setSessionCwd(event.payload.cwd ?? null);
       }
     });

@@ -9,6 +9,7 @@
  * - Assembler: This module takes the outputs of all other sub-hooks and shapes them into the standard Launcher interface.
  */
 import { COMMAND_ITEMS, HELP_ITEMS, getShellToggleShortcutTokens } from '../../../../../lib';
+import { formatCompactPathLabel } from '../../../../../lib/pathLabels';
 import type { LauncherProps } from '../types';
 
 export function useLauncherInterface(params: {
@@ -37,6 +38,9 @@ export function useLauncherInterface(params: {
   const resolvedConversationId = runtime.resolvedConversationId;
   const resolvedPendingApproval = runtime.resolvedPendingApproval;
   const isTerminalCommandsTrayOpen = store.composerSurface === 'terminal' && tray.isTrayOpen && tray.activeTrayMode === 'commands';
+  const isTerminalTrayOpen = store.composerSurface === 'terminal'
+    && tray.isTrayOpen
+    && (tray.activeTrayMode === 'commands' || tray.activeTrayMode === 'history');
   const isTerminalSurface = store.composerSurface === 'terminal';
   const workingDirectory = runtime.workingDirectory;
   const gitContext = runtime.gitContext;
@@ -48,6 +52,11 @@ export function useLauncherInterface(params: {
   const activeMessages = store.composerSurface === 'agent' ? runtime.chat.messages : [];
   const composerMode = composer.composerMode;
   const activeSurfaceWorkingDirectory = runtime.activeSurfaceWorkingDirectory;
+  const effectiveWorkingDirectory = runtime.effectiveWorkingDirectory ?? activeSurfaceWorkingDirectory ?? workingDirectory.currentPath;
+  const effectiveWorkingDirectoryLabel = formatCompactPathLabel(
+    effectiveWorkingDirectory,
+    workingDirectory.homeDir ?? null
+  );
   const showOpenInApp = variant !== 'workspace';
   const modelSetupRequired = modelSelection.requiresModelSetup;
   const terminalAutoDetectEnabled = store.terminalAutoDetectEnabled
@@ -83,6 +92,7 @@ export function useLauncherInterface(params: {
       resolvedConversationId,
       resolvedPendingApproval,
       isTerminalCommandsTrayOpen,
+      isTerminalTrayOpen,
       isTerminalSurface,
       workingDirectory,
       gitContext,
@@ -134,7 +144,7 @@ export function useLauncherInterface(params: {
       },
       trayPanel: {
         isOpen: tray.isTrayOpen,
-        showFooter: !isTerminalSurface || tray.activeTrayMode === 'commands',
+        showFooter: !isTerminalSurface || tray.activeTrayMode === 'commands' || tray.activeTrayMode === 'history' || tray.activeTrayMode === 'conversations',
         showOpenInApp,
         activeMode: tray.activeTrayMode,
         commandSearchQuery: runtime.chat.query,
@@ -176,8 +186,8 @@ export function useLauncherInterface(params: {
         query: runtime.chat.query,
         gitContext: gitContext.gitContext,
         gitBranchMenuOpen: gitContext.isBranchMenuOpen,
-        workingDirectory: activeSurfaceWorkingDirectory ?? workingDirectory.currentPath,
-        workingDirectoryLabel: workingDirectory.buttonLabel,
+        workingDirectory: effectiveWorkingDirectory,
+        workingDirectoryLabel: effectiveWorkingDirectoryLabel,
         workingDirectoryPickerOpen: workingDirectory.isPickerOpen,
         workingDirectoryListing: workingDirectory.listing,
         workingDirectorySearch: workingDirectory.searchQuery,
@@ -192,8 +202,8 @@ export function useLauncherInterface(params: {
         onToggleWorkingDirectoryPicker: workingDirectory.togglePicker,
         onCloseWorkingDirectoryPicker: workingDirectory.closePicker,
         onWorkingDirectorySearchChange: workingDirectory.setSearchQuery,
-        onNavigateToParentDirectory: workingDirectory.navigateToParent,
-        onSelectWorkingDirectory: workingDirectory.selectDirectory,
+        onNavigateToParentDirectory: handlers.handleNavigateToParentDirectory,
+        onSelectWorkingDirectory: handlers.handleSelectWorkingDirectory,
         onToggleGitBranchMenu: gitContext.toggleBranchMenu,
         onCloseGitBranchMenu: () => gitContext.setIsBranchMenuOpen(false),
         onSelectGitBranch: gitContext.switchBranch,
@@ -221,12 +231,14 @@ export function useLauncherInterface(params: {
         recommendedAction,
         gitContext: gitContext.gitContext,
         gitBranchMenuOpen: gitContext.isBranchMenuOpen,
-        workingDirectory: activeSurfaceWorkingDirectory ?? workingDirectory.currentPath,
-        workingDirectoryLabel: workingDirectory.buttonLabel,
+        workingDirectory: effectiveWorkingDirectory,
+        workingDirectoryLabel: effectiveWorkingDirectoryLabel,
         workingDirectoryPickerOpen: workingDirectory.isPickerOpen,
         workingDirectoryListing: workingDirectory.listing,
         workingDirectorySearch: workingDirectory.searchQuery,
         selectedModelLabel: modelSelection.selectedModelLabel,
+        contextIndicatorTitle: effectiveWorkingDirectory ?? 'Workspace context',
+        contextIndicatorTone: isTerminalSurface || composerMode === 'shell' ? 'terminal' : 'agent',
         selectedModelSupportsAttachments: modelSelection.selectedModelSupportsAttachments,
         attachedFiles: runtime.chat.attachments,
         onAttachFiles: runtime.chat.attachFiles,
@@ -241,8 +253,8 @@ export function useLauncherInterface(params: {
         onToggleSingleCharacterPrediction: () => store.setAllowSingleCharacterCommandPrediction(!store.allowSingleCharacterCommandPrediction),
         onCloseWorkingDirectoryPicker: workingDirectory.closePicker,
         onWorkingDirectorySearchChange: workingDirectory.setSearchQuery,
-        onNavigateToParentDirectory: workingDirectory.navigateToParent,
-        onSelectWorkingDirectory: workingDirectory.selectDirectory,
+        onNavigateToParentDirectory: handlers.handleNavigateToParentDirectory,
+        onSelectWorkingDirectory: handlers.handleSelectWorkingDirectory,
         onToggleTerminalAutoDetect: handlers.handleToggleTerminalAutoDetect,
         onToggleGitBranchMenu: gitContext.toggleBranchMenu,
         onToggleModelTray: () => (modelSetupRequired ? openModelDrawer() : tray.toggleTray('models')),

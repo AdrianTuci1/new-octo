@@ -24,7 +24,8 @@ pub use fs::{
 };
 pub use git::GitRepoContext;
 pub use intelligence::{
-    sort_history_entries_by_recency, ShellHistoryEntry, TerminalRuntimeContext,
+    sort_history_entries_by_recency, terminal_get_prediction_shell_history, ShellHistoryEntry,
+    TerminalRuntimeContext,
 };
 pub use manager::TerminalManager;
 
@@ -148,7 +149,7 @@ pub async fn terminal_get_prediction(
     terminal_manager: State<'_, TerminalManager>,
     memory_manager: State<'_, crate::memory::OctomusMemoryManager>,
     request: intelligence::TerminalPredictionRequest,
-) -> Result<Option<crate::ai::predict::CommandPrediction>, String> {
+) -> Result<Option<intelligence::TerminalGhostPrediction>, String> {
     intelligence::terminal_get_prediction(terminal_manager, memory_manager, request).await
 }
 

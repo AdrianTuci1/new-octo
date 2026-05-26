@@ -392,6 +392,22 @@
   max-width: 132px;
 }
 
+.composer-context-indicator {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  flex: 0 0 auto;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+
+.composer-context-indicator.agent {
+  background: #4fd1c5;
+}
+
+.composer-context-indicator.terminal {
+  background: #d6f5b1;
+}
+
 .icon-button:hover,
 .toolbar-chip:hover {
   background: rgba(255, 255, 255, 0.15);

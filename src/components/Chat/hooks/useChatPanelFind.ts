@@ -25,19 +25,20 @@ export function useChatPanelFind({
   const [activeIndex, setActiveIndex] = useState(-1);
 
   useEffect(() => {
-    if (!scrollRef.current) {
+    const container = scrollRef.current;
+    if (!container || !isFindOpen) {
       return;
     }
 
-    if (!isFindOpen || !searchQuery) {
-      clearChatHighlights(scrollRef.current);
+    if (!searchQuery) {
+      clearChatHighlights(container);
       setMatches([]);
       setActiveIndex(-1);
       return;
     }
 
     const foundSpans = performChatHighlight(
-      scrollRef.current,
+      container,
       searchQuery,
       caseSensitive,
       useRegex,
@@ -47,6 +48,21 @@ export function useChatPanelFind({
     setMatches(foundSpans);
     setActiveIndex(foundSpans.length > 0 ? 0 : -1);
   }, [caseSensitive, isFindOpen, messages, pendingApproval, scrollRef, searchQuery, terminalBlocks, useRegex, wholeWord]);
+
+  useEffect(() => {
+    const container = scrollRef.current;
+    if (!container || isFindOpen) {
+      return;
+    }
+
+    clearChatHighlights(container);
+    if (matches.length > 0) {
+      setMatches([]);
+    }
+    if (activeIndex !== -1) {
+      setActiveIndex(-1);
+    }
+  }, [activeIndex, isFindOpen, matches.length, scrollRef]);
 
   useEffect(() => {
     matches.forEach((span) => span.classList.remove('active'));

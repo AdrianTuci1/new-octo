@@ -171,7 +171,8 @@ export function useLauncherComposer(params: ComposerStateParams) {
         ...rawPrediction,
         fullCommand: hasShellActivator
           ? applyShellActivatorToPrediction(chat.query, rawPrediction.fullCommand)
-          : rawPrediction.fullCommand
+          : rawPrediction.fullCommand,
+        suggestions: rawPrediction.suggestions
       }
     : (completionState?.completions ? getCompletionPrediction(chat.query, completionState.completions) : null);
 

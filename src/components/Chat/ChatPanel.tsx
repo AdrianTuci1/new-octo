@@ -9,12 +9,14 @@ import { CommandApprovalComposer } from '../Composer';
 import { ProfileAvatar } from '../App/profile/ProfileAvatar';
 import { useProfileSettings } from '../App/settings/useProfileSettings';
 import { useLauncherContext } from '../Layout/Launcher/LauncherContext';
+import { useEditorStore } from '../../stores/editorStore';
 import './ChatPanel.css';
 export function ChatPanel() {
   const { launcher } = useLauncherContext();
   const view = launcher.views.chatPanel;
   const controller = useChatPanelController(view);
   const { profile } = useProfileSettings();
+  const openFile = useEditorStore((state) => state.openFile);
 
   return (
     <div className={`chat-region ${view.isOpen ? 'open' : 'closed'}`}>
@@ -112,6 +114,8 @@ export function ChatPanel() {
                 <MessageBubble
                   key={item.id}
                   message={item.message}
+                  profile={profile}
+                  openFile={openFile}
                   onRequestCommandApproval={view.onRequestCommandApproval}
                 />
               );

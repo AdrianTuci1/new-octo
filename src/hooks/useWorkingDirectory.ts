@@ -118,17 +118,26 @@ export function useWorkingDirectory(options: UseWorkingDirectoryOptions = {}) {
     }
   }, [listing?.parentPath]);
 
-  const selectDirectory = useCallback((path: string) => {
+  const syncCurrentPath = useCallback((path: string | null) => {
+    const normalizedPath = path?.trim() || null;
+    if (!normalizedPath) {
+      return;
+    }
+
     didApplyRememberedDirectoryRef.current = true;
     didApplyInitialPathRef.current = true;
-    setCurrentPath(path);
-    setBrowserPath(path);
+    setCurrentPath((current) => (current === normalizedPath ? current : normalizedPath));
+    setBrowserPath((current) => (current === normalizedPath ? current : normalizedPath));
+  }, []);
+
+  const selectDirectory = useCallback((path: string) => {
+    syncCurrentPath(path);
     setIsPickerOpen(false);
     setSearchQuery('');
     if (rememberSelection) {
       void saveSettings({ lastWorkingDirectory: path }, true);
     }
-  }, [rememberSelection, saveSettings]);
+  }, [rememberSelection, saveSettings, syncCurrentPath]);
 
   const buttonLabel = useMemo(
     () => formatCompactPathLabel(currentPath, homeDir),
@@ -148,6 +157,7 @@ export function useWorkingDirectory(options: UseWorkingDirectoryOptions = {}) {
     searchQuery,
     selectDirectory,
     setSearchQuery,
+    syncCurrentPath,
     togglePicker
   };
 }

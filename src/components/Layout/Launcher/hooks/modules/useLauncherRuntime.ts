@@ -348,6 +348,15 @@ export function useLauncherRuntime(props: LauncherProps, store: any, tray: any) 
   const activeSurfaceWorkingDirectory = store.composerSurface === 'terminal'
     ? terminal.cwd ?? workingDirectory.currentPath
     : agentTerminal.cwd ?? workingDirectory.currentPath;
+  const effectiveWorkingDirectory = activeSurfaceWorkingDirectory ?? workingDirectory.currentPath;
+
+  useEffect(() => {
+    if (!effectiveWorkingDirectory || effectiveWorkingDirectory === workingDirectory.currentPath) {
+      return;
+    }
+
+    workingDirectory.syncCurrentPath(effectiveWorkingDirectory);
+  }, [effectiveWorkingDirectory, workingDirectory]);
 
   const conversationTerminalBlocks = useMemo(
     () => sortTerminalBlocksChronologically(
@@ -415,7 +424,7 @@ export function useLauncherRuntime(props: LauncherProps, store: any, tray: any) 
     try {
       const result = await props.onCloudAgentLaunch?.({
         prompt: request.prompt,
-        cwd: workingDirectory.currentPath,
+        cwd: effectiveWorkingDirectory,
         repo: request.repo,
         baseBranch: request.baseBranch,
         workBranch: request.workBranch,
@@ -439,7 +448,7 @@ export function useLauncherRuntime(props: LauncherProps, store: any, tray: any) 
         { cloudAgentStatus: 'error' }
       );
     }
-  }, [props, workingDirectory.currentPath]);
+  }, [effectiveWorkingDirectory, props]);
 
   const requestWorkspaceExploration = useCallback(async (request: WorkspaceExplorationRequest) => {
     if (!agentSettings.enabled) {
@@ -481,7 +490,7 @@ export function useLauncherRuntime(props: LauncherProps, store: any, tray: any) 
       return;
     }
 
-    const cwd = workingDirectory.currentPath;
+    const cwd = effectiveWorkingDirectory;
     const maxResults = request.maxResults ?? 6;
     const searchQueries = buildWorkspaceSearchQueries(query);
 
@@ -674,7 +683,7 @@ export function useLauncherRuntime(props: LauncherProps, store: any, tray: any) 
         }
       );
     }
-  }, [agentSettings.enabled, codeSettings.indexing.enabled, workingDirectory.currentPath]);
+  }, [agentSettings.enabled, codeSettings.indexing.enabled, effectiveWorkingDirectory]);
 
   const onConversationCreated = useCallback((nextId: string) => {
     setLocalConversationId(nextId);
@@ -695,7 +704,7 @@ export function useLauncherRuntime(props: LauncherProps, store: any, tray: any) 
 
   const chatRaw = Hooks.useChat({
     conversationId: resolvedConversationId,
-    cwd: workingDirectory.currentPath,
+    cwd: effectiveWorkingDirectory,
     modelId: profileBaseModelId,
     terminalModelId: profileTerminalModelId,
     requiresModelSetup: modelSelection.requiresModelSetup,
@@ -797,6 +806,7 @@ export function useLauncherRuntime(props: LauncherProps, store: any, tray: any) 
     agentTerminalCommandBlocks,
     conversationTerminalBlocks,
     activeSurfaceWorkingDirectory,
+    effectiveWorkingDirectory,
     hasControlledConversation,
     hasControlledPendingApproval,
   }), [
@@ -823,6 +833,7 @@ export function useLauncherRuntime(props: LauncherProps, store: any, tray: any) 
     agentTerminalCommandBlocks,
     conversationTerminalBlocks,
     activeSurfaceWorkingDirectory,
+    effectiveWorkingDirectory,
     hasControlledConversation,
     hasControlledPendingApproval,
   ]);

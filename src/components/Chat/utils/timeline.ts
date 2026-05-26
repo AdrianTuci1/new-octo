@@ -45,11 +45,64 @@ export function buildTimelineItems(
 ): TimelineItem[] {
   const messageOrderById = new Map(messages.map((message, index) => [message.id, index]));
   const messageById = new Map(messages.map((message) => [message.id, message]));
+  const toolCommandFallbacks = messages
+    .map((message, order) => {
+      if (message.role !== 'tool' || message.toolKind !== 'command') {
+        return null;
+      }
+
+      const parsed = parseTerminalCommandToolMessage(message);
+      if (!parsed) {
+        return null;
+      }
+
+      const timestamp = timeFromMessage(message);
+      const messageIndex = messageOrderById.get(message.id) ?? order;
+      const hasLiveTerminalMatch = terminalBlocks.some((block) => (
+        block.source === 'assistant'
+        && block.command.trim() === parsed.command.trim()
+        && Math.abs(timeFromBlock(block) - timestamp) < 15_000
+      ));
+
+      if (hasLiveTerminalMatch) {
+        return null;
+      }
+
+      if (parsed.failed) {
+        return {
+          id: `${message.id}-command-error`,
+          kind: 'terminal-error' as const,
+          at: timestamp,
+          order: messageIndex,
+          error: formatCommandError(parsed.command, parsed.output, parsed.exitCode)
+        };
+      }
+
+      return {
+        id: `${message.id}-command-block`,
+        kind: 'terminal-block' as const,
+        at: timestamp,
+        order: messageIndex,
+        block: {
+          id: `${message.id}-tool-command`,
+          command: parsed.command,
+          output: buildCommandBlockOutput(parsed.command, parsed.output),
+          startedAt: new Date(timestamp || Date.now()).toISOString(),
+          finishedAt: new Date(timestamp || Date.now()).toISOString(),
+          exitCode: parsed.exitCode,
+          durationMs: null,
+          status: 'finished' as const,
+          presentation: 'command' as const,
+          source: 'assistant' as const
+        }
+      };
+    })
+    .filter((item): item is Exclude<typeof item, null> => Boolean(item));
 
   const messageItems = messages
     .filter(m => {
       if (m.role === 'tool' && m.toolKind === 'command') {
-        return false;
+        return !parseTerminalCommandToolMessage(m);
       }
       if (m.role === 'assistant') {
         const visibleBody = visibleChatMessageBody(m.body);
@@ -111,12 +164,67 @@ export function buildTimelineItems(
 
   return [
     ...compressedMessageItems,
+    ...toolCommandFallbacks,
     ...blockItems,
     ...terminalErrorItem
   ].sort((left, right) => {
     if (left.at !== right.at) return left.at - right.at;
     return left.order - right.order;
   });
+}
+
+type ParsedTerminalToolMessage = {
+  command: string;
+  exitCode: number | null;
+  failed: boolean;
+  output: string;
+};
+
+function parseTerminalCommandToolMessage(message: ChatMessage): ParsedTerminalToolMessage | null {
+  const body = message.body ?? '';
+  if (!body.includes('[Terminal command result]')) {
+    return null;
+  }
+
+  const commandMatch = body.match(/^COMMAND:\s*(.+)$/m);
+  const exitCodeMatch = body.match(/^EXIT_CODE:\s*(.+)$/m);
+  const statusMatch = body.match(/^STATUS:\s*(.+)$/m);
+  const outputMatch = body.match(/^OUTPUT:\n([\s\S]*?)(?:\n\[Invisible harness instruction\]|$)/m);
+
+  const command = commandMatch?.[1]?.trim();
+  if (!command) {
+    return null;
+  }
+
+  const exitCodeRaw = exitCodeMatch?.[1]?.trim().toLowerCase() ?? 'unknown';
+  const exitCode = exitCodeRaw === 'unknown' ? null : Number(exitCodeRaw);
+  const output = outputMatch?.[1]?.trimEnd() ?? '';
+  const status = statusMatch?.[1]?.trim().toLowerCase();
+  const failed = status === 'failed' || (exitCode !== null && Number.isFinite(exitCode) && exitCode !== 0);
+
+  return {
+    command,
+    exitCode: Number.isFinite(exitCode ?? NaN) ? exitCode : null,
+    failed,
+    output
+  };
+}
+
+function buildCommandBlockOutput(command: string, output: string) {
+  return output.trim().length > 0 ? `${command}\n${output}` : command;
+}
+
+function formatCommandError(command: string, output: string, exitCode: number | null) {
+  const lines = [
+    `$ ${command}`,
+    exitCode === null ? 'exit code: unknown' : `exit code: ${exitCode}`
+  ];
+
+  if (output.trim()) {
+    lines.push('', output.trim());
+  }
+
+  return lines.join('\n');
 }
 
 function mergeAdjacentWorkspaceExplorationMessageItems(items: TimelineItem[]): TimelineItem[] {

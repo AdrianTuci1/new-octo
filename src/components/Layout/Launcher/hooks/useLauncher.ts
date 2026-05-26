@@ -43,7 +43,7 @@ export function useLauncher(props: LauncherProps) {
   Hooks.useWindowSync(refs.shellRef, active);
 
   // 5. Shortcuts & System Integration
-  const shortcuts = Modules.useLauncherShortcuts({ active, store, tray, props, runtime, history, ui, handlers, refs, actions });
+  const shortcuts = Modules.useLauncherShortcuts({ active, store, tray, props, runtime, history, ui, handlers, refs, actions, composer });
 
   // 6. Assembler (Public Interface)
   return Modules.useLauncherInterface({

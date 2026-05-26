@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{BTreeSet, HashMap, HashSet},
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
     time::Duration,
@@ -12,6 +12,8 @@ use crate::terminal::{
     home_dir, sort_history_entries_by_recency, terminal_list_directory_entries,
     ListDirectoryEntriesRequest, ShellHistoryEntry,
 };
+
+const MAX_PREFIX_HISTORY_SUGGESTIONS: usize = 24;
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -133,6 +135,9 @@ pub async fn get_composer_intelligence(
     ai_manager: &crate::ai::AgentHarnessManager,
     request: ComposerIntelligenceRequest,
 ) -> ComposerIntelligenceResponse {
+    let mut request = request;
+    hydrate_available_commands(&mut request.available_commands);
+
     let mut state = manager.take_state(&request.context_key);
     let current_zero_state_anchor = zero_state_anchor(&request);
     let current_recommended_action_anchor = recommended_action_anchor(&request);
@@ -202,6 +207,18 @@ pub async fn get_composer_intelligence(
         prediction,
         recommended_action,
     }
+}
+
+fn hydrate_available_commands(available_commands: &mut Vec<String>) {
+    let mut commands = available_commands
+        .iter()
+        .map(|command| command.trim())
+        .filter(|command| !command.is_empty())
+        .map(str::to_string)
+        .collect::<BTreeSet<_>>();
+
+    commands.extend(crate::terminal::fs::discover_shell_command_names());
+    *available_commands = commands.into_iter().collect();
 }
 
 fn resolve_composer_mode(
@@ -314,16 +331,10 @@ async fn build_composer_prediction(
             push_unique_candidate(&mut suggestions, suggestion, "history");
         }
 
-        if let Some(suggestion) =
+        for suggestion in
             collect_history_prefix_matches(trimmed, &prediction_history, request.cwd.as_deref())
-                .into_iter()
-                .find(|candidate| is_command_candidate_valid(candidate, request))
         {
-            return Some(ComposerPredictionResponse {
-                suggestion: suggestion.clone(),
-                suggestions: vec![suggestion],
-                kind: "history".to_string(),
-            });
+            push_unique_candidate(&mut suggestions, suggestion, "history");
         }
 
         for suggestion in collect_completion_candidates(raw_query, request, &prediction_history) {
@@ -354,10 +365,12 @@ async fn build_composer_prediction(
             push_unique_candidate(&mut suggestions, prediction.suggestion, "heuristic");
         }
 
-        if let Some(prediction) =
-            super::model::predict_from_executables(trimmed, &request.available_commands)
-        {
-            push_unique_candidate(&mut suggestions, prediction.suggestion, "completion");
+        for suggestion in super::model::collect_executable_prefix_matches(
+            trimmed,
+            &request.available_commands,
+            MAX_PREFIX_HISTORY_SUGGESTIONS,
+        ) {
+            push_unique_candidate(&mut suggestions, suggestion, "completion");
         }
     }
 
@@ -1069,8 +1082,30 @@ fn build_prediction_history(request: &ComposerIntelligenceRequest) -> Vec<ShellH
         .collect::<Vec<_>>();
 
     entries.extend(request.history_entries.iter().cloned());
+    #[cfg(not(test))]
+    entries.extend(crate::terminal::terminal_get_prediction_shell_history());
     sort_history_entries_by_recency(&mut entries);
-    entries
+    dedupe_prediction_history(entries)
+}
+
+fn dedupe_prediction_history(entries: Vec<ShellHistoryEntry>) -> Vec<ShellHistoryEntry> {
+    let mut seen = HashSet::new();
+    let mut deduped = Vec::new();
+
+    for entry in entries {
+        let key = format!(
+            "{}\u{1f}{}\u{1f}{}\u{1f}{}",
+            entry.source,
+            entry.executed_at,
+            entry.value.trim(),
+            entry.pwd.as_deref().unwrap_or_default()
+        );
+        if seen.insert(key) {
+            deduped.push(entry);
+        }
+    }
+
+    deduped
 }
 
 fn build_history_context(
@@ -1152,14 +1187,14 @@ fn collect_sequence_candidates(
             .get(right_value)
             .copied()
             .unwrap_or_default();
-        right_same_dir
-            .cmp(&left_same_dir)
-            .then_with(|| right_count.cmp(left_count))
+        right_count
+            .cmp(left_count)
             .then_with(|| {
                 latest_timestamp
                     .get(right_value)
                     .cmp(&latest_timestamp.get(left_value))
             })
+            .then_with(|| right_same_dir.cmp(&left_same_dir))
             .then_with(|| right_value.len().cmp(&left_value.len()))
     });
 
@@ -1171,32 +1206,12 @@ fn collect_history_prefix_matches(
     history_entries: &[ShellHistoryEntry],
     cwd: Option<&str>,
 ) -> Vec<String> {
-    let normalized_input = input.to_lowercase();
-    let mut seen = HashSet::new();
-    let mut same_dir_matches = Vec::new();
-    let mut other_matches = Vec::new();
-
-    // Octomus-like behavior: promote matches from the exact current working
-    // directory before falling back to commands from other directories.
-    for entry in history_entries.iter() {
-        let value = entry.value.trim();
-        if value.is_empty() || !value.to_lowercase().starts_with(&normalized_input) {
-            continue;
-        }
-
-        if !seen.insert(value.to_string()) {
-            continue;
-        }
-
-        if super::model::is_same_working_directory(cwd, entry.pwd.as_deref()) {
-            same_dir_matches.push(value.to_string());
-        } else {
-            other_matches.push(value.to_string());
-        }
-    }
-
-    same_dir_matches.extend(other_matches);
-    same_dir_matches
+    super::model::collect_ranked_history_prefix_matches(
+        input,
+        cwd,
+        history_entries,
+        MAX_PREFIX_HISTORY_SUGGESTIONS,
+    )
 }
 
 fn rank_shell_candidates(
@@ -1252,8 +1267,13 @@ fn shell_candidate_score(
     score += git_workflow_candidate_score(candidate, request.git_branch.as_deref(), last_command);
 
     if input_is_command_token {
-        score += token_count.saturating_sub(1) * 850;
-        score += candidate.len().min(140) as i64 * 7;
+        if kind == "completion" && token_count == 1 {
+            score += 1_500;
+            score -= candidate.len().min(80) as i64 * 12;
+        } else {
+            score += token_count.saturating_sub(1) * 850;
+            score += candidate.len().min(140) as i64 * 7;
+        }
     } else {
         score += token_count.saturating_sub(1) * 180;
     }
@@ -1280,6 +1300,7 @@ fn history_candidate_score(
     let mut total_count = 0i64;
     let mut same_dir_count = 0i64;
     let mut latest_executed_at = "";
+    let mut latest_timestamp = 0i64;
     let mut from_current_session = false;
 
     for entry in history_entries
@@ -1295,17 +1316,30 @@ fn history_candidate_score(
         if entry.executed_at.as_str() > latest_executed_at {
             latest_executed_at = entry.executed_at.as_str();
         }
+        if let Ok(parsed_at) = chrono::DateTime::parse_from_rfc3339(&entry.executed_at) {
+            latest_timestamp = latest_timestamp.max(parsed_at.timestamp());
+        }
     }
 
-    score += same_dir_count * 3_000;
-    score += total_count.min(8) * 350;
+    let recency_score = if latest_executed_at.starts_with("9999-") {
+        1_000_000
+    } else if latest_timestamp > 0 {
+        let age_hours = (chrono::Utc::now().timestamp() - latest_timestamp).max(0) / 3_600;
+        900_000i64.saturating_sub(age_hours.min(900_000))
+    } else {
+        0
+    };
+
+    score += total_count.min(10_000) * 10_000_000;
+    score += recency_score;
+    score += same_dir_count.min(100) * 1_000;
     if from_current_session {
-        score += 3_500;
+        score += 75_000;
     }
     if latest_executed_at.starts_with("9999-") {
-        score += 2_500;
+        score += 25_000;
     } else if !latest_executed_at.is_empty() {
-        score += 500;
+        score += 5_000;
     }
 
     score
@@ -2037,5 +2071,109 @@ mod tests {
 
         assert_eq!(prediction.suggestion, "modal run train");
         assert_eq!(prediction.kind, "history");
+    }
+
+    #[test]
+    fn build_prediction_returns_ranked_full_history_matches_for_bare_npm() {
+        let request = ComposerIntelligenceRequest {
+            context_key: "test".to_string(),
+            query: "npm".to_string(),
+            cwd: Some("/repo".to_string()),
+            git_branch: None,
+            available_commands: vec![],
+            history_entries: vec![
+                ShellHistoryEntry {
+                    value: "npm run deploy:frontend".to_string(),
+                    executed_at: "2026-05-24T18:00:00Z".to_string(),
+                    source: "zsh".to_string(),
+                    pwd: Some("/repo".to_string()),
+                },
+                ShellHistoryEntry {
+                    value: "npm run deploy:backend".to_string(),
+                    executed_at: "2026-05-24T17:00:00Z".to_string(),
+                    source: "zsh".to_string(),
+                    pwd: Some("/repo".to_string()),
+                },
+                ShellHistoryEntry {
+                    value: "npm run clean".to_string(),
+                    executed_at: "2026-05-23T18:00:00Z".to_string(),
+                    source: "zsh".to_string(),
+                    pwd: Some("/repo".to_string()),
+                },
+                ShellHistoryEntry {
+                    value: "npm run clean".to_string(),
+                    executed_at: "2026-05-23T17:00:00Z".to_string(),
+                    source: "zsh".to_string(),
+                    pwd: Some("/repo".to_string()),
+                },
+            ],
+            terminal_blocks: vec![],
+            messages: vec![],
+            locked_mode: None,
+            autodetect_enabled: true,
+            allow_single_character_prediction: true,
+            force_shell_mode: true,
+            enable_zero_state_prediction: true,
+            surface: "terminal".to_string(),
+        };
+
+        let ai_manager = crate::ai::AgentHarnessManager::default();
+        let state = ComposerSessionState::default();
+        let prediction = tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(build_composer_prediction(
+                &request,
+                "shell",
+                &state,
+                &ai_manager,
+            ))
+            .expect("expected history suggestions");
+
+        assert_eq!(prediction.kind, "history");
+        assert_eq!(prediction.suggestion, "npm run clean");
+        assert_eq!(
+            prediction.suggestions,
+            vec![
+                "npm run clean",
+                "npm run deploy:frontend",
+                "npm run deploy:backend"
+            ]
+        );
+    }
+
+    #[test]
+    fn build_prediction_uses_global_executables_when_history_is_empty() {
+        let request = ComposerIntelligenceRequest {
+            context_key: "test".to_string(),
+            query: "mod".to_string(),
+            cwd: Some("/repo".to_string()),
+            git_branch: None,
+            available_commands: vec!["modal".to_string(), "modular-cli".to_string()],
+            history_entries: vec![],
+            terminal_blocks: vec![],
+            messages: vec![],
+            locked_mode: None,
+            autodetect_enabled: true,
+            allow_single_character_prediction: true,
+            force_shell_mode: true,
+            enable_zero_state_prediction: true,
+            surface: "terminal".to_string(),
+        };
+
+        let ai_manager = crate::ai::AgentHarnessManager::default();
+        let state = ComposerSessionState::default();
+        let prediction = tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(build_composer_prediction(
+                &request,
+                "shell",
+                &state,
+                &ai_manager,
+            ))
+            .expect("expected executable suggestions");
+
+        assert_eq!(prediction.suggestion, "modal");
+        assert!(prediction.suggestions.contains(&"modal".to_string()));
+        assert!(prediction.suggestions.contains(&"modular-cli".to_string()));
     }
 }

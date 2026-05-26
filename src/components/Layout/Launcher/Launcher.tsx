@@ -48,7 +48,7 @@ export function Launcher(props: LauncherProps) {
           )}
 
           <div ref={launcher.ui.dockRef} className="dock-stack">
-            {!modelSetupRequired && !launcher.ui.resolvedPendingApproval && (!launcher.ui.isTerminalSurface || launcher.ui.isTerminalCommandsTrayOpen) && (
+            {!modelSetupRequired && !launcher.ui.resolvedPendingApproval && (!launcher.ui.isTerminalSurface || launcher.ui.isTerminalTrayOpen) && (
               <TrayPanel />
             )}
 

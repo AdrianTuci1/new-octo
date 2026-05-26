@@ -240,6 +240,7 @@ pub fn parse_completion_output(output: Option<std::process::Output>) -> Vec<Stri
         if line.is_empty()
             || line.starts_with("Completion ended with directive")
             || (line.starts_with(':') && line[1..].chars().all(|ch| ch.is_ascii_digit()))
+            || looks_like_completion_error_line(line)
         {
             continue;
         }
@@ -256,4 +257,46 @@ pub fn parse_completion_output(output: Option<std::process::Output>) -> Vec<Stri
     }
 
     candidates
+}
+
+fn looks_like_completion_error_line(line: &str) -> bool {
+    let lower = line.to_ascii_lowercase();
+    lower.starts_with("error")
+        || lower.starts_with("npm error")
+        || lower.starts_with("traceback")
+        || lower.starts_with("typeerror")
+        || lower.starts_with("referenceerror")
+        || lower.starts_with("syntaxerror")
+        || lower.starts_with("warning:")
+        || lower.contains(" cannot read properties ")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn completion_output_ignores_failed_process_stderr() {
+        let output = Command::new("sh")
+            .arg("-c")
+            .arg("printf '%s\n' \"npm error Cannot read properties of undefined\" >&2; exit 1")
+            .output()
+            .expect("shell should run");
+
+        assert!(parse_completion_output(Some(output)).is_empty());
+    }
+
+    #[test]
+    fn completion_output_filters_error_lines_from_successful_output() {
+        let output = Command::new("sh")
+            .arg("-c")
+            .arg("printf '%s\n' 'npm error Cannot read properties of undefined' 'run' 'test'")
+            .output()
+            .expect("shell should run");
+
+        assert_eq!(
+            parse_completion_output(Some(output)),
+            vec!["run".to_string(), "test".to_string()]
+        );
+    }
 }

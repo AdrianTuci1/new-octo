@@ -1,4 +1,4 @@
-import { AlertTriangle, Ban, Check, Rocket, X } from 'lucide-react';
+import { AlertTriangle, Check, Rocket, X } from 'lucide-react';
 import type { CSSProperties, KeyboardEvent, MouseEvent } from 'react';
 import type { WorkspaceChromeTab } from './workspaceChromeTypes';
 
@@ -52,7 +52,7 @@ export function WorkspaceTopbarTab({
         {tab.lastExecutionStatus && ['completed', 'cancelled', 'failed'].includes(tab.lastExecutionStatus) && (
           <div className={`workspace-tab-icon-box status-${tab.lastExecutionStatus}`} title={`Last status: ${tab.lastExecutionStatus}`}>
             {tab.lastExecutionStatus === 'completed' && <Check size={9} />}
-            {tab.lastExecutionStatus === 'cancelled' && <Ban size={9} />}
+            {tab.lastExecutionStatus === 'cancelled' && <X size={9} />}
             {tab.lastExecutionStatus === 'failed' && <AlertTriangle size={9} />}
           </div>
         )}

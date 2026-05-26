@@ -24,7 +24,11 @@ function outputFor(block: TerminalCommandBlock) {
     ? output.slice(block.command.length).replace(/^\s*\n?/, '')
     : output;
 
-  return withoutEcho || (block.status === 'running' ? 'Running command...' : 'No output.');
+  if (withoutEcho) {
+    return withoutEcho;
+  }
+
+  return block.status === 'running' ? 'Running command...' : '';
 }
 
 const WORKFLOWS_STORAGE_KEY = 'octomus.savedTerminalWorkflows';

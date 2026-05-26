@@ -10,7 +10,7 @@
  */
 import { useState, useCallback } from 'react';
 
-export type TrayMode = 'history' | 'models' | 'help' | 'commands';
+export type TrayMode = 'history' | 'models' | 'help' | 'commands' | 'conversations';
 
 export function useLauncherTrayState() {
   const [isTrayOpen, setIsTrayOpen] = useState(false);
@@ -28,7 +28,7 @@ export function useLauncherTrayState() {
   const openHistory = useCallback(() => { setActiveTrayMode('history'); setIsTrayOpen(true); }, []);
   const openModels = useCallback(() => { setActiveTrayMode('models'); setIsTrayOpen(true); }, []);
   const openHelp = useCallback(() => { setActiveTrayMode('help'); setIsTrayOpen(true); }, []);
-  const openConversations = useCallback(() => { setActiveTrayMode('history'); setIsTrayOpen(true); }, []);
+  const openConversations = useCallback(() => { setActiveTrayMode('conversations'); setIsTrayOpen(true); }, []);
 
   return {
     isTrayOpen,

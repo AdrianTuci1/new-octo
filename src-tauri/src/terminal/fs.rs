@@ -2,6 +2,10 @@ use std::{
     collections::BTreeSet,
     env, fs,
     path::{Path, PathBuf},
+    process::{Command, Stdio},
+    sync::OnceLock,
+    thread,
+    time::{Duration, Instant},
 };
 
 use serde::{Deserialize, Serialize};
@@ -75,10 +79,25 @@ pub struct PathRequest {
 }
 
 pub fn terminal_list_commands() -> Result<Vec<String>, String> {
+    Ok(discover_shell_command_names().into_iter().collect())
+}
+
+pub fn discover_shell_command_names() -> BTreeSet<String> {
+    static CACHE: OnceLock<BTreeSet<String>> = OnceLock::new();
+    CACHE
+        .get_or_init(discover_shell_command_names_uncached)
+        .clone()
+}
+
+fn discover_shell_command_names_uncached() -> BTreeSet<String> {
+    collect_command_names_from_directories(discover_shell_path_directories())
+}
+
+fn collect_command_names_from_directories(directories: Vec<PathBuf>) -> BTreeSet<String> {
     let mut commands = BTreeSet::new();
 
-    for path in env::split_paths(&env::var_os("PATH").unwrap_or_default()) {
-        let Ok(entries) = fs::read_dir(path) else {
+    for path in directories {
+        let Ok(entries) = fs::read_dir(&path) else {
             continue;
         };
 
@@ -98,7 +117,133 @@ pub fn terminal_list_commands() -> Result<Vec<String>, String> {
         }
     }
 
-    Ok(commands.into_iter().collect())
+    commands
+}
+
+fn discover_shell_path_directories() -> Vec<PathBuf> {
+    let mut directories = BTreeSet::<PathBuf>::new();
+
+    if let Some(path_value) = env::var_os("PATH") {
+        collect_path_directories(&path_value.to_string_lossy(), &mut directories);
+    }
+
+    if let Some(shell_path_value) = read_user_shell_path() {
+        collect_path_directories(&shell_path_value, &mut directories);
+    }
+
+    collect_common_user_command_directories(&mut directories);
+    directories.into_iter().collect()
+}
+
+fn collect_path_directories(value: &str, directories: &mut BTreeSet<PathBuf>) {
+    for entry in value.split([':', '\n']) {
+        let trimmed = entry.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+
+        let path = PathBuf::from(trimmed);
+        if path.is_dir() {
+            directories.insert(path);
+        }
+    }
+}
+
+fn read_user_shell_path() -> Option<String> {
+    let shell = env::var_os("SHELL").map(PathBuf::from)?;
+    if !shell.exists() {
+        return None;
+    }
+
+    let shell_name = shell
+        .file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or_default();
+    let script = if shell_name == "fish" {
+        "string join : $PATH"
+    } else {
+        "printf '%s\\n' \"$PATH\""
+    };
+
+    read_shell_output_with_timeout(
+        &shell,
+        &["-l", "-i", "-c", script],
+        Duration::from_millis(1_500),
+    )
+    .or_else(|| {
+        read_shell_output_with_timeout(&shell, &["-l", "-c", script], Duration::from_millis(1_000))
+    })
+    .or_else(|| {
+        read_shell_output_with_timeout(&shell, &["-c", script], Duration::from_millis(1_000))
+    })
+}
+
+fn read_shell_output_with_timeout(
+    shell: &Path,
+    args: &[&str],
+    timeout: Duration,
+) -> Option<String> {
+    let mut child = Command::new(shell)
+        .args(args)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .ok()?;
+    let started_at = Instant::now();
+
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                let output = child.wait_with_output().ok()?;
+                if !status.success() {
+                    return None;
+                }
+
+                let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                return (!stdout.is_empty()).then_some(stdout);
+            }
+            Ok(None) if started_at.elapsed() >= timeout => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return None;
+            }
+            Ok(None) => thread::sleep(Duration::from_millis(25)),
+            Err(_) => return None,
+        }
+    }
+}
+
+fn collect_common_user_command_directories(directories: &mut BTreeSet<PathBuf>) {
+    for path in [
+        "/opt/homebrew/bin",
+        "/opt/homebrew/sbin",
+        "/usr/local/bin",
+        "/usr/local/sbin",
+    ] {
+        let path = PathBuf::from(path);
+        if path.is_dir() {
+            directories.insert(path);
+        }
+    }
+
+    let Some(home) = home_dir() else {
+        return;
+    };
+
+    for suffix in [
+        ".local/bin",
+        "bin",
+        ".cargo/bin",
+        ".bun/bin",
+        ".npm-global/bin",
+        "Library/pnpm",
+    ] {
+        let path = home.join(suffix);
+        if path.is_dir() {
+            directories.insert(path);
+        }
+    }
 }
 
 pub fn terminal_get_path_context() -> Result<FilesystemPathContext, String> {
@@ -295,11 +440,51 @@ pub fn resolve_request_path(path: Option<String>) -> Result<PathBuf, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{terminal_list_directory_entries, ListDirectoryEntriesRequest};
+    use super::{
+        collect_command_names_from_directories, terminal_list_directory_entries,
+        ListDirectoryEntriesRequest,
+    };
     use std::{
         fs,
+        path::PathBuf,
         time::{SystemTime, UNIX_EPOCH},
     };
+
+    #[cfg(unix)]
+    use std::os::unix::fs::PermissionsExt;
+
+    #[test]
+    fn command_discovery_collects_executables_from_path_directories() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time should be after unix epoch")
+            .as_nanos();
+        let temp_root = std::env::temp_dir().join(format!("octomus-command-path-{unique}"));
+        fs::create_dir_all(&temp_root).expect("temp command directory should be created");
+
+        let executable = temp_root.join("modal-test-bin");
+        let non_executable = temp_root.join("not-a-command");
+        fs::write(&executable, "#!/bin/sh\n").expect("executable should be written");
+        fs::write(&non_executable, "nope").expect("non-executable should be written");
+
+        #[cfg(unix)]
+        {
+            let mut permissions = fs::metadata(&executable)
+                .expect("executable metadata should exist")
+                .permissions();
+            permissions.set_mode(0o755);
+            fs::set_permissions(&executable, permissions)
+                .expect("executable permissions should be applied");
+        }
+
+        let commands = collect_command_names_from_directories(vec![PathBuf::from(&temp_root)]);
+
+        assert!(commands.contains("modal-test-bin"));
+        #[cfg(unix)]
+        assert!(!commands.contains("not-a-command"));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
 
     #[test]
     fn directory_list_matches_substrings_in_names_and_paths() {

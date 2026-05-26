@@ -82,6 +82,47 @@ function fileNameFromPath(path: string) {
   return path.split(/[\\/]/).pop() ?? path;
 }
 
+function sortCommandBlocksByExecutionTime(blocks: TerminalCommandBlock[]) {
+  return [...blocks].sort((left, right) => {
+    const leftTime = Date.parse(left.finishedAt || left.startedAt || '') || 0;
+    const rightTime = Date.parse(right.finishedAt || right.startedAt || '') || 0;
+    if (leftTime !== rightTime) {
+      return leftTime - rightTime;
+    }
+
+    return left.id.localeCompare(right.id);
+  });
+}
+
+function latestFinishedCommandStatus(session: TerminalSessionState | undefined, fallbackStatus: string | null) {
+  const finishedBlocks = sortCommandBlocksByExecutionTime([
+    ...(session?.terminalBlocks ?? []),
+    ...(session?.agentTerminalBlocks ?? [])
+  ])
+    .filter((block) => block.presentation !== 'conversation-link' && block.status === 'finished');
+  const latestFinishedBlock = finishedBlocks[finishedBlocks.length - 1];
+
+  if (latestFinishedBlock) {
+    return typeof latestFinishedBlock.exitCode === 'number' && latestFinishedBlock.exitCode !== 0
+      ? 'failed'
+      : 'completed';
+  }
+
+  if (fallbackStatus === 'cancelled') {
+    return 'cancelled';
+  }
+
+  if (fallbackStatus === 'failed') {
+    return 'failed';
+  }
+
+  if (fallbackStatus === 'completed') {
+    return 'completed';
+  }
+
+  return null;
+}
+
 function promptForTabConfigVariables(config: ReturnType<typeof parseTabConfigToml>) {
   const variables = new Set(collectTabConfigTemplateVariables(config));
   const resolved: Record<string, string> = {};
@@ -276,7 +317,7 @@ export function useAppWindow() {
     return {
       ...tab,
       label: tab.customLabel?.trim() || latestPromptTitle || activeConversation?.title || (conversationId ? 'New agent conversation' : pathLabel),
-      lastExecutionStatus: conversationId ? activeConversation?.status ?? 'idle' : null
+      lastExecutionStatus: latestFinishedCommandStatus(session, activeConversation?.status ?? null)
     };
   }), [memoryConversationRecords, memoryConversationsById, paneLayoutsByTabId, pathContext, tabs, terminalSessions, useLatestPromptTabNames]);
 

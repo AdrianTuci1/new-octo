@@ -176,7 +176,11 @@ export function ComposerBar() {
           </div>
 
           <div className="action-group right-actions">
-            <button className="toolbar-chip model-chip" onClick={view.onToggleModelTray} type="button" title="Model">
+            <button className="toolbar-chip model-chip" onClick={view.onToggleModelTray} type="button" title={view.contextIndicatorTitle ?? 'Model'}>
+              <span
+                className={`composer-context-indicator ${view.contextIndicatorTone ?? 'agent'}`}
+                aria-hidden="true"
+              />
               <span>{view.selectedModelLabel}</span>
             </button>
             <button

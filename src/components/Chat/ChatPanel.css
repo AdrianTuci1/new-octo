@@ -98,14 +98,12 @@
   width: 100%;
 }
 
-.terminal-block-row.full-bleed,
-.terminal-error-row {
+.terminal-block-row.full-bleed {
   gap: 0;
   padding: 0;
 }
 
-.terminal-block-row.full-bleed .role-avatar-container,
-.terminal-error-row .role-avatar-container {
+.terminal-block-row.full-bleed .role-avatar-container {
   display: none;
 }
 
@@ -351,13 +349,17 @@
 .terminal-inline-error {
   flex: 1;
   max-width: none;
-  padding: 12px 18px;
-  border-radius: 0;
+  min-height: 36px;
+  padding: 12px 16px;
+  border-radius: 10px;
   color: #ffb8b8;
-  background: rgba(255, 95, 87, 0.025); /* Subdued red background to match modern aesthetic */
-  border-top: 1px solid rgba(255, 95, 87, 0.08);
+  background: rgba(255, 95, 87, 0.045);
+  border: 1px solid rgba(255, 95, 87, 0.12);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.025) inset;
   font-family: var(--font-mono);
   font-size: 11px;
+  line-height: 1.5;
+  white-space: pre-wrap;
 }
 
 /* User Message - Bold & Mono */

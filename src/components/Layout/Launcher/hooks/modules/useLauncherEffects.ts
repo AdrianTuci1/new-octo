@@ -49,6 +49,7 @@ export function useLauncherEffects(params: LauncherEffectsParams) {
   const { 
     chat, 
     workingDirectory, 
+    activeSurfaceWorkingDirectory,
     agentTerminal, 
     modelSelection, 
     resolvedConversationId, 
@@ -136,10 +137,11 @@ export function useLauncherEffects(params: LauncherEffectsParams) {
 
   // 8. Report Working Directory Change
   useEffect(() => {
-    if (lastReportedWorkingDirectoryRef.current === workingDirectory.currentPath) return;
-    lastReportedWorkingDirectoryRef.current = workingDirectory.currentPath;
-    props.onWorkingDirectoryChange?.(workingDirectory.currentPath);
-  }, [props.onWorkingDirectoryChange, workingDirectory.currentPath]);
+    const reportedWorkingDirectory = activeSurfaceWorkingDirectory ?? workingDirectory.currentPath;
+    if (lastReportedWorkingDirectoryRef.current === reportedWorkingDirectory) return;
+    lastReportedWorkingDirectoryRef.current = reportedWorkingDirectory;
+    props.onWorkingDirectoryChange?.(reportedWorkingDirectory);
+  }, [activeSurfaceWorkingDirectory, props.onWorkingDirectoryChange, workingDirectory.currentPath]);
 
   // 9. Reset On Mount
   useEffect(() => {

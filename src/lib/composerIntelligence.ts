@@ -5,6 +5,7 @@ export type ShellPrediction = {
   completionText: string;
   fullCommand: string;
   hint: string;
+  suggestions?: string[];
 };
 
 export type RecommendedComposerAction = {
