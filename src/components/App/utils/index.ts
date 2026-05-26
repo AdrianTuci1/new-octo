@@ -29,6 +29,8 @@ export type TerminalSessionState = {
   syntheticBlocks: TerminalCommandBlock[];
 };
 
+export type WorkspacePaneSessionBindings = Record<string, string>;
+
 export type SavedWorkspaceTabConfig = {
   id: string;
   name: string;
@@ -145,6 +147,17 @@ export function buildTerminalSessionState(tabs: WorkspaceChromeTab[]) {
       .filter((tab) => tab.kind === 'terminal')
       .map((tab) => [tab.id, createEmptyTerminalSession()])
   ) as Record<string, TerminalSessionState>;
+}
+
+export function buildPaneSessionBindings(
+  tabs: WorkspaceChromeTab[],
+  paneLayoutsByTabId: Record<string, WorkspacePaneLayout>
+) {
+  const paneIds = tabs
+    .filter((tab) => tab.kind === 'terminal')
+    .flatMap((tab) => collectPaneIdsFromLayout(paneLayoutsByTabId[tab.id] ?? createDefaultPaneLayout(tab.id)));
+
+  return Object.fromEntries(paneIds.map((paneId) => [paneId, paneId])) as WorkspacePaneSessionBindings;
 }
 
 export function mergeTerminalSessions(

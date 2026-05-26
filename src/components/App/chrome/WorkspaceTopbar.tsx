@@ -8,7 +8,7 @@ import { useEditorStore } from '../../../stores/editorStore';
 import type { GitWorktreeDiff } from '../../../types/gitDiff';
 import { ProfileAvatar } from '../profile/ProfileAvatar';
 import { useProfileSettings } from '../settings/useProfileSettings';
-import type { WorkspaceChromeTab } from './workspaceChromeTypes';
+import type { WorkspaceActivePaneContext, WorkspaceChromeTab } from './workspaceChromeTypes';
 import { WorkspaceTopbarTab } from './WorkspaceTopbarTab';
 import { WorkspaceTopbarTabMenu } from './WorkspaceTopbarTabMenu';
 import type { LucideIcon } from 'lucide-react';
@@ -89,7 +89,7 @@ type WorkspaceTopbarProps = {
   activeTabId: string;
   launcherTabId: string | null;
   tabs: WorkspaceChromeTab[];
-  activeWorkingDirectory: string | null;
+  activePaneContext: WorkspaceActivePaneContext | null;
   onBringTabInLauncher: (tabId: string) => void;
   onCloseOtherTabs: (tabId: string) => void;
   onCloseTabsToRight: (tabId: string) => void;
@@ -116,7 +116,7 @@ export function WorkspaceTopbar({
   activeTabId,
   launcherTabId,
   tabs,
-  activeWorkingDirectory,
+  activePaneContext,
   onBringTabInLauncher,
   onCloseOtherTabs,
   onCloseTabsToRight,
@@ -148,6 +148,11 @@ export function WorkspaceTopbar({
   const [gitDiffSummary, setGitDiffSummary] = useState<GitWorktreeDiff | null>(null);
   const [tabConfigs, setTabConfigs] = useState<TabConfigSummary[]>([]);
   const [isTabConfigsLoading, setIsTabConfigsLoading] = useState(true);
+  const activeTab = useMemo(
+    () => tabs.find((tab) => tab.id === activeTabId) ?? null,
+    [activeTabId, tabs]
+  );
+  const shouldShowGitDiff = activePaneContext?.canShowGitDiff ?? (activeTab?.kind !== 'settings');
 
   const menuTab = useMemo(
     () => tabs.find((tab) => tab.id === menuState?.tabId) ?? null,
@@ -180,14 +185,14 @@ export function WorkspaceTopbar({
     let cancelled = false;
 
     const refreshDiffSummary = async () => {
-      if (!activeWorkingDirectory) {
+      if (!activePaneContext?.workingDirectory || !shouldShowGitDiff) {
         setGitDiffSummary(null);
         return;
       }
 
       try {
         const summary = await invoke<GitWorktreeDiff>('terminal_get_worktree_diff', {
-          request: { path: activeWorkingDirectory, includePatch: false }
+          request: { path: activePaneContext.workingDirectory, includePatch: false }
         });
         if (!cancelled) {
           setGitDiffSummary(summary);
@@ -209,7 +214,7 @@ export function WorkspaceTopbar({
       window.clearInterval(intervalId);
       window.removeEventListener('focus', handleFocus);
     };
-  }, [activeWorkingDirectory]);
+  }, [activePaneContext?.workingDirectory, shouldShowGitDiff]);
 
   useEffect(() => {
     if (!menuState) {
@@ -659,23 +664,25 @@ export function WorkspaceTopbar({
       )}
 
       <div className="workspace-topbar-right workspace-topbar-right-compact">
-        <button
-          className={`workspace-topbar-icon-button workspace-topbar-diff-button ${isCodeReviewDrawerOpen ? 'active' : ''}`}
-          type="button"
-          title="Code review"
-          onClick={toggleCodeReviewDrawer}
-        >
-          <span className="workspace-topbar-diff-mark" aria-hidden="true">
-            <Plus size={13} strokeWidth={2.4} />
-            <Minus size={13} strokeWidth={2.4} />
-          </span>
-          {gitDiffSummary?.isRepo ? (
-            <span className="workspace-topbar-diff-stats">
-              <span className="workspace-topbar-diff-additions">+{gitDiffSummary.additions}</span>
-              <span className="workspace-topbar-diff-deletions">-{gitDiffSummary.deletions}</span>
+        {shouldShowGitDiff ? (
+          <button
+            className={`workspace-topbar-icon-button workspace-topbar-diff-button ${isCodeReviewDrawerOpen ? 'active' : ''}`}
+            type="button"
+            title="Code review"
+            onClick={toggleCodeReviewDrawer}
+          >
+            <span className="workspace-topbar-diff-mark" aria-hidden="true">
+              <Plus size={13} strokeWidth={2.4} />
+              <Minus size={13} strokeWidth={2.4} />
             </span>
-          ) : null}
-        </button>
+            {gitDiffSummary?.isRepo ? (
+              <span className="workspace-topbar-diff-stats">
+                <span className="workspace-topbar-diff-additions">+{gitDiffSummary.additions}</span>
+                <span className="workspace-topbar-diff-deletions">-{gitDiffSummary.deletions}</span>
+              </span>
+            ) : null}
+          </button>
+        ) : null}
         <button
           className="workspace-topbar-avatar-button"
           type="button"

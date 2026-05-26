@@ -95,6 +95,7 @@ function WorkspacePaneSlot(props: {
   paneId: string;
   tabId: string;
   active: boolean;
+  launcherIdentityKey: string;
   onFocusPane: (paneId: string) => void;
   onClosePane?: (paneId: string) => void;
   hasMultiplePanes?: boolean;
@@ -261,11 +262,13 @@ export function AppWindow() {
           <WorkspacePaneSlot
             active={app.workspace.activePaneId === node.paneId}
             launcherProps={app.actions.getLauncherProps(app.chrome.selectedTab.id, node.paneId)}
+            launcherIdentityKey={app.actions.getLauncherIdentityKey(node.paneId)}
             onFocusPane={app.actions.onFocusPane}
             onClosePane={app.actions.onClosePane}
             hasMultiplePanes={hasMultiplePanes}
             paneId={node.paneId}
             tabId={app.chrome.selectedTab.id}
+            key={app.actions.getLauncherIdentityKey(node.paneId)}
           />
         );
       }
@@ -345,7 +348,7 @@ export function AppWindow() {
         activeTabId={app.chrome.selectedTab.id}
         launcherTabId={app.chrome.launcherTabId}
         tabs={app.chrome.displayTabs}
-        activeWorkingDirectory={app.chrome.activeWorkingDirectory}
+        activePaneContext={app.chrome.activePaneContext}
         onBringTabInLauncher={app.actions.setLauncherTabId}
         onCloseOtherTabs={app.actions.handleCloseOtherTabs}
         onCloseTabsToRight={app.actions.handleCloseTabsToRight}
@@ -388,7 +391,7 @@ export function AppWindow() {
               onForkConversationInNewTab={app.actions.handleForkConversationInNewTab}
               onSelectConversation={app.actions.onSelectConversation}
               selectedConversationId={app.sidebar.selectedOpenConversationId}
-              activeWorkingDirectory={app.chrome.activeWorkingDirectory}
+              activeWorkingDirectory={app.chrome.activePaneContext.workingDirectory}
             />
           </div>
           {app.chrome.isSidebarOpen && (

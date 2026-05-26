@@ -695,7 +695,7 @@ fn context_supports_terminal_command(context: &AgentHarnessContext) -> bool {
         return true;
     }
 
-    if is_continuation_prompt(&context.prompt) {
+    if is_continuation_prompt(&context.prompt) || context.prompt.trim().is_empty() {
         return recent_context_supports_terminal_command(context);
     }
 
@@ -1316,11 +1316,33 @@ fn cancelled_outcome(prompt: &str, streamed: &str) -> AgentHarnessOutcome {
 #[cfg(test)]
 mod tests {
     use super::{
-        guardian_intercepted_tool_calls, longest_tag_suffix_len, normalize_outbound_tool_calls,
-        prompt_supports_terminal_command, should_retry_file_change_duplicate_code,
-        should_retry_follow_up_only,
+        context_supports_terminal_command, guardian_intercepted_tool_calls,
+        longest_tag_suffix_len, normalize_outbound_tool_calls, prompt_supports_terminal_command,
+        should_retry_file_change_duplicate_code, should_retry_follow_up_only,
     };
+    use crate::ai::agent::harness::AgentHarnessContext;
+    use crate::ai::agent::types::{AgentInputMessage, TerminalBlockContext};
     use serde_json::json;
+
+    fn harness_context(
+        prompt: &str,
+        messages: Vec<AgentInputMessage>,
+        terminal_blocks: Vec<TerminalBlockContext>,
+    ) -> AgentHarnessContext {
+        AgentHarnessContext {
+            run_id: "run-test".to_string(),
+            conversation_id: "conv-test".to_string(),
+            assistant_message_id: "assistant-test".to_string(),
+            prompt: prompt.to_string(),
+            messages,
+            terminal_blocks,
+            cwd: None,
+            target_os: "macos".to_string(),
+            target_arch: "arm64".to_string(),
+            model_id: "test-model".to_string(),
+            terminal_model_id: None,
+        }
+    }
 
     #[test]
     fn longest_tag_suffix_does_not_accept_empty_suffix() {
@@ -1398,5 +1420,22 @@ mod tests {
         assert!(prompt_supports_terminal_command(
             "modal e deja configurat; creează un container și scrie un fișier în cloud"
         ));
+    }
+
+    #[test]
+    fn empty_prompt_is_treated_like_continuation_when_recent_tool_context_exists() {
+        let context = harness_context(
+            "",
+            vec![AgentInputMessage {
+                role: "tool".to_string(),
+                content: "[Invisible harness instruction]\nContinue toward the original user goal."
+                    .to_string(),
+                tool_call_id: Some("tool-1".to_string()),
+                tool_calls: None,
+            }],
+            vec![],
+        );
+
+        assert!(context_supports_terminal_command(&context));
     }
 }

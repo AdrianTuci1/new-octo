@@ -21,6 +21,12 @@ type CommandApprovalComposerProps = {
 };
 
 export function CommandApprovalComposer({
+  ...props
+}: CommandApprovalComposerProps) {
+  return <CommandApprovalComposerContent key={getApprovalComposerKey(props.approval)} {...props} />;
+}
+
+function CommandApprovalComposerContent({
   approval,
   onEdit,
   onSaveEdit,
@@ -38,16 +44,6 @@ export function CommandApprovalComposer({
   const [draftFileDiffs, setDraftFileDiffs] = useState<FileDiff[]>(approval.kind === 'file-change' ? approval.fileDiffs : []);
   const acceptMenuRef = useRef<HTMLDivElement | null>(null);
   const diffEditorCleanupRef = useRef<(() => void) | null>(null);
-
-  useEffect(() => {
-    if ('command' in approval) {
-      setDraftCommand(approval.command);
-    }
-    setIsEditingCommand(false);
-    setIsEditingFileChanges(false);
-    setActiveDraftFileIndex(0);
-    setDraftFileDiffs(approval.kind === 'file-change' ? approval.fileDiffs : []);
-  }, [approval]);
 
   useEffect(() => {
     if (!isAcceptMenuOpen) return;
@@ -388,4 +384,16 @@ export function CommandApprovalComposer({
       </div>
     </section>
   );
+}
+
+function getApprovalComposerKey(approval: CommandApproval) {
+  if (approval.kind === 'topic-change') {
+    return `topic:${approval.reason ?? ''}:${approval.startNewConversationLabel ?? ''}:${approval.continueConversationLabel ?? ''}`;
+  }
+
+  if (approval.kind === 'file-change') {
+    return `file:${approval.toolCallId ?? ''}:${approval.fileDiffs.map((diff) => `${diff.filePath}:${diff.diffType.kind}`).join('|')}`;
+  }
+
+  return `command:${approval.toolCallId ?? ''}:${approval.command}`;
 }

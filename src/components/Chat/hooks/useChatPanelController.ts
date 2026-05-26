@@ -16,6 +16,39 @@ export function useChatPanelController(view: ChatPanelView) {
   );
   const timelineItems = USE_MOCK ? MOCK_TIMELINE_ITEMS : baseTimelineItems;
   const activePendingApproval = USE_MOCK ? MOCK_PENDING_APPROVAL : view.pendingApproval;
+  const lastMessage = view.messages.at(-1);
+  const lastTerminalBlock = view.terminalBlocks.at(-1);
+  const scrollSignal = useMemo(() => [
+    view.messages.length,
+    lastMessage?.id ?? '',
+    lastMessage?.body.length ?? 0,
+    lastMessage?.status ?? '',
+    view.terminalBlocks.length,
+    lastTerminalBlock?.id ?? '',
+    lastTerminalBlock?.output.length ?? 0,
+    lastTerminalBlock?.status ?? '',
+    view.terminalError ?? '',
+    view.expandedTerminalBlockIds.join(','),
+    view.selectedTerminalBlockId ?? ''
+  ].join('|'), [
+    lastMessage?.body.length,
+    lastMessage?.id,
+    lastMessage?.status,
+    lastTerminalBlock?.id,
+    lastTerminalBlock?.output.length,
+    lastTerminalBlock?.status,
+    view.expandedTerminalBlockIds,
+    view.messages.length,
+    view.selectedTerminalBlockId,
+    view.terminalBlocks.length,
+    view.terminalError
+  ]);
+  const findDocumentRevision = useMemo(() => [
+    scrollSignal,
+    activePendingApproval?.kind ?? '',
+    activePendingApproval && 'toolCallId' in activePendingApproval ? activePendingApproval.toolCallId ?? '' : '',
+    activePendingApproval && 'command' in activePendingApproval ? activePendingApproval.command : ''
+  ].join('|'), [activePendingApproval, scrollSignal]);
   const hasContent = USE_MOCK
     || view.messages.length > 0
     || view.terminalBlocks.length > 0
@@ -23,19 +56,13 @@ export function useChatPanelController(view: ChatPanelView) {
     || Boolean(activePendingApproval);
 
   const { scrollRef, handleScroll } = useChatPanelScroll({
-    messages: view.messages,
-    terminalBlocks: view.terminalBlocks,
-    terminalError: view.terminalError,
-    pendingApproval: activePendingApproval,
+    scrollSignal,
+    hasPendingApproval: Boolean(activePendingApproval),
     isOpen: view.isOpen,
-    expandedTerminalBlockIds: view.expandedTerminalBlockIds,
-    selectedTerminalBlockId: view.selectedTerminalBlockId
   });
   const find = useChatPanelFind({
     scrollRef,
-    messages: view.messages,
-    terminalBlocks: view.terminalBlocks,
-    pendingApproval: activePendingApproval
+    documentRevision: findDocumentRevision
   });
 
   return {

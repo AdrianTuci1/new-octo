@@ -59,8 +59,7 @@ export function buildTimelineItems(
       const timestamp = timeFromMessage(message);
       const messageIndex = messageOrderById.get(message.id) ?? order;
       const hasLiveTerminalMatch = terminalBlocks.some((block) => (
-        block.source === 'assistant'
-        && block.command.trim() === parsed.command.trim()
+        block.command.trim() === parsed.command.trim()
         && Math.abs(timeFromBlock(block) - timestamp) < 15_000
       ));
 

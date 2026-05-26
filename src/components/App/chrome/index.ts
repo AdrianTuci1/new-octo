@@ -1,6 +1,7 @@
 export { WorkspacePanelPlaceholder } from './WorkspacePanelPlaceholder';
 export { WorkspaceTopbar } from './WorkspaceTopbar';
 export type {
+  WorkspaceActivePaneContext,
   WorkspaceChromeTab,
   WorkspaceConversation,
   WorkspacePaneDirection,

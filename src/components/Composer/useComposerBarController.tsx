@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { Code2, File as FileIcon, FolderOpen, Shield, Sparkles } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState, type ChangeEvent, type ComponentProps, type KeyboardEvent, type RefObject } from 'react';
+import { useEffect, useMemo, useRef, type ChangeEvent, type ComponentProps, type KeyboardEvent, type RefObject } from 'react';
+import { useStore } from 'zustand';
 import { normalizeAgentSettings } from '../App/settings/agentSettings';
 import type { LauncherViewModel } from '../Layout/Launcher/hooks';
 import { useMemoryStore } from '../../stores/memoryStore';
@@ -17,6 +18,7 @@ import {
 import { hasCompleteSlashCommand } from './SlashCommandHighlight';
 import { requestComposerInputSelection } from './composerInputSelection';
 import { useComposerBar } from './useComposerBar';
+import { createComposerContextMenuStore } from './useComposerContextMenuStore';
 
 type ComposerBarView = LauncherViewModel['views']['composerBar'];
 
@@ -54,20 +56,34 @@ export function useComposerBarController({
 }: UseComposerBarControllerArgs) {
   const placeholder = showInputHintText ? composerPlaceholder : '';
   const { inputRef, shellRef } = useComposerBar(view.query, undefined, { autoFocus: view.mode === 'shell' });
+  const contextMenuStoreRef = useRef(createComposerContextMenuStore());
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const fileRequestIdRef = useRef(0);
+  const lastFileContextRequestKeyRef = useRef<string | null>(null);
+  const skillsRequestIdRef = useRef(0);
   const memorySettings = useMemoryStore((state) => state.settings);
   const memoryStatus = useMemoryStore((state) => state.status);
-  const [isDismissed, setIsDismissed] = useState(false);
-  const [contextMenuOpen, setContextMenuOpen] = useState(false);
-  const [contextMenuPanel, setContextMenuPanel] = useState<ComposerContextMenuPanel>('root');
-  const [contextMenuActiveIndex, setContextMenuActiveIndex] = useState(0);
-  const [contextMenuSuppressedKey, setContextMenuSuppressedKey] = useState<string | null>(null);
-  const [contextMenuFilesLoading, setContextMenuFilesLoading] = useState(false);
-  const [contextMenuCodeLoading, setContextMenuCodeLoading] = useState(false);
-  const [contextMenuSkillsLoading, setContextMenuSkillsLoading] = useState(false);
-  const [contextMenuFileItems, setContextMenuFileItems] = useState<ComposerContextMenuItem[]>([]);
-  const [contextMenuCodeItems, setContextMenuCodeItems] = useState<ComposerContextMenuItem[]>([]);
-  const [contextMenuSkillCatalog, setContextMenuSkillCatalog] = useState<SkillCatalogItem[]>([]);
+  const contextMenuOpen = useStore(contextMenuStoreRef.current, (state) => state.isOpen);
+  const contextMenuPanel = useStore(contextMenuStoreRef.current, (state) => state.panel);
+  const contextMenuActiveIndex = useStore(contextMenuStoreRef.current, (state) => state.activeIndex);
+  const contextMenuFilesLoading = useStore(contextMenuStoreRef.current, (state) => state.filesLoading);
+  const contextMenuCodeLoading = useStore(contextMenuStoreRef.current, (state) => state.codeLoading);
+  const contextMenuSkillsLoading = useStore(contextMenuStoreRef.current, (state) => state.skillsLoading);
+  const contextMenuFileItems = useStore(contextMenuStoreRef.current, (state) => state.fileItems);
+  const contextMenuCodeItems = useStore(contextMenuStoreRef.current, (state) => state.codeItems);
+  const contextMenuSkillCatalog = useStore(contextMenuStoreRef.current, (state) => state.skillCatalog);
+  const dismissedRecommendationKey = useStore(contextMenuStoreRef.current, (state) => state.dismissedRecommendationKey);
+  const syncContextMenuTrigger = useStore(contextMenuStoreRef.current, (state) => state.syncTrigger);
+  const closeContextMenuState = useStore(contextMenuStoreRef.current, (state) => state.close);
+  const setContextMenuPanel = useStore(contextMenuStoreRef.current, (state) => state.setPanel);
+  const setContextMenuActiveIndex = useStore(contextMenuStoreRef.current, (state) => state.setActiveIndex);
+  const beginContextMenuLoading = useStore(contextMenuStoreRef.current, (state) => state.beginLoading);
+  const endContextMenuLoading = useStore(contextMenuStoreRef.current, (state) => state.endLoading);
+  const setContextMenuFileItems = useStore(contextMenuStoreRef.current, (state) => state.setFileItems);
+  const setContextMenuCodeItems = useStore(contextMenuStoreRef.current, (state) => state.setCodeItems);
+  const clearContextMenuFileData = useStore(contextMenuStoreRef.current, (state) => state.clearFileData);
+  const setContextMenuSkillCatalog = useStore(contextMenuStoreRef.current, (state) => state.setSkillCatalog);
+  const dismissRecommendation = useStore(contextMenuStoreRef.current, (state) => state.dismissRecommendation);
   const predictionSuffix = view.prediction?.completionText ?? '';
   const showSlashCommandHighlight = hasCompleteSlashCommand(view.query);
   const showContextMentionHighlight = hasComposerContextMentions(view.query);
@@ -139,7 +155,12 @@ export function useComposerBarController({
 
     return [];
   }, [contextMenuCodeItems, contextMenuFileItems, contextMenuPanel, ruleMenuItems, skillsMenuItems]);
-  const showRecommendation = Boolean(view.recommendedAction) && view.query === '' && !isDismissed;
+  const resolvedContextMenuActiveIndex = currentPanelItems.length <= 0
+    ? 0
+    : Math.min(contextMenuActiveIndex, currentPanelItems.length - 1);
+  const showRecommendation = Boolean(view.recommendedAction)
+    && view.query === ''
+    && dismissedRecommendationKey !== (view.recommendedAction?.value ?? null);
   const canAttachFiles = !view.modelSetupRequired && view.selectedModelSupportsAttachments;
   const attachTooltip = view.modelSetupRequired
     ? 'Set up a model first'
@@ -148,217 +169,186 @@ export function useComposerBarController({
       : 'Selected model does not support attachments';
 
   useEffect(() => {
-    if (!contextTriggerKey) {
-      setContextMenuOpen(false);
-      setContextMenuSuppressedKey(null);
-      setContextMenuPanel('root');
-      setContextMenuActiveIndex(0);
-      setContextMenuFilesLoading(false);
-      setContextMenuCodeLoading(false);
-      return;
-    }
-
-    if (contextTriggerKey === contextMenuSuppressedKey) {
-      return;
-    }
-
-    if (!contextMenuOpen) {
-      setContextMenuOpen(true);
-      setContextMenuPanel('root');
-      setContextMenuActiveIndex(0);
-    }
-  }, [contextMenuOpen, contextTriggerKey, contextMenuSuppressedKey]);
-
-  useEffect(() => {
-    if (!contextMenuOpen) {
-      setContextMenuActiveIndex(0);
-      return;
-    }
-
-    setContextMenuActiveIndex((currentIndex) => Math.min(currentIndex, Math.max(0, currentPanelItems.length - 1)));
-  }, [contextMenuOpen, currentPanelItems.length]);
-
-  useEffect(() => {
-    if (!contextMenuOpen) {
-      return;
-    }
-
-    let cancelled = false;
-    const load = async () => {
-      if (contextMenuPanel !== 'files') {
-        return;
-      }
-
-      setContextMenuFilesLoading(true);
-      setContextMenuCodeLoading(true);
-
-      const directoryRequestPath = view.workingDirectory?.trim() || '.';
-      try {
-        const query = contextMentionQuery.trim();
-        const useRecursiveSearch = isRepoContext && query.length >= 2;
-        const listing = useRecursiveSearch
-          ? await invoke<FilesystemSearchListing>('terminal_search_directory_entries', {
-              request: {
-                path: directoryRequestPath,
-                query
-              }
-            })
-          : await invoke<FilesystemDirectoryListing>('terminal_list_directory_entries', {
-              request: {
-                path: directoryRequestPath,
-                query: query.length > 0 ? query : null,
-                directoriesOnly: false
-              }
-            });
-
-        if (!cancelled) {
-          const nextItems = listing.entries
-            .slice()
-            .sort((left, right) => {
-              if (useRecursiveSearch) {
-                return 0;
-              }
-
-              return Number(right.isDirectory) - Number(left.isDirectory) || left.name.localeCompare(right.name);
-            })
-            .slice(0, 24)
-            .map<ComposerContextMenuItem>((entry) => ({
-              id: `file:${entry.path}`,
-              label: entry.name,
-              description: resolveWorkspacePath(entry.path, workspaceRoot),
-              icon: entry.isDirectory ? <FolderOpen size={15} /> : <FileIcon size={15} />,
-              kind: entry.isDirectory ? 'folder' : 'file',
-              path: entry.path,
-              insertToken: serializeComposerContextMention(entry.isDirectory ? 'folder' : 'file', resolveWorkspacePath(entry.path, workspaceRoot))
-            }));
-          setContextMenuFileItems(nextItems);
-        }
-      } catch (error) {
-        console.warn('[composer-context-menu] failed to load directory entries', error);
-        if (!cancelled) {
-          setContextMenuFileItems([]);
-        }
-      } finally {
-        if (!cancelled) {
-          setContextMenuFilesLoading(false);
-        }
-      }
-
-      if (!isRepoContext || contextMentionQuery.trim().length === 0) {
-        if (!cancelled) {
-          setContextMenuCodeItems([]);
-          setContextMenuCodeLoading(false);
-        }
-        return;
-      }
-
-      try {
-        const results = await invoke<CodeIndexSearchResult[]>('code_index_search', {
-          query: contextMentionQuery.trim(),
-          maxResults: 12
-        });
-
-        if (!cancelled) {
-          setContextMenuCodeItems(results.map<ComposerContextMenuItem>((result) => ({
-            id: `code:${result.projectId}:${result.path}`,
-            label: result.relativePath,
-            description: result.snippet || result.projectName,
-            icon: <Code2 size={15} />,
-            insertToken: serializeComposerContextMention('function', resolveWorkspacePath(result.relativePath, workspaceRoot))
-          })));
-        }
-      } catch (error) {
-        console.warn('[composer-context-menu] failed to search code index', error);
-        if (!cancelled) {
-          setContextMenuCodeItems([]);
-        }
-      } finally {
-        if (!cancelled) {
-          setContextMenuCodeLoading(false);
-        }
-      }
-    };
-
-    void load();
-    return () => {
-      cancelled = true;
-    };
-  }, [contextMenuOpen, contextMenuPanel, contextMentionQuery, isRepoContext, view.workingDirectory, workspaceRoot]);
-
-  useEffect(() => {
-    if (contextMenuPanel !== 'files') {
-      setContextMenuFileItems([]);
-      setContextMenuCodeItems([]);
-      setContextMenuFilesLoading(false);
-      setContextMenuCodeLoading(false);
-    }
-  }, [contextMenuPanel]);
-
-  useEffect(() => {
-    if (!contextMenuOpen) {
-      return;
-    }
-
-    let cancelled = false;
-    const loadSkills = async () => {
-      setContextMenuSkillsLoading(true);
-      try {
-        const skills = await invoke<SkillCatalogItem[]>('agent_list_skills');
-        if (!cancelled) {
-          setContextMenuSkillCatalog(skills);
-        }
-      } catch (error) {
-        console.warn('[composer-context-menu] failed to load skills catalog', error);
-        if (!cancelled) {
-          setContextMenuSkillCatalog([]);
-        }
-      } finally {
-        if (!cancelled) {
-          setContextMenuSkillsLoading(false);
-        }
-      }
-    };
-
-    void loadSkills();
-    return () => {
-      cancelled = true;
-    };
-  }, [contextMenuOpen]);
-
-  useEffect(() => {
-    if (!contextMenuOpen) {
-      return;
-    }
-
-    setContextMenuActiveIndex(0);
-  }, [contextMenuOpen, contextMenuPanel, contextTriggerKey]);
-
-  useEffect(() => {
-    setIsDismissed(false);
-  }, [view.recommendedAction?.value]);
-
-  useEffect(() => {
     if (!view.selectedModelSupportsAttachments && view.attachedFiles.length > 0) {
       view.onClearAttachments();
     }
   }, [view.attachedFiles.length, view.onClearAttachments, view.selectedModelSupportsAttachments]);
 
   const closeContextMenu = (suppressCurrentTrigger = true) => {
-    if (suppressCurrentTrigger && contextTriggerKey) {
-      setContextMenuSuppressedKey(contextTriggerKey);
+    closeContextMenuState(suppressCurrentTrigger ? contextTriggerKey : null);
+    lastFileContextRequestKeyRef.current = null;
+  };
+
+  const loadFileContext = async ({
+    mentionQuery,
+    requestPath,
+    repoContext,
+    resolvedWorkspaceRoot,
+    force = false
+  }: {
+    mentionQuery: string;
+    requestPath: string;
+    repoContext: boolean;
+    resolvedWorkspaceRoot: string | null;
+    force?: boolean;
+  }) => {
+    const query = mentionQuery.trim();
+    const requestKey = [requestPath, query, repoContext ? '1' : '0', resolvedWorkspaceRoot ?? ''].join('|');
+    if (!force && lastFileContextRequestKeyRef.current === requestKey) {
+      return;
     }
-    setContextMenuOpen(false);
-    setContextMenuPanel('root');
-    setContextMenuActiveIndex(0);
-    setContextMenuFilesLoading(false);
-    setContextMenuCodeLoading(false);
-    setContextMenuSkillsLoading(false);
+
+    lastFileContextRequestKeyRef.current = requestKey;
+    const requestId = fileRequestIdRef.current + 1;
+    fileRequestIdRef.current = requestId;
+    beginContextMenuLoading('files', 'code');
+
+    try {
+      const useRecursiveSearch = repoContext && query.length >= 2;
+      const listing = useRecursiveSearch
+        ? await invoke<FilesystemSearchListing>('terminal_search_directory_entries', {
+            request: {
+              path: requestPath,
+              query
+            }
+          })
+        : await invoke<FilesystemDirectoryListing>('terminal_list_directory_entries', {
+            request: {
+              path: requestPath,
+              query: query.length > 0 ? query : null,
+              directoriesOnly: false
+            }
+          });
+
+      if (fileRequestIdRef.current === requestId) {
+        const nextItems = listing.entries
+          .slice()
+          .sort((left, right) => {
+            if (useRecursiveSearch) {
+              return 0;
+            }
+
+            return Number(right.isDirectory) - Number(left.isDirectory) || left.name.localeCompare(right.name);
+          })
+          .slice(0, 24)
+          .map<ComposerContextMenuItem>((entry) => ({
+            id: `file:${entry.path}`,
+            label: entry.name,
+            description: resolveWorkspacePath(entry.path, resolvedWorkspaceRoot),
+            icon: entry.isDirectory ? <FolderOpen size={15} /> : <FileIcon size={15} />,
+            kind: entry.isDirectory ? 'folder' : 'file',
+            path: entry.path,
+            insertToken: serializeComposerContextMention(
+              entry.isDirectory ? 'folder' : 'file',
+              resolveWorkspacePath(entry.path, resolvedWorkspaceRoot)
+            )
+          }));
+        setContextMenuFileItems(nextItems);
+      }
+    } catch (error) {
+      console.warn('[composer-context-menu] failed to load directory entries', error);
+      if (fileRequestIdRef.current === requestId) {
+        setContextMenuFileItems([]);
+      }
+    } finally {
+      if (fileRequestIdRef.current === requestId) {
+        endContextMenuLoading('files');
+      }
+    }
+
+    if (!repoContext || query.length === 0) {
+      if (fileRequestIdRef.current === requestId) {
+        setContextMenuCodeItems([]);
+        endContextMenuLoading('code');
+      }
+      return;
+    }
+
+    try {
+      const results = await invoke<CodeIndexSearchResult[]>('code_index_search', {
+        query,
+        maxResults: 12
+      });
+
+      if (fileRequestIdRef.current === requestId) {
+        setContextMenuCodeItems(results.map<ComposerContextMenuItem>((result) => ({
+          id: `code:${result.projectId}:${result.path}`,
+          label: result.relativePath,
+          description: result.snippet || result.projectName,
+          icon: <Code2 size={15} />,
+          insertToken: serializeComposerContextMention('function', resolveWorkspacePath(result.relativePath, resolvedWorkspaceRoot))
+        })));
+      }
+    } catch (error) {
+      console.warn('[composer-context-menu] failed to search code index', error);
+      if (fileRequestIdRef.current === requestId) {
+        setContextMenuCodeItems([]);
+      }
+    } finally {
+      if (fileRequestIdRef.current === requestId) {
+        endContextMenuLoading('code');
+      }
+    }
+  };
+
+  const refreshFileContext = (force = false) => {
+    if (!contextMenuOpen || contextMenuPanel !== 'files') {
+      lastFileContextRequestKeyRef.current = null;
+      clearContextMenuFileData();
+      return;
+    }
+
+    void loadFileContext({
+      mentionQuery: contextMentionQuery,
+      requestPath: view.workingDirectory?.trim() || '.',
+      repoContext: isRepoContext,
+      resolvedWorkspaceRoot: workspaceRoot,
+      force
+    });
+  };
+
+  const setContextMenuPanelWithCleanup = (nextPanel: ComposerContextMenuPanel) => {
+    if (contextMenuPanel === 'files' && nextPanel !== 'files') {
+      lastFileContextRequestKeyRef.current = null;
+      clearContextMenuFileData();
+    }
+
+    setContextMenuPanel(nextPanel);
+  };
+
+  const ensureSkillsLoaded = async () => {
+    if (contextMenuSkillCatalog.length > 0 || contextMenuSkillsLoading) {
+      return;
+    }
+
+    const requestId = skillsRequestIdRef.current + 1;
+    skillsRequestIdRef.current = requestId;
+    beginContextMenuLoading('skills');
+    try {
+      const skills = await invoke<SkillCatalogItem[]>('agent_list_skills');
+      if (skillsRequestIdRef.current === requestId) {
+        setContextMenuSkillCatalog(skills);
+      }
+    } catch (error) {
+      console.warn('[composer-context-menu] failed to load skills catalog', error);
+      if (skillsRequestIdRef.current === requestId) {
+        setContextMenuSkillCatalog([]);
+      }
+    } finally {
+      if (skillsRequestIdRef.current === requestId) {
+        endContextMenuLoading('skills');
+      }
+    }
   };
 
   const handleContextMenuItemSelect = (item: ComposerContextMenuItem) => {
     if (item.panel) {
-      setContextMenuPanel(item.panel);
-      setContextMenuActiveIndex(0);
+      setContextMenuPanelWithCleanup(item.panel);
+      if (item.panel === 'skills') {
+        void ensureSkillsLoaded();
+      } else if (item.panel === 'files') {
+        refreshFileContext(true);
+      }
       return;
     }
 
@@ -378,9 +368,28 @@ export function useComposerBarController({
     }
 
     const nextQuery = `${view.query.slice(0, trigger.start)}${item.insertToken} ${view.query.slice(trigger.end)}`.replace(/[ \t]{2,}/g, ' ');
-    view.onQueryChange(nextQuery);
+    handleQueryChange(nextQuery);
     closeContextMenu(true);
     requestComposerInputSelection(inputRef, Math.min(nextQuery.length, trigger.start + item.insertToken.length + 1), true);
+  };
+
+  const handleQueryChange = (nextQuery: string) => {
+    const nextTrigger = getTrailingComposerContextTrigger(nextQuery);
+    const nextTriggerKey = nextTrigger ? `${nextTrigger.start}:${nextTrigger.value}` : null;
+    syncContextMenuTrigger(nextTriggerKey);
+    const nextStoreState = contextMenuStoreRef.current.getState();
+    if (!nextTriggerKey || !nextStoreState.isOpen || nextStoreState.panel !== 'files') {
+      lastFileContextRequestKeyRef.current = null;
+      clearContextMenuFileData();
+    } else {
+      void loadFileContext({
+        mentionQuery: nextTrigger?.value ?? '',
+        requestPath: view.workingDirectory?.trim() || '.',
+        repoContext: isRepoContext,
+        resolvedWorkspaceRoot: workspaceRoot
+      });
+    }
+    view.onQueryChange(nextQuery);
   };
 
   const handleContextMenuKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -397,8 +406,7 @@ export function useComposerBarController({
     if (event.key === 'ArrowLeft') {
       event.preventDefault();
       if (contextMenuPanel !== 'root') {
-        setContextMenuPanel('root');
-        setContextMenuActiveIndex(0);
+        setContextMenuPanelWithCleanup('root');
       } else {
         closeContextMenu(true);
       }
@@ -419,7 +427,7 @@ export function useComposerBarController({
 
     if (event.key === 'Enter') {
       event.preventDefault();
-      const selectedItem = currentPanelItems[contextMenuActiveIndex];
+      const selectedItem = currentPanelItems[resolvedContextMenuActiveIndex];
       if (!selectedItem) {
         return true;
       }
@@ -430,7 +438,7 @@ export function useComposerBarController({
 
     if (event.key === 'ArrowRight') {
       event.preventDefault();
-      const selectedItem = currentPanelItems[contextMenuActiveIndex];
+      const selectedItem = currentPanelItems[resolvedContextMenuActiveIndex];
       if (selectedItem?.panel) {
         handleContextMenuItemSelect(selectedItem);
       }
@@ -467,7 +475,7 @@ export function useComposerBarController({
     if (event.key === 'ArrowRight' && view.prediction?.fullCommand) {
       event.preventDefault();
       event.stopPropagation();
-      view.onQueryChange(view.prediction.fullCommand);
+      handleQueryChange(view.prediction.fullCommand);
       requestComposerInputSelection(inputRef, view.prediction.fullCommand.length);
       return;
     }
@@ -481,14 +489,14 @@ export function useComposerBarController({
       if (deletionRange) {
         event.preventDefault();
         const nextQuery = `${view.query.slice(0, deletionRange.start)}${view.query.slice(deletionRange.end).replace(/^[ \t]+/, ' ')}`.replace(/[ \t]{2,}/g, ' ');
-        view.onQueryChange(nextQuery);
+        handleQueryChange(nextQuery);
         requestComposerInputSelection(inputRef, deletionRange.start);
         return;
       }
     }
 
     if (event.key === 'Backspace' && view.query === '' && showRecommendation) {
-      setIsDismissed(true);
+      dismissRecommendation(view.recommendedAction?.value ?? null);
       event.preventDefault();
       return;
     }
@@ -500,7 +508,7 @@ export function useComposerBarController({
     attachTooltip,
     canAttachFiles,
     contextMenu: {
-      activeIndex: contextMenuActiveIndex,
+      activeIndex: resolvedContextMenuActiveIndex,
       anchorRef: inputRef,
       codeItems: contextMenuCodeItems,
       fileItems: contextMenuFileItems,
@@ -513,8 +521,7 @@ export function useComposerBarController({
       loadingSkills: contextMenuSkillsLoading,
       mentionQuery: contextMentionQuery,
       onBack: () => {
-        setContextMenuPanel('root');
-        setContextMenuActiveIndex(0);
+        setContextMenuPanelWithCleanup('root');
       },
       onClose: () => closeContextMenu(true),
       onSelectItem: handleContextMenuItemSelect,
@@ -530,6 +537,7 @@ export function useComposerBarController({
     handleAttachButtonClick,
     handleFileInputChange,
     handleInternalKeyDown,
+    handleQueryChange,
     inputRef,
     placeholder,
     predictionSuffix,

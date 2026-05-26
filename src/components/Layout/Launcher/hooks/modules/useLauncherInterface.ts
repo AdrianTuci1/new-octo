@@ -42,6 +42,16 @@ export function useLauncherInterface(params: {
     && tray.isTrayOpen
     && (tray.activeTrayMode === 'commands' || tray.activeTrayMode === 'history');
   const isTerminalSurface = store.composerSurface === 'terminal';
+  const latestUsage = [...runtime.chat.messages]
+    .reverse()
+    .find((message: any) => message.role === 'assistant' && message.usage)?.usage ?? null;
+  const promptTokens = typeof latestUsage?.promptTokens === 'number' ? latestUsage.promptTokens : 0;
+  const estimatedContextWindow = 128000;
+  const contextUsageProgress = Math.max(0, Math.min(1, promptTokens / estimatedContextWindow));
+  const remainingContextTokens = Math.max(0, estimatedContextWindow - promptTokens);
+  const contextUsageTitle = promptTokens > 0
+    ? `Context window: ${promptTokens.toLocaleString()} / ${estimatedContextWindow.toLocaleString()} tokens (${Math.round(contextUsageProgress * 100)}% used, ${remainingContextTokens.toLocaleString()} remaining)`
+    : `Context window: 0 / ${estimatedContextWindow.toLocaleString()} tokens`;
   const workingDirectory = runtime.workingDirectory;
   const gitContext = runtime.gitContext;
   const runtimeContext = runtime.runtimeContext;
@@ -239,6 +249,8 @@ export function useLauncherInterface(params: {
         selectedModelLabel: modelSelection.selectedModelLabel,
         contextIndicatorTitle: effectiveWorkingDirectory ?? 'Workspace context',
         contextIndicatorTone: isTerminalSurface || composerMode === 'shell' ? 'terminal' : 'agent',
+        contextUsageProgress,
+        contextUsageTitle,
         selectedModelSupportsAttachments: modelSelection.selectedModelSupportsAttachments,
         attachedFiles: runtime.chat.attachments,
         onAttachFiles: runtime.chat.attachFiles,

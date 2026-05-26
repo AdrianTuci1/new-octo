@@ -441,6 +441,11 @@ export function extractInlineFileChangeApproval(raw: string) {
 export function extractFollowUpSuggestion(raw: string) {
   const startIndex = raw.indexOf(FOLLOW_UP_START);
   if (startIndex < 0) {
+    const pseudoToolCall = extractPseudoObjectFollowUpSuggestion(raw);
+    if (pseudoToolCall) {
+      return pseudoToolCall;
+    }
+
     const legacyFunctionCall = extractLegacyFunctionFollowUpSuggestion(raw);
     if (legacyFunctionCall) {
       return legacyFunctionCall;
@@ -500,6 +505,41 @@ export function extractFollowUpSuggestion(raw: string) {
     visibleBody: stripFollowUpBoilerplate(`${visibleBody}${trailing}`.trimEnd()),
     pendingPayload: '',
     suggestion
+  };
+}
+
+function extractPseudoObjectFollowUpSuggestion(raw: string) {
+  const markerMatch = /(?:<tool_call\|>\s*)?suggest_follow_up\s*\{/i.exec(raw);
+  if (!markerMatch) {
+    return null;
+  }
+
+  const startIndex = markerMatch.index;
+  const braceIndex = raw.indexOf('{', startIndex);
+  const objectEnd = findPseudoToolObjectEnd(raw, braceIndex);
+  if (objectEnd < 0) {
+    return {
+      visibleBody: stripFollowUpBoilerplate(raw.slice(0, startIndex).trimEnd()),
+      pendingPayload: raw.slice(startIndex),
+      suggestion: undefined as ChatMessage['followUpSuggestion'] | undefined
+    };
+  }
+
+  const payload = raw.slice(braceIndex, objectEnd + 1);
+  const trailing = raw.slice(objectEnd + 1).trimStart();
+  const visibleBody = stripFollowUpBoilerplate(
+    [raw.slice(0, startIndex).trimEnd(), trailing].filter(Boolean).join('\n\n').trimEnd()
+  );
+
+  return {
+    visibleBody,
+    pendingPayload: '',
+    suggestion: normalizeToolFollowUpSuggestion({
+      confidence: extractPseudoNumberValue(payload, 'confidence'),
+      description: normalizePseudoQuotedText(extractPseudoStringValue(payload, 'description')),
+      label: normalizePseudoQuotedText(extractPseudoStringValue(payload, 'label')),
+      prompt: normalizePseudoQuotedText(extractPseudoStringValue(payload, 'prompt'))
+    })
   };
 }
 

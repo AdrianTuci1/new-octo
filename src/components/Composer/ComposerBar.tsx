@@ -16,6 +16,13 @@ export function ComposerBar() {
     showInputHintText: launcher.ui.agentSettings?.input?.showInputHintText !== false,
     view
   });
+  const contextUsageProgress = Math.max(0, Math.min(1, view.contextUsageProgress ?? 0));
+  const contextRingRadius = 7;
+  const contextRingCircumference = 2 * Math.PI * contextRingRadius;
+  const contextRingStyle = {
+    strokeDasharray: `${contextRingCircumference} ${contextRingCircumference}`,
+    strokeDashoffset: `${contextRingCircumference * (1 - contextUsageProgress)}`
+  };
 
   return (
     <div ref={controller.shellRef} className="composer-shell">
@@ -66,7 +73,7 @@ export function ComposerBar() {
                 className={`chat-input ${controller.showRecommendation ? 'has-recommendation' : ''} ${controller.showSlashCommandHighlight ? 'has-slash-command-highlight' : ''} ${controller.showContextMentionHighlight ? 'has-context-highlight' : ''}`.trim()}
                 value={view.query}
                 disabled={view.modelSetupRequired}
-                onChange={(event) => view.onQueryChange(event.target.value)}
+                onChange={(event) => controller.handleQueryChange(event.target.value)}
                 onKeyDown={controller.handleInternalKeyDown}
                 rows={controller.showRecommendation ? 1 : 2}
                 placeholder={view.mode === 'shell' ? 'Run a terminal command' : controller.placeholder ?? 'Octomus anything, or use / for tools'}
@@ -176,11 +183,21 @@ export function ComposerBar() {
           </div>
 
           <div className="action-group right-actions">
+            <span
+              className="composer-context-indicator-chip"
+              aria-label={view.contextUsageTitle ?? 'Context usage'}
+            >
+              <span className="composer-context-indicator-shell" aria-hidden="true">
+                <svg className={`composer-context-ring ${view.contextIndicatorTone ?? 'agent'}`} viewBox="0 0 20 20">
+                  <circle className="composer-context-ring-track" cx="10" cy="10" r={contextRingRadius} />
+                  <circle className="composer-context-ring-progress" cx="10" cy="10" r={contextRingRadius} style={contextRingStyle} />
+                </svg>
+              </span>
+              <span className="composer-context-indicator-tooltip" role="tooltip">
+                {view.contextUsageTitle ?? 'Context usage'}
+              </span>
+            </span>
             <button className="toolbar-chip model-chip" onClick={view.onToggleModelTray} type="button" title={view.contextIndicatorTitle ?? 'Model'}>
-              <span
-                className={`composer-context-indicator ${view.contextIndicatorTone ?? 'agent'}`}
-                aria-hidden="true"
-              />
               <span>{view.selectedModelLabel}</span>
             </button>
             <button

@@ -83,11 +83,37 @@ function agentContinuationInstruction(kind: 'command' | 'file-change') {
   ].join('\n');
 }
 
+function commandFailureInstruction(command: string, output: string, exitCode: number | null) {
+  const normalized = `${command}\n${output}`.toLowerCase();
+  const missingCommand = normalized.includes('command not found')
+    || normalized.includes('not recognized as an internal or external command')
+    || normalized.includes('no such file or directory');
+
+  if (missingCommand) {
+    return [
+      '[Invisible harness instruction]',
+      'The command failed because the CLI/tool is missing. Tell the user clearly that it is not installed or not available in PATH.',
+      'If the original goal was only to verify installation, stop after stating that result and offer the next safe step.',
+      'If installation is the natural next step, propose a concrete install command with propose_terminal_command instead of asking a vague clarification question.'
+    ].join('\n');
+  }
+
+  if (exitCode !== null && exitCode !== 0) {
+    return [
+      '[Invisible harness instruction]',
+      'The command failed. Summarize the failure concretely using the output. Only ask for clarification if the error truly leaves multiple plausible next actions.'
+    ].join('\n');
+  }
+
+  return '';
+}
+
 function terminalToolResult(command: string, result: { output?: string; block?: { exitCode?: number | null } }) {
   const exitCode = typeof result.block?.exitCode === 'number' ? result.block.exitCode : null;
   const output = result.output?.trim() || '(Comanda s-a executat fără output)';
   const failedByOutput = /\b(?:syntaxerror|traceback|error|failed|fail)\b/i.test(output);
   const failed = exitCode !== null ? exitCode !== 0 : failedByOutput;
+  const failureInstruction = failed ? commandFailureInstruction(command, output, exitCode) : '';
 
   return [
     `[Terminal command result]`,
@@ -96,6 +122,7 @@ function terminalToolResult(command: string, result: { output?: string; block?: 
     `STATUS: ${failed ? 'failed' : 'succeeded'}`,
     `OUTPUT:`,
     output,
+    failureInstruction,
     agentContinuationInstruction('command')
   ].join('\n');
 }
@@ -153,6 +180,10 @@ function exactCommandPattern(command: string) {
 function isCommandSearchQuery(value: string) {
   const trimmed = value.trimStart();
   return trimmed.startsWith('/') && !trimmed.includes(' ');
+}
+
+function shouldKeepCommandsTrayOpen(value: string) {
+  return isCommandSearchQuery(value) || value.trim().startsWith('/');
 }
 
 function shellQuotePath(path: string) {
@@ -570,7 +601,7 @@ export function useLauncherHandlers({
     store.setSelectedHistoryIndex(0);
     store.setSelectedCommandIndex(0);
 
-    if (isCommandSearchQuery(value)) {
+    if (shouldKeepCommandsTrayOpen(value)) {
       if (!tray.isTrayOpen || tray.activeTrayMode !== 'commands') {
         tray.toggleTray('commands');
       }
@@ -602,7 +633,7 @@ export function useLauncherHandlers({
       store.setModeLock(null);
     }
 
-    if (isCommandSearchQuery(nextValue.value)) {
+    if (shouldKeepCommandsTrayOpen(nextValue.value)) {
       if (!tray.isTrayOpen || tray.activeTrayMode !== 'commands') {
         tray.toggleTray('commands');
       }
@@ -667,6 +698,8 @@ export function useLauncherHandlers({
       return;
     }
 
+    workingDirectory.closePicker();
+
     void runCommandInSurface(
       command,
       store.composerSurface === 'agent' ? 'agent' : 'terminal',
@@ -674,8 +707,8 @@ export function useLauncherHandlers({
       agentTerminal,
       clearTerminalSurface,
       'user'
-    ).finally(() => {
-      workingDirectory.closePicker();
+    ).catch((error) => {
+      console.warn('[Launcher] failed to change working directory from picker', error);
     });
   }, [
     activeSurfaceWorkingDirectory,

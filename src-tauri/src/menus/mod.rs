@@ -130,7 +130,19 @@ fn build_recent_conversations_menu<R: Runtime, M: Manager<R>>(
 }
 
 fn conversation_label(summary: &MemoryConversationSummary) -> String {
-    let title = summary.title.trim().to_string();
+    let title = summary
+        .title
+        .chars()
+        .filter(|ch| {
+            !matches!(
+                ch,
+                '\u{200B}' | '\u{200C}' | '\u{200D}' | '\u{2060}' | '\u{FEFF}'
+            )
+        })
+        .collect::<String>()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
 
     let base = if title.is_empty() {
         "Untitled Conversation".to_string()

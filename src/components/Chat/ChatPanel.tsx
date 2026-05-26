@@ -72,14 +72,14 @@ export function ChatPanel() {
             </div>
           </div>
           <div className="chat-finder-count">
-            {controller.find.matches.length > 0 ? `${controller.find.activeIndex + 1}/${controller.find.matches.length}` : '0/0'}
+            {controller.find.matchCount > 0 ? `${controller.find.activeIndex + 1}/${controller.find.matchCount}` : '0/0'}
           </div>
           <div className="chat-finder-nav-actions">
             <button
               type="button"
               className="chat-finder-nav-btn"
               onClick={controller.find.selectNextMatch}
-              disabled={controller.find.matches.length === 0}
+              disabled={controller.find.matchCount === 0}
               title="Next Match (Enter)"
             >
               <ArrowDown size={14} />
@@ -88,7 +88,7 @@ export function ChatPanel() {
               type="button"
               className="chat-finder-nav-btn"
               onClick={controller.find.selectPreviousMatch}
-              disabled={controller.find.matches.length === 0}
+              disabled={controller.find.matchCount === 0}
               title="Previous Match (Shift+Enter)"
             >
               <ArrowUp size={14} />

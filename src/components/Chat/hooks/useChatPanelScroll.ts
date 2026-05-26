@@ -1,26 +1,15 @@
 import { useLayoutEffect, useRef } from 'react';
-import type { CommandApproval } from '../../../types/terminal';
-import type { ChatMessage } from '../../../types/chat';
-import type { TerminalCommandBlock } from '../../../types/terminal';
 
 type UseChatPanelScrollProps = {
-  messages: ChatMessage[];
-  terminalBlocks: TerminalCommandBlock[];
-  terminalError?: string | null;
-  pendingApproval?: CommandApproval | null;
+  scrollSignal: string;
+  hasPendingApproval: boolean;
   isOpen: boolean;
-  expandedTerminalBlockIds: string[];
-  selectedTerminalBlockId?: string | null;
 };
 
 export function useChatPanelScroll({
-  messages,
-  terminalBlocks,
-  terminalError,
-  pendingApproval,
+  scrollSignal,
+  hasPendingApproval,
   isOpen,
-  expandedTerminalBlockIds,
-  selectedTerminalBlockId
 }: UseChatPanelScrollProps) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const isAutoScrollEnabled = useRef(true);
@@ -34,8 +23,8 @@ export function useChatPanelScroll({
   };
 
   useLayoutEffect(() => {
-    const approvalJustCleared = hadPendingApproval.current && !pendingApproval;
-    hadPendingApproval.current = Boolean(pendingApproval);
+    const approvalJustCleared = hadPendingApproval.current && !hasPendingApproval;
+    hadPendingApproval.current = hasPendingApproval;
 
     const scrollContainer = scrollRef.current;
     if (!scrollContainer || !isOpen) return;
@@ -64,7 +53,7 @@ export function useChatPanelScroll({
     return () => {
       if (rafId.current) cancelAnimationFrame(rafId.current);
     };
-  }, [messages, terminalBlocks, terminalError, pendingApproval, isOpen, expandedTerminalBlockIds, selectedTerminalBlockId]);
+  }, [hasPendingApproval, isOpen, scrollSignal]);
 
   return { scrollRef, handleScroll };
 }

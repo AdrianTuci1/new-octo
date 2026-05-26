@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import type { UseChatOptions } from '../types';
 import type {
@@ -182,6 +182,11 @@ export function useChatActions({
   onWorkspaceExplorationRef,
   onCloudAgentLaunchRef
 }: UseChatActionsProps) {
+  const toolResultContinuationRef = useRef<Record<string, {
+    assistantMessageId: string;
+    status: 'started' | 'failed';
+  }>>({});
+
   const attachFiles = useCallback(async (files: File[]) => {
     if (!files.length) {
       return;
@@ -661,7 +666,20 @@ export function useChatActions({
       return;
     }
 
+    const existingContinuation = toolResultContinuationRef.current[toolCallId];
+    if (existingContinuation?.status === 'started') {
+      return;
+    }
+
+    if (existingContinuation?.status === 'failed') {
+      delete toolResultContinuationRef.current[toolCallId];
+    }
+
     const nextAssistantMessageId = `assistant-followup-${ts}`;
+    toolResultContinuationRef.current[toolCallId] = {
+      assistantMessageId: nextAssistantMessageId,
+      status: 'started'
+    };
     state.addMessage({
       id: nextAssistantMessageId,
       role: 'assistant',
@@ -681,6 +699,10 @@ export function useChatActions({
         nextAssistantMessageId
       );
     } catch (error) {
+      toolResultContinuationRef.current[toolCallId] = {
+        assistantMessageId: nextAssistantMessageId,
+        status: 'failed'
+      };
       state.updateMessage(nextAssistantMessageId, (message) => ({
         ...message,
         body: `Eroare la continuarea agentului: ${error}`,

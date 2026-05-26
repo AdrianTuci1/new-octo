@@ -485,15 +485,17 @@ fn main() {
 
                 let _ = tray.build(app)?;
 
-                let app_handle_cu = app.handle().clone();
-                let _ = app.listen("memory:conversation-updated", move |_event| {
-                    menus::refresh_tray_menu(&app_handle_cu);
-                });
+                if !cfg!(target_os = "macos") {
+                    let app_handle_cu = app.handle().clone();
+                    let _ = app.listen("memory:conversation-updated", move |_event| {
+                        menus::refresh_tray_menu(&app_handle_cu);
+                    });
 
-                let app_handle_ws = app.handle().clone();
-                let _ = app.listen("memory:workspace-updated", move |_event| {
-                    menus::refresh_tray_menu(&app_handle_ws);
-                });
+                    let app_handle_ws = app.handle().clone();
+                    let _ = app.listen("memory:workspace-updated", move |_event| {
+                        menus::refresh_tray_menu(&app_handle_ws);
+                    });
+                }
 
                 app.handle().plugin(
                     tauri_plugin_global_shortcut::Builder::new()
