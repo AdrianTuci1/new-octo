@@ -6,7 +6,7 @@ cd "$ROOT_DIR"
 
 . ./scripts/tauri-env.sh
 
-VERSION="$(sed -n 's/^version = "\(.*\)"/\1/p' src-tauri/Cargo.toml | head -n 1)"
+VERSION="$(sed -n 's/^version = "\(.*\)"/\1/p' octomus-cli/Cargo.toml | head -n 1)"
 TARGET_TRIPLE="$(cargo -vV | sed -n 's/^host: //p')"
 BIN_NAME="octomus-cli"
 PACKAGE_NAME="${BIN_NAME}-${VERSION}-${TARGET_TRIPLE}"
@@ -18,7 +18,7 @@ mkdir -p "$ROOT_DIR/artifacts/cli"
 mkdir -p "$STAGE_DIR"
 
 echo "Building $BIN_NAME for $TARGET_TRIPLE..."
-cargo build --manifest-path src-tauri/Cargo.toml --release --bin "$BIN_NAME"
+cargo build --manifest-path octomus-cli/Cargo.toml --release
 
 cp "target/release/$BIN_NAME" "$STAGE_DIR/$BIN_NAME"
 cp README.md "$STAGE_DIR/README.md"

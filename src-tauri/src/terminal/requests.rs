@@ -20,10 +20,12 @@ impl CreateTerminalSessionTargetRequest {
     }
 
     pub fn resolved_provider(&self) -> TerminalSessionProvider {
-        self.provider.clone().unwrap_or_else(|| match self.resolved_kind() {
-            TerminalSessionKind::Local => TerminalSessionProvider::Local,
-            TerminalSessionKind::Cloud => TerminalSessionProvider::CustomVm,
-        })
+        self.provider
+            .clone()
+            .unwrap_or_else(|| match self.resolved_kind() {
+                TerminalSessionKind::Local => TerminalSessionProvider::Local,
+                TerminalSessionKind::Cloud => TerminalSessionProvider::CustomVm,
+            })
     }
 }
 
@@ -63,6 +65,8 @@ pub struct WriteTerminalSessionRequest {
 pub struct RunTerminalCommandRequest {
     pub session_id: String,
     pub command: String,
+    #[serde(default)]
+    pub wait_for_completion: Option<bool>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -76,4 +80,5 @@ pub struct TerminalSessionRequest {
 pub struct TerminalRunCommandResponse {
     pub block: TerminalBlock,
     pub output: String,
+    pub pending: Option<bool>,
 }

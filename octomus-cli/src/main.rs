@@ -1,0 +1,540 @@
+use octomus_cloud_protocol::{
+    CloudProvider, CloudRunEvent, CloudRunEventKind, CloudRunGitSpec, CloudRunLaunchSpec,
+    CloudRunLlmSpec, CloudRunPolicy, CloudRunStatus, HarnessKind, TerminalStream,
+};
+use serde::Serialize;
+use std::{
+    env, fs,
+    io::{self, Read},
+    path::{Path, PathBuf},
+    process::{Command, ExitCode},
+    time::{SystemTime, UNIX_EPOCH},
+};
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RuntimeInfo {
+    pub name: &'static str,
+    pub version: &'static str,
+    pub target_os: &'static str,
+    pub target_arch: &'static str,
+    pub supported_session_kinds: Vec<&'static str>,
+    pub supported_cloud_providers: Vec<&'static str>,
+}
+
+pub fn runtime_info() -> RuntimeInfo {
+    RuntimeInfo {
+        name: "octomus-cli",
+        version: env!("CARGO_PKG_VERSION"),
+        target_os: std::env::consts::OS,
+        target_arch: std::env::consts::ARCH,
+        supported_session_kinds: vec!["local", "cloud"],
+        supported_cloud_providers: vec!["custom-vm", "modal"],
+    }
+}
+
+fn print_help() {
+    println!(
+        "\
+octomus-cli
+
+USAGE:
+  octomus-cli <command>
+
+COMMANDS:
+  run-agent      Start a headless cloud agent runtime and emit JSONL events
+  runtime-info   Print JSON metadata about the current headless runtime
+  version        Print the CLI version
+  help           Print this help message
+"
+    );
+}
+
+fn main() -> ExitCode {
+    let mut args = env::args().skip(1);
+
+    match args.next().as_deref() {
+        Some("run-agent") => match run_agent(args.collect()) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(error) => {
+                eprintln!("{error}");
+                ExitCode::FAILURE
+            }
+        },
+        Some("runtime-info") => match serde_json::to_string_pretty(&runtime_info()) {
+            Ok(json) => {
+                println!("{json}");
+                ExitCode::SUCCESS
+            }
+            Err(error) => {
+                eprintln!("failed to serialize runtime info: {error}");
+                ExitCode::FAILURE
+            }
+        },
+        Some("version") | Some("--version") | Some("-V") => {
+            println!("{}", env!("CARGO_PKG_VERSION"));
+            ExitCode::SUCCESS
+        }
+        Some("help") | Some("--help") | Some("-h") | None => {
+            print_help();
+            ExitCode::SUCCESS
+        }
+        Some(command) => {
+            eprintln!("unknown command: {command}");
+            eprintln!();
+            print_help();
+            ExitCode::FAILURE
+        }
+    }
+}
+
+struct EventEmitter {
+    session_id: String,
+    sequence: u64,
+}
+
+impl EventEmitter {
+    fn new(session_id: String) -> Self {
+        Self {
+            session_id,
+            sequence: 0,
+        }
+    }
+
+    fn emit(&mut self, event: CloudRunEventKind) -> Result<(), String> {
+        self.sequence += 1;
+        let event = CloudRunEvent {
+            session_id: self.session_id.clone(),
+            sequence: self.sequence,
+            event,
+            timestamp_ms: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map_err(|error| format!("system clock is before unix epoch: {error}"))?
+                .as_millis(),
+        };
+        let line = serde_json::to_string(&event)
+            .map_err(|error| format!("failed to encode cloud run event: {error}"))?;
+        println!("{line}");
+        Ok(())
+    }
+
+    fn status(
+        &mut self,
+        status: CloudRunStatus,
+        message: impl Into<Option<String>>,
+    ) -> Result<(), String> {
+        self.emit(CloudRunEventKind::Status {
+            status,
+            message: message.into(),
+        })
+    }
+
+    fn output(&mut self, stream: TerminalStream, data: impl Into<String>) -> Result<(), String> {
+        let data = data.into();
+        if data.is_empty() {
+            return Ok(());
+        }
+        self.emit(CloudRunEventKind::TerminalOutput { stream, data })
+    }
+}
+
+fn run_agent(args: Vec<String>) -> Result<(), String> {
+    let launch = parse_launch_spec(args)?;
+    let mut emitter = EventEmitter::new(launch.session_id.clone());
+
+    if let Err(error) = run_agent_inner(&launch, &mut emitter) {
+        let _ = emitter.emit(CloudRunEventKind::Error {
+            message: error.clone(),
+        });
+        let _ = emitter.emit(CloudRunEventKind::Done {
+            status: CloudRunStatus::Failed,
+        });
+        return Err(error);
+    }
+
+    Ok(())
+}
+
+fn run_agent_inner(launch: &CloudRunLaunchSpec, emitter: &mut EventEmitter) -> Result<(), String> {
+    emitter.status(
+        CloudRunStatus::Booting,
+        Some(format!(
+            "Starting {:?} harness on {:?}",
+            launch.harness, launch.provider
+        )),
+    )?;
+
+    let workspace = PathBuf::from(&launch.workspace);
+    emit_llm_config(launch, emitter)?;
+    prepare_workspace(&workspace, launch.git.as_ref(), emitter)?;
+
+    emitter.status(
+        CloudRunStatus::RunningHarness,
+        Some("Workspace is ready".to_string()),
+    )?;
+    run_configured_harness(&workspace, launch, emitter)?;
+    emit_git_status(&workspace, launch.git.as_ref(), emitter)?;
+
+    emitter.emit(CloudRunEventKind::Done {
+        status: CloudRunStatus::Completed,
+    })?;
+    Ok(())
+}
+
+fn parse_launch_spec(args: Vec<String>) -> Result<CloudRunLaunchSpec, String> {
+    if let Some(path) = option_value(&args, "--launch-spec") {
+        return read_launch_spec(path);
+    }
+
+    let session_id = option_value(&args, "--session-id")
+        .or_else(|| env::var("OCTOMUS_SESSION_ID").ok())
+        .ok_or_else(|| "run-agent requires --session-id or OCTOMUS_SESSION_ID".to_string())?;
+    let provider = parse_provider(
+        option_value(&args, "--provider")
+            .or_else(|| env::var("OCTOMUS_PROVIDER").ok())
+            .as_deref()
+            .unwrap_or("custom-vm"),
+    )?;
+    let harness = parse_harness(
+        option_value(&args, "--harness")
+            .or_else(|| env::var("OCTOMUS_HARNESS").ok())
+            .as_deref()
+            .unwrap_or("octomus"),
+    )?;
+    let workspace = option_value(&args, "--workspace")
+        .or_else(|| env::var("OCTOMUS_WORKSPACE").ok())
+        .unwrap_or_else(|| "/workspace".to_string());
+    let control_url =
+        option_value(&args, "--control-url").or_else(|| env::var("OCTOMUS_CONTROL_URL").ok());
+    let prompt = option_value(&args, "--prompt").or_else(|| env::var("OCTOMUS_PROMPT").ok());
+    let git = match option_value(&args, "--repo").or_else(|| env::var("OCTOMUS_REPO").ok()) {
+        Some(repo) => Some(CloudRunGitSpec {
+            repo,
+            base_branch: option_value(&args, "--base")
+                .or_else(|| env::var("OCTOMUS_BASE_BRANCH").ok())
+                .unwrap_or_else(|| "main".to_string()),
+            work_branch: option_value(&args, "--branch")
+                .or_else(|| env::var("OCTOMUS_WORK_BRANCH").ok())
+                .unwrap_or_else(|| format!("octomus/{session_id}")),
+        }),
+        None => None,
+    };
+
+    Ok(CloudRunLaunchSpec {
+        session_id,
+        provider,
+        harness,
+        control_url,
+        workspace,
+        prompt,
+        git,
+        llm: runtime_llm_spec(),
+        policy: CloudRunPolicy {
+            allow_push: has_flag(&args, "--allow-push"),
+            allow_pr_create: has_flag(&args, "--allow-pr-create"),
+            allow_merge: false,
+            max_runtime_minutes: Some(60),
+        },
+    })
+}
+
+fn runtime_llm_spec() -> Option<CloudRunLlmSpec> {
+    let api_key = env::var("OCTOMUS_AI_API_KEY")
+        .or_else(|_| env::var("OPENAI_API_KEY"))
+        .ok();
+    let base_url = env::var("OCTOMUS_AI_BASE_URL")
+        .or_else(|_| env::var("OPENAI_BASE_URL"))
+        .unwrap_or_else(|_| "https://api.openai.com/v1".to_string());
+    let model_id = env::var("OCTOMUS_AI_MODEL")
+        .or_else(|_| env::var("OPENAI_MODEL"))
+        .unwrap_or_else(|_| "gpt-4o-mini".to_string());
+
+    Some(CloudRunLlmSpec {
+        provider_label: env::var("OCTOMUS_AI_PROVIDER")
+            .unwrap_or_else(|_| "openai-compatible".to_string()),
+        base_url,
+        model_id,
+        has_api_key: api_key
+            .as_deref()
+            .map(str::trim)
+            .is_some_and(|value| !value.is_empty()),
+    })
+}
+
+fn emit_llm_config(launch: &CloudRunLaunchSpec, emitter: &mut EventEmitter) -> Result<(), String> {
+    let llm = launch.llm.clone().or_else(runtime_llm_spec);
+    let Some(llm) = llm else {
+        return Ok(());
+    };
+
+    emitter.emit(CloudRunEventKind::LlmConfig {
+        provider_label: llm.provider_label,
+        base_url: llm.base_url,
+        model_id: llm.model_id,
+        has_api_key: llm.has_api_key,
+    })
+}
+
+fn read_launch_spec(path: String) -> Result<CloudRunLaunchSpec, String> {
+    let json = if path == "-" {
+        let mut input = String::new();
+        io::stdin()
+            .read_to_string(&mut input)
+            .map_err(|error| format!("failed to read launch spec from stdin: {error}"))?;
+        input
+    } else {
+        fs::read_to_string(&path)
+            .map_err(|error| format!("failed to read launch spec '{path}': {error}"))?
+    };
+    serde_json::from_str(&json).map_err(|error| format!("invalid launch spec JSON: {error}"))
+}
+
+fn option_value(args: &[String], name: &str) -> Option<String> {
+    args.windows(2)
+        .find(|pair| pair[0] == name)
+        .map(|pair| pair[1].clone())
+}
+
+fn has_flag(args: &[String], name: &str) -> bool {
+    args.iter().any(|arg| arg == name)
+}
+
+fn parse_provider(value: &str) -> Result<CloudProvider, String> {
+    match value {
+        "custom-vm" | "custom_vm" => Ok(CloudProvider::CustomVm),
+        "modal" => Ok(CloudProvider::Modal),
+        other => Err(format!("unsupported cloud provider: {other}")),
+    }
+}
+
+fn parse_harness(value: &str) -> Result<HarnessKind, String> {
+    match value {
+        "octomus" => Ok(HarnessKind::Octomus),
+        "codex" => Ok(HarnessKind::Codex),
+        "claude" | "claude-code" => Ok(HarnessKind::Claude),
+        "gemini" => Ok(HarnessKind::Gemini),
+        "custom" => Ok(HarnessKind::Custom),
+        other => Err(format!("unsupported harness: {other}")),
+    }
+}
+
+fn prepare_workspace(
+    workspace: &Path,
+    git: Option<&CloudRunGitSpec>,
+    emitter: &mut EventEmitter,
+) -> Result<(), String> {
+    emitter.status(
+        CloudRunStatus::PreparingWorkspace,
+        Some(format!("Preparing {}", workspace.display())),
+    )?;
+    fs::create_dir_all(workspace).map_err(|error| {
+        format!(
+            "failed to create workspace '{}': {error}",
+            workspace.display()
+        )
+    })?;
+
+    let Some(git) = git else {
+        return Ok(());
+    };
+
+    if workspace.join(".git").exists() {
+        run_command(
+            workspace,
+            "git",
+            &["fetch", "origin", &git.base_branch],
+            emitter,
+        )?;
+    } else {
+        let parent = workspace.parent().unwrap_or_else(|| Path::new("/"));
+        fs::create_dir_all(parent).map_err(|error| {
+            format!(
+                "failed to create workspace parent '{}': {error}",
+                parent.display()
+            )
+        })?;
+        if fs::read_dir(workspace)
+            .map_err(|error| {
+                format!(
+                    "failed to inspect workspace '{}': {error}",
+                    workspace.display()
+                )
+            })?
+            .next()
+            .is_some()
+        {
+            return Err(format!(
+                "workspace '{}' is not empty and is not a git repository",
+                workspace.display()
+            ));
+        }
+        let workspace_arg = workspace
+            .to_str()
+            .ok_or_else(|| "workspace path is not valid UTF-8".to_string())?;
+        run_command(
+            parent,
+            "git",
+            &[
+                "clone",
+                "--branch",
+                &git.base_branch,
+                &git.repo,
+                workspace_arg,
+            ],
+            emitter,
+        )?;
+    }
+
+    run_command(
+        workspace,
+        "git",
+        &[
+            "checkout",
+            "-B",
+            &git.work_branch,
+            &format!("origin/{}", git.base_branch),
+        ],
+        emitter,
+    )?;
+    Ok(())
+}
+
+fn run_configured_harness(
+    workspace: &Path,
+    launch: &CloudRunLaunchSpec,
+    emitter: &mut EventEmitter,
+) -> Result<(), String> {
+    if let Some(prompt) = &launch.prompt {
+        emitter.output(TerminalStream::Stdout, format!("Prompt: {prompt}\n"))?;
+    }
+
+    let Ok(command) = env::var("OCTOMUS_HARNESS_COMMAND") else {
+        return run_builtin_llm_harness(launch, emitter);
+    };
+
+    run_command(workspace, "sh", &["-lc", &command], emitter)
+}
+
+fn run_builtin_llm_harness(
+    launch: &CloudRunLaunchSpec,
+    emitter: &mut EventEmitter,
+) -> Result<(), String> {
+    let prompt = launch
+        .prompt
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| "cloud agent prompt is required when no harness command is configured".to_string())?;
+    let api_key = env::var("OCTOMUS_AI_API_KEY")
+        .or_else(|_| env::var("OPENAI_API_KEY"))
+        .map_err(|_| "OCTOMUS_AI_API_KEY or OPENAI_API_KEY is required for the built-in cloud harness".to_string())?;
+    let base_url = env::var("OCTOMUS_AI_BASE_URL")
+        .or_else(|_| env::var("OPENAI_BASE_URL"))
+        .unwrap_or_else(|_| "https://api.openai.com/v1".to_string());
+    let model = env::var("OCTOMUS_AI_MODEL")
+        .or_else(|_| env::var("OPENAI_MODEL"))
+        .unwrap_or_else(|_| "gpt-4o-mini".to_string());
+    let endpoint = format!("{}/chat/completions", base_url.trim_end_matches('/'));
+
+    emitter.output(
+        TerminalStream::Stdout,
+        format!("Running built-in OpenAI-compatible cloud harness with model {model}.\n"),
+    )?;
+
+    let response: serde_json::Value = reqwest::blocking::Client::new()
+        .post(endpoint)
+        .bearer_auth(api_key)
+        .json(&serde_json::json!({
+            "model": model,
+            "messages": [
+                {
+                    "role": "system",
+                    "content": "You are Octomus running in a cloud runtime. Be concise, practical, and report any concrete commands or repository steps you would take."
+                },
+                {
+                    "role": "user",
+                    "content": prompt
+                }
+            ]
+        }))
+        .send()
+        .map_err(|error| format!("cloud LLM request failed: {error}"))?
+        .error_for_status()
+        .map_err(|error| format!("cloud LLM provider returned an error: {error}"))?
+        .json()
+        .map_err(|error| format!("failed to parse cloud LLM response: {error}"))?;
+
+    let text = response
+        .get("choices")
+        .and_then(|choices| choices.as_array())
+        .and_then(|choices| choices.first())
+        .and_then(|choice| choice.get("message"))
+        .and_then(|message| message.get("content"))
+        .and_then(|content| content.as_str())
+        .unwrap_or("")
+        .trim();
+
+    if text.is_empty() {
+        return Err("cloud LLM response did not include assistant text".to_string());
+    }
+
+    emitter.output(TerminalStream::Stdout, format!("{text}\n"))?;
+    Ok(())
+}
+
+fn emit_git_status(
+    workspace: &Path,
+    git: Option<&CloudRunGitSpec>,
+    emitter: &mut EventEmitter,
+) -> Result<(), String> {
+    let Some(git) = git else {
+        return Ok(());
+    };
+    let output = Command::new("git")
+        .args(["status", "--porcelain"])
+        .current_dir(workspace)
+        .output()
+        .map_err(|error| format!("failed to inspect git status: {error}"))?;
+    let dirty = !String::from_utf8_lossy(&output.stdout).trim().is_empty();
+    emitter.emit(CloudRunEventKind::GitStatus {
+        branch: Some(git.work_branch.clone()),
+        dirty,
+    })
+}
+
+fn run_command(
+    cwd: &Path,
+    program: &str,
+    args: &[&str],
+    emitter: &mut EventEmitter,
+) -> Result<(), String> {
+    emitter.output(
+        TerminalStream::Stdout,
+        format!("$ {} {}\n", program, args.join(" ")),
+    )?;
+    let output = Command::new(program)
+        .args(args)
+        .current_dir(cwd)
+        .output()
+        .map_err(|error| format!("failed to run {program}: {error}"))?;
+    emitter.output(
+        TerminalStream::Stdout,
+        String::from_utf8_lossy(&output.stdout).to_string(),
+    )?;
+    emitter.output(
+        TerminalStream::Stderr,
+        String::from_utf8_lossy(&output.stderr).to_string(),
+    )?;
+    if output.status.success() {
+        Ok(())
+    } else {
+        Err(format!(
+            "{program} exited with status {}",
+            output
+                .status
+                .code()
+                .map(|code| code.to_string())
+                .unwrap_or_else(|| "unknown".to_string())
+        ))
+    }
+}

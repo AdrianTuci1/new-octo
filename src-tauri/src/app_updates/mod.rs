@@ -1,8 +1,4 @@
-use std::{
-    env,
-    sync::Mutex,
-    time::Duration,
-};
+use std::{env, sync::Mutex, time::Duration};
 
 use chrono::Utc;
 use reqwest::Url;
@@ -114,7 +110,8 @@ impl RuntimeUpdaterConfig {
             .map(str::trim)
             .filter(|value| !value.is_empty())
             .map(|value| {
-                Url::parse(value).map_err(|error| format!("invalid updater endpoint `{value}`: {error}"))
+                Url::parse(value)
+                    .map_err(|error| format!("invalid updater endpoint `{value}`: {error}"))
             })
             .collect::<Result<Vec<_>, _>>()?;
 
@@ -315,9 +312,8 @@ pub async fn app_updates_install<R: Runtime>(
                     snapshot.enabled = true;
                     snapshot.stage = STAGE_DOWNLOADING.to_string();
                     snapshot.available_update = Some(release_for_download.clone());
-                    snapshot.downloaded_bytes = Some(
-                        snapshot.downloaded_bytes.unwrap_or(0) + chunk_length as u64,
-                    );
+                    snapshot.downloaded_bytes =
+                        Some(snapshot.downloaded_bytes.unwrap_or(0) + chunk_length as u64);
                     snapshot.content_length = content_length;
                     snapshot.last_error = None;
                 });

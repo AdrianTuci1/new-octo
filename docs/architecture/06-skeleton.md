@@ -1,726 +1,306 @@
 # Octomus — Schelet Arhitectural
 
-> Blueprint complet: directoare, fișiere, dependențe, tipuri partajate și flow-uri de date.
-> Stack: **Tauri v2 + Rust (backend) + React 18 + Vite (frontend)**.
+> Structura curentă a repo-ului și contractele principale.
+> Stack: **Tauri v2 + Rust backend + React 18 + Vite frontend**.
 
 ---
 
-## 1. Structura Finală a Proiectului
+## 1. Structura Actuală a Proiectului
+
+Numele aplicației afișat utilizatorului este **Octomus** (`productName` în `src-tauri/tauri.conf.json`). Numele folderului local al repo-ului poate rămâne `launcher-rs-react`, dar documentația și UI-ul trebuie să trateze produsul ca Octomus.
 
 ```
-octomus/launcher-rs-react/
-│
-├── src-tauri/                          # ══════ RUST BACKEND ══════
-│   ├── Cargo.toml                      # Dependențe Rust
-│   ├── tauri.conf.json                 # Configurare Tauri (fereastră, permisiuni)
-│   ├── build.rs                        # Tauri build hooks
-│   │
-│   └── src/
-│       ├── main.rs                     # Entry point — Builder + plugin registration
-│       ├── state.rs                    # AppState global (Arc<Mutex<...>>)
-│       ├── error.rs                    # Error types (thiserror)
-│       │
-│       ├── terminal/                   # ── Terminal Engine ──
-│       │   ├── mod.rs                  # Tauri commands: spawn, write, resize, kill
-│       │   ├── pty.rs                  # portable-pty wrapper (spawn, read loop)
-│       │   ├── session.rs             # TerminalSession (pty + metadata)
-│       │   ├── ansi.rs                # vte parser → events
-│       │   ├── grid.rs                # Cell grid (rows × cols)
-│       │   ├── block.rs               # Block detection (precmd/preexec hooks)
-│       │   └── history.rs             # Command history (in-memory + SQLite)
-│       │
-│       ├── ai/                         # ── AI Engine ──
-│       │   ├── mod.rs                  # Tauri commands: send_message, cancel, reset
-│       │   ├── conversation.rs         # Conversation { exchanges, metadata }
-│       │   ├── exchange.rs             # Exchange { input, output, status, timing }
-│       │   ├── streaming.rs            # SSE/stream handler → Tauri events
-│       │   ├── context.rs              # ExecutionContext { os, shell, cwd }
-│       │   ├── markdown.rs             # Server-side markdown → segments
-│       │   ├── rate_limit.rs           # RequestLimitInfo, credit tracking
-│       │   │
-│       │   ├── providers/              # LLM Provider implementations
-│       │   │   ├── mod.rs              # trait AgentBackend
-│       │   │   ├── openai.rs           # OpenAI / compatible
-│       │   │   ├── anthropic.rs        # Claude API
-│       │   │   ├── gemini.rs           # Google Gemini
-│       │   │   └── ollama.rs           # Local LLM (offline)
-│       │   │
-│       │   └── tools/                  # Tool/Action system
-│       │       ├── mod.rs              # trait ToolExecutor
-│       │       ├── command.rs          # Execute shell command
-│       │       ├── file_read.rs        # Read files
-│       │       ├── file_edit.rs        # Edit/create files
-│       │       ├── search.rs           # Grep + glob
-│       │       └── web.rs              # Web search/fetch
-│       │
-│       ├── spotlight/                  # ── Spotlight / Commands ──
-│       │   ├── mod.rs                  # Tauri commands: get_commands, execute_command
-│       │   ├── commands.rs             # SlashCommand registry (Vec<SlashCommand>)
-│       │   ├── context_sources.rs      # @-menu data sources (files, symbols, etc.)
-│       │   └── fuzzy.rs                # Fuzzy matching (prefix + substring)
-│       │
-│       ├── editor/                     # ── Code Editor Backend ──
-│       │   ├── mod.rs                  # Tauri commands: open_file, save_file
-│       │   ├── buffer.rs              # File buffer management
-│       │   └── lsp.rs                 # LSP client (tower-lsp)
-│       │
-│       └── persistence/               # ── Storage ──
-│           ├── mod.rs                  # DB init, migrations
-│           ├── conversations.rs        # CRUD for conversations
-│           ├── history.rs              # Command history queries
-│           └── settings.rs             # User preferences
-│
-├── src/                                # ══════ REACT FRONTEND ══════
-│   ├── main.tsx                        # React DOM mount
-│   ├── App.tsx                         # Router + global providers
-│   ├── styles.css                      # Global styles + design tokens
-│   │
-│   ├── components/                     # ── UI Components ──
-│   │   ├── Spotlight/
-│   │   │   ├── SpotlightInput.tsx      # Main input (textarea + trigger detection)
-│   │   │   ├── SlashMenu.tsx           # Slash command palette
-│   │   │   ├── ContextMenu.tsx         # @-context picker (categories + search)
-│   │   │   ├── InputSuggestions.tsx     # Prompt history (↑ arrow)
-│   │   │   └── PreparedResponses.tsx   # Quick follow-up buttons
-│   │   │
-│   │   ├── Chat/
-│   │   │   ├── Transcript.tsx          # Message list (scrollable)
-│   │   │   ├── MessageBubble.tsx       # Single message (user/assistant)
-│   │   │   ├── CodeBlock.tsx           # Interactive code block (copy/run/save)
-│   │   │   ├── MarkdownRenderer.tsx    # Parsed markdown → React elements
-│   │   │   ├── ToolCallDisplay.tsx     # Tool execution status + results
-│   │   │   └── StreamingIndicator.tsx  # Typing dots / progress
-│   │   │
-│   │   ├── Terminal/
-│   │   │   ├── TerminalView.tsx        # xterm.js wrapper
-│   │   │   ├── BlockView.tsx           # Command block (input + output)
-│   │   │   └── BlockActions.tsx        # Block action buttons
-│   │   │
-│   │   ├── Editor/
-│   │   │   ├── CodeEditor.tsx          # Monaco editor wrapper
-│   │   │   └── DiffView.tsx            # Inline diff display
-│   │   │
-│   │   └── Layout/
-│   │       ├── TitleBar.tsx            # Custom titlebar (draggable)
-│   │       ├── StatusBar.tsx           # Bottom: model, credits, cwd
-│   │       ├── TabBar.tsx              # Multi-tab management
-│   │       └── TrayPanel.tsx           # Expandable tray (help/commands/model)
-│   │
-│   ├── hooks/                          # ── React Hooks ──
-│   │   ├── useTerminal.ts              # PTY lifecycle + xterm binding
-│   │   ├── useChat.ts                  # Conversation state + streaming
-│   │   ├── useSpotlight.ts             # Visibility, mode, hotkey (⌘K)
-│   │   ├── useSlashCommands.ts         # Command registry + filtering
-│   │   ├── useContextMenu.ts           # @-menu state + data fetching
-│   │   ├── useCodeBlocks.ts            # Keyboard nav between code blocks
-│   │   └── useTauriEvents.ts           # Generic Tauri event listener
-│   │
-│   ├── stores/                         # ── State Management ──
-│   │   ├── chatStore.ts                # Zustand: messages, status, model
-│   │   ├── terminalStore.ts            # Zustand: sessions, active tab
-│   │   └── settingsStore.ts            # Zustand: preferences, API keys
-│   │
-│   ├── lib/                            # ── Utilities ──
-│   │   ├── markdown.ts                 # Parse markdown → segments (text/code)
-│   │   ├── tauri.ts                    # Typed invoke() + listen() wrappers
-│   │   ├── fuzzy.ts                    # Client-side fuzzy matching
-│   │   └── shortcuts.ts               # Global keyboard shortcut registry
-│   │
-│   └── types/                          # ── TypeScript Types ──
-│       ├── index.ts                    # Re-exports
-│       ├── chat.ts                     # Message, Exchange, Segment types
-│       ├── terminal.ts                 # Block, Session types
-│       ├── commands.ts                 # SlashCommand, ContextItem types
-│       └── events.ts                   # Tauri event payloads
-│
-├── package.json
+launcher-rs-react/
+├── Cargo.toml                         # workspace: src-tauri, octomus-cli, octomus-cloud-protocol
+├── package.json                       # Vite/React scripts and frontend deps
 ├── vite.config.ts
-└── tsconfig.json
+├── tsconfig.json
+├── scripts/                           # dev/release helpers
+├── assets/                            # logos, MCP icons, SVG/file-type assets
+│
+├── octomus-cli/                       # headless Octomus runtime entrypoint
+├── octomus-cloud-protocol/            # shared types for cloud runtime contracts
+│
+├── src-tauri/                         # Rust desktop backend
+│   ├── Cargo.toml                     # desktop crate: octomus_launcher_prototype
+│   ├── tauri.conf.json                # productName: Octomus
+│   ├── capabilities/default.json
+│   ├── icons/
+│   ├── resources/skills/              # bundled Octomus skills
+│   └── src/
+│       ├── main.rs                    # Tauri app setup, windows, tray, menus, commands
+│       ├── lib.rs                     # module exports
+│       ├── octomus_paths.rs           # ~/.octomus layout and skill discovery
+│       ├── cloud_runtime.rs           # remote runtime command/run orchestration
+│       ├── code_index.rs              # project indexing and search
+│       ├── keybindings.rs             # shortcut definitions and native menu bridge
+│       ├── secure_store.rs            # OS-backed secret storage
+│       ├── app_updates/               # update state/check/install/restart commands
+│       ├── menus/                     # app, edit, file, view, tab, blocks, AI menus
+│       ├── memory/                    # local-first settings, conversations, cloud objects, sync
+│       ├── terminal/                  # PTY sessions, blocks, filesystem, git, predictions
+│       ├── shell_signatures/          # command signature parser/registry/lookup
+│       └── ai/                        # agent loop, MCP, diff, web search, prediction
+│           ├── agent/                 # Octomus agent contract, harness, actions, OpenAI provider
+│           ├── agent_management/      # manager and retry helpers
+│           ├── diff/                  # apply/validate file diffs
+│           ├── mcp/                   # MCP server config and runtime tools
+│           └── predict/               # composer and terminal command prediction
+│
+└── src/                               # React frontend
+    ├── main.tsx
+    ├── App.tsx
+    ├── App.css
+    ├── styles.css
+    ├── components/
+    │   ├── App/                       # app shell, workspace chrome, settings, drawers
+    │   ├── Chat/                      # transcript, messages, code diffs, tool-result blocks
+    │   ├── Composer/                  # prompt/terminal composer and context menus
+    │   ├── Editor/                    # Monaco editor workspace
+    │   ├── Layout/Launcher/           # main Octomus surface orchestration
+    │   ├── Onboarding/
+    │   └── Tray/
+    ├── hooks/
+    │   ├── useChat/                   # chat state/effects/actions and tool dispatch
+    │   ├── useWorkingDirectory.ts
+    │   ├── useTerminalRuntimeContext.ts
+    │   ├── useComposerIntelligence.ts
+    │   ├── useGitContext.ts
+    │   ├── useKeybindingCatalog.ts
+    │   └── useLauncherAppState.ts
+    ├── lib/                           # frontend service adapters and helpers
+    ├── stores/                        # Zustand: chat, editor, launcher, memory, UI
+    └── types/                         # shared TS contracts
 ```
 
 ---
 
-## 2. Rust — Tipuri și Contracte Principale
+## 2. Runtime Filesystem
 
-### 2.1 AppState (Global Singleton)
+Octomus creează și menține layout-ul local în `src-tauri/src/octomus_paths.rs`.
 
-```rust
-// src-tauri/src/state.rs
-use std::collections::HashMap;
-use std::sync::Arc;
-use tokio::sync::Mutex;
-
-pub struct AppState {
-    pub terminals: Arc<Mutex<HashMap<String, TerminalSession>>>,
-    pub conversations: Arc<Mutex<HashMap<String, Conversation>>>,
-    pub active_conversation_id: Arc<Mutex<Option<String>>>,
-    pub active_terminal_id: Arc<Mutex<Option<String>>>,
-    pub settings: Arc<Mutex<Settings>>,
-    pub db: Arc<rusqlite::Connection>,
-}
+```
+~/.octomus/
+├── .mcp.json                         # MCP config, compatible with mcpServers JSON
+├── ai-provider.json                   # OpenAI-compatible provider settings
+├── keybindings.yaml
+├── settings.toml
+├── skills/                            # user-installed/custom skills
+└── tab_configs/
+    ├── startup_config.toml
+    └── my_tab_config.toml
 ```
 
-### 2.2 Terminal Commands
+Variabile relevante:
 
-```rust
-// src-tauri/src/terminal/mod.rs
+| Env var | Rol |
+|---------|-----|
+| `OCTOMUS_HOME` | Suprascrie root-ul local, implicit `~/.octomus` |
+| `OCTOMUS_BUNDLED_SKILLS_DIR` | Adaugă o sursă explicită pentru skill-urile bundled |
 
-#[tauri::command]
-async fn terminal_spawn(
-    state: State<'_, AppState>,
-    shell: Option<String>,   // None = detectează automat
-    cwd: Option<String>,
-) -> Result<String, String>;  // Returns session_id
+Skill-urile bundled sunt căutate în ordine în override-ul de env, `src-tauri/resources/skills/`, `resources/skills/`, apoi în directorul `resources/skills/` asociat crate-ului Tauri.
 
-#[tauri::command]
-async fn terminal_write(
-    state: State<'_, AppState>,
-    session_id: String,
-    data: String,
-) -> Result<(), String>;
+---
 
-#[tauri::command]
-async fn terminal_resize(
-    state: State<'_, AppState>,
-    session_id: String,
-    cols: u16,
-    rows: u16,
-) -> Result<(), String>;
+## 3. Backend Modules
 
-#[tauri::command]
-async fn terminal_kill(
-    state: State<'_, AppState>,
-    session_id: String,
-) -> Result<(), String>;
+### 3.1 App Entry
+
+`src-tauri/src/main.rs` este punctul de compunere:
+
+- pornește `shell_signatures::warm_up()`;
+- înregistrează managerii Tauri: updates, cloud runtime, code index, terminal, agent harness, composer intelligence, memory;
+- configurează meniurile native, tray-ul, shortcut-ul global și ferestrele `main`, `settings`, `onboarding`;
+- expune comenzile Tauri printr-un singur `invoke_handler`.
+
+### 3.2 Commands Expuse
+
+| Domeniu | Comenzi principale |
+|---------|--------------------|
+| Updates | `app_updates_get_state`, `app_updates_check`, `app_updates_install`, `app_updates_restart` |
+| Cloud runtime | `cloud_runtime_build_launch_command`, `cloud_runtime_start_run`, `cloud_runtime_cancel_run` |
+| Code index | `code_index_list_projects`, `code_index_index_project`, `code_index_remove_project`, `code_index_search` |
+| Agent | `agent_start`, `agent_continue`, `agent_cancel`, `agent_get_run`, `agent_list_runs`, `agent_list_skills`, `agent_get_loop_contract` |
+| Provider config | `agent_configure_openai_compatible`, `agent_clear_openai_compatible`, `agent_provider_status` |
+| MCP | `mcp_list_servers`, `mcp_list_runtime_tools`, `mcp_upsert_server`, `mcp_remove_server` |
+| AI helpers | `web_search`, `ai_predict_command_smart`, `apply_file_diff` |
+| Terminal | `terminal_create_session`, `terminal_write`, `terminal_run_command`, `terminal_resize`, `terminal_kill_session`, `terminal_get_blocks` |
+| Context | `terminal_get_path_context`, `terminal_get_runtime_context`, `terminal_get_git_context`, `terminal_get_worktree_diff` |
+| Filesystem | `terminal_list_directory_entries`, `terminal_search_directory_entries`, `terminal_read_file`, `terminal_write_file` |
+| Intelligence | `terminal_list_commands`, `terminal_get_recent_history`, `terminal_get_prediction`, `terminal_get_composer_intelligence` |
+| Memory | `memory_bootstrap`, settings/workspace/conversation/cloud object CRUD, sync queue, `memory_sync_once` |
+| App shell | `octomus_list_tab_configs`, `keybindings_list_definitions`, secure-store commands, onboarding/window helpers |
+
+### 3.3 Agent Runtime
+
+```
+src-tauri/src/ai/
+├── mod.rs                         # Tauri command façade
+├── web_search.rs
+├── agent/
+│   ├── mod.rs                     # run model and manager-facing exports
+│   ├── commands.rs                # start/continue/cancel/get/list commands
+│   ├── harness.rs                 # agent harness execution
+│   ├── actions.rs                 # tool action types and lifecycle
+│   ├── conversation.rs            # conversation/run state
+│   ├── continuation.rs
+│   ├── decision.rs
+│   ├── types.rs
+│   ├── loop_contract.*            # JSON/Rust/Markdown contract
+│   ├── openai/                    # OpenAI-compatible provider internals
+│   └── scripted/                  # planning helpers
+├── mcp/
+├── diff/
+└── predict/
 ```
 
-### 2.3 AI Commands
+Frontend-ul consumă acest runtime prin `src/hooks/useChat/`, `src/components/Chat/`, `src/components/Composer/` și `src/stores/chatStore.ts`.
 
-```rust
-// src-tauri/src/ai/mod.rs
+### 3.4 Terminal Runtime
 
-#[tauri::command]
-async fn chat_send(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    conversation_id: Option<String>,  // None = new conversation
-    prompt: String,
-    context: ExecutionContext,
-    attachments: Vec<Attachment>,     // @-context items
-) -> Result<String, String>;  // Returns message_id; streaming via events
-
-#[tauri::command]
-async fn chat_cancel(
-    state: State<'_, AppState>,
-    conversation_id: String,
-) -> Result<(), String>;
-
-#[tauri::command]
-async fn chat_reset(
-    state: State<'_, AppState>,
-    conversation_id: String,
-) -> Result<(), String>;
-
-#[tauri::command]
-async fn chat_list_conversations(
-    state: State<'_, AppState>,
-) -> Result<Vec<ConversationSummary>, String>;
-
-#[tauri::command]
-fn get_execution_context() -> ExecutionContext;
+```
+src-tauri/src/terminal/
+├── mod.rs                         # Tauri command façade
+├── manager.rs                     # session registry
+├── session.rs                     # session model
+├── pty.rs                         # PTY spawn/read/write
+├── ansi.rs                        # ANSI handling
+├── block.rs                       # terminal command blocks
+├── events.rs                      # event payloads
+├── requests.rs                    # command request types
+├── fs.rs                          # directory listing/search/read/write
+├── git.rs                         # branch and worktree context
+├── intelligence.rs                # history/prediction context
+├── completions.rs
+└── transport/
+    ├── local.rs
+    └── cloud.rs
 ```
 
-### 2.4 AgentBackend Trait
+Pe frontend, terminalul apare ca blocuri de chat și composer state, nu ca un modul separat `components/Terminal/`. Componentele relevante sunt `TerminalComposer`, `TerminalBlockCard`, `TerminalBlockSummary` și `TerminalBlockDetail`.
 
-```rust
-// src-tauri/src/ai/providers/mod.rs
+### 3.5 Memory Runtime
 
-#[async_trait]
-pub trait AgentBackend: Send + Sync {
-    async fn stream_response(
-        &self,
-        messages: Vec<ChatMessage>,
-        config: ModelConfig,
-        tx: tokio::sync::mpsc::Sender<StreamEvent>,
-    ) -> Result<(), AgentError>;
-
-    fn name(&self) -> &str;
-    fn supports_tools(&self) -> bool;
-}
-
-pub enum StreamEvent {
-    Token(String),
-    ToolCall { id: String, name: String, args: serde_json::Value },
-    ToolResult { id: String, result: String },
-    Done { usage: TokenUsage },
-    Error(String),
-}
-
-pub struct ModelConfig {
-    pub model_id: String,
-    pub temperature: f32,
-    pub max_tokens: u32,
-    pub system_prompt: Option<String>,
-    pub tools: Vec<ToolDefinition>,
-}
+```
+src-tauri/src/memory/
+├── mod.rs                         # Tauri command façade
+├── paths.rs                       # manager/root resolution
+├── storage.rs                     # atomic JSON storage helpers
+├── types.rs                       # shared Rust payloads
+├── conversations.rs
+├── execution_plans.rs
+├── cloud.rs
+└── sync.rs
 ```
 
-### 2.5 Spotlight Commands
+Frontend bridge-ul este `src/lib/octomusMemory.ts`, iar store-ul singleton este `src/stores/memoryStore.ts`.
 
-```rust
-// src-tauri/src/spotlight/mod.rs
+---
 
-#[tauri::command]
-fn spotlight_get_commands() -> Vec<SlashCommand>;
+## 4. Frontend Modules
 
-#[tauri::command]
-async fn spotlight_execute_command(
-    state: State<'_, AppState>,
-    command: String,
-    args: Option<String>,
-) -> Result<CommandResult, String>;
+| Zonă | Fișiere |
+|------|---------|
+| App shell | `src/components/App/AppWindow.tsx`, `src/components/App/chrome/*`, `src/components/App/drawers/*` |
+| Settings | `src/components/App/settings/*`, `src/components/App/settings/sections/*`, `src/components/App/settings/menus/*` |
+| Chat | `src/components/Chat/*`, `src/components/Chat/blocks/*`, `src/hooks/useChat/*` |
+| Composer | `src/components/Composer/*`, `src/hooks/useComposerIntelligence.ts`, `src/hooks/useModelSelection.ts` |
+| Editor | `src/components/Editor/*`, `src/stores/editorStore.ts` |
+| Main surface | `src/components/Layout/Launcher/*`, `src/hooks/useLauncherAppState.ts`, `src/stores/launcherStore.ts` |
+| Tray | `src/components/Tray/*`, `src/hooks/useTray.ts` |
+| Runtime context | `src/hooks/useWorkingDirectory.ts`, `src/hooks/useTerminalRuntimeContext.ts`, `src/hooks/useGitContext.ts` |
 
-#[tauri::command]
-async fn spotlight_search_context(
-    state: State<'_, AppState>,
-    category: String,
-    query: String,
-) -> Result<Vec<ContextItem>, String>;
+Tipurile partajate trăiesc în `src/types/`: `chat`, `terminal`, `memory`, `filesystem`, `git`, `history`, `model`, `skills`, `ui`, `keybindings`, `codeIndex`.
 
-#[tauri::command]
-async fn spotlight_search_files(
-    state: State<'_, AppState>,
-    query: String,
-) -> Result<Vec<FileItem>, String>;
+---
+
+## 5. Flow-uri de Date
+
+### 5.1 Chat și Agent
+
+```
+ComposerBar / TerminalComposer
+    │
+    ▼
+useChat actions + bridge
+    │
+    ▼
+invoke("agent_start" / "agent_continue")
+    │
+    ▼
+AgentHarnessManager → src-tauri/src/ai/agent/*
+    │
+    ├─ tool actions: terminal, file, diff, web, MCP
+    ├─ events: streamed back to React
+    └─ memory: persisted through memory commands/store
+```
+
+### 5.2 Terminal Command
+
+```
+Composer or agent tool call
+    │
+    ▼
+invoke("terminal_run_command" / "terminal_write")
+    │
+    ▼
+TerminalManager → PTY/session
+    │
+    ├─ block events
+    ├─ runtime context/history
+    └─ git/filesystem helpers
+    │
+    ▼
+Chat terminal blocks + memory snapshots
+```
+
+### 5.3 Settings and Files
+
+```
+Settings UI / commands
+    │
+    ├─ memory_* commands → local-first state under ~/.octomus
+    ├─ octomus_list_tab_configs → ~/.octomus/tab_configs/*.toml
+    ├─ mcp_* commands → ~/.octomus/.mcp.json
+    └─ secure_store commands → OS secret store
 ```
 
 ---
 
-## 3. Tauri Events (Rust → React)
+## 6. Package and Naming
 
-```rust
-// Event channels — emitted from Rust, consumed in React
+| Layer | Current name |
+|-------|--------------|
+| User-facing app | `Octomus` |
+| Tauri `productName` | `Octomus` |
+| Tauri identifier | `com.octomus.launcher.prototype` |
+| Tauri main binary | `octomus_launcher_prototype` |
+| Rust desktop crate | `octomus_launcher_prototype` |
+| Frontend package | `octomus-launcher-rs-react` |
+| CLI crate | `octomus-cli` |
 
-// Terminal events
-app.emit("terminal:output",  { session_id, data: Vec<u8> });
-app.emit("terminal:exit",    { session_id, code: i32 });
-app.emit("terminal:block",   { session_id, block: Block });
-
-// AI streaming events
-app.emit("chat:token",       { conversation_id, message_id, text });
-app.emit("chat:tool_call",   { conversation_id, message_id, tool_call });
-app.emit("chat:tool_result", { conversation_id, message_id, result });
-app.emit("chat:done",        { conversation_id, message_id, usage });
-app.emit("chat:error",       { conversation_id, error });
-
-// Task/Agent events
-app.emit("task:status",      { task_id, state: TaskState });
-app.emit("task:progress",    { task_id, message });
-```
+Documentația publică și textele din produs trebuie să folosească **Octomus**. Numele care conțin `launcher` sunt nume istorice de repo/crate/binary sau nume de module UI existente.
 
 ---
 
-## 4. React — Tipuri TypeScript Partajate
-
-```typescript
-// src/types/chat.ts
-
-export interface Message {
-  id: string;
-  role: 'user' | 'assistant' | 'system';
-  content: string;                     // Raw markdown
-  segments: MarkdownSegment[];         // Parsed
-  isError: boolean;
-  isStreaming: boolean;
-  timestamp: number;
-  modelId?: string;
-  toolCalls?: ToolCall[];
-}
-
-export interface Exchange {
-  id: string;
-  input: Message;
-  output: Message;
-  status: 'idle' | 'streaming' | 'done' | 'error' | 'cancelled';
-  startTime: number;
-  finishTime?: number;
-  timeToFirstToken?: number;
-}
-
-export interface Conversation {
-  id: string;
-  title: string;
-  exchanges: Exchange[];
-  modelId: string;
-  createdAt: number;
-  updatedAt: number;
-}
-
-export type MarkdownSegment =
-  | { type: 'text'; content: string; html: string }
-  | { type: 'code'; code: string; language: string; id: string };
-
-export interface ToolCall {
-  id: string;
-  name: string;
-  args: Record<string, unknown>;
-  status: 'pending' | 'running' | 'done' | 'error' | 'cancelled';
-  result?: string;
-}
-
-// src/types/terminal.ts
-
-export interface TerminalSession {
-  id: string;
-  shell: string;
-  cwd: string;
-  isAlive: boolean;
-}
-
-export interface Block {
-  id: string;
-  command: string;
-  output: string;
-  exitCode: number;
-  startTime: number;
-  endTime: number;
-}
-
-// src/types/commands.ts
-
-export interface SlashCommand {
-  name: string;
-  description: string;
-  icon: string;
-  category: 'conversation' | 'navigation' | 'config' | 'context' | 'export' | 'system';
-  requiresArg: boolean;
-  argHint?: string;
-}
-
-export interface ContextItem {
-  id: string;
-  label: string;
-  detail?: string;
-  category: string;
-  insertText: string;
-}
-
-export type ContextCategory =
-  | 'files' | 'code' | 'terminal' | 'history'
-  | 'rules' | 'web' | 'conversations' | 'skills';
-
-// src/types/events.ts
-
-export interface ChatTokenEvent {
-  conversation_id: string;
-  message_id: string;
-  text: string;
-}
-
-export interface ChatDoneEvent {
-  conversation_id: string;
-  message_id: string;
-  usage: { prompt_tokens: number; completion_tokens: number };
-}
-
-export interface TerminalOutputEvent {
-  session_id: string;
-  data: number[];  // Uint8Array
-}
-```
-
----
-
-## 5. main.rs — Entry Point
-
-```rust
-// src-tauri/src/main.rs
-
-#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
-
-mod state;
-mod error;
-mod terminal;
-mod ai;
-mod spotlight;
-mod editor;
-mod persistence;
-
-use state::AppState;
-
-fn main() {
-    let app_state = AppState::init()
-        .expect("Failed to initialize AppState");
-
-    tauri::Builder::default()
-        .manage(app_state)
-        // Terminal commands
-        .invoke_handler(tauri::generate_handler![
-            terminal::terminal_spawn,
-            terminal::terminal_write,
-            terminal::terminal_resize,
-            terminal::terminal_kill,
-            // AI commands
-            ai::chat_send,
-            ai::chat_cancel,
-            ai::chat_reset,
-            ai::chat_list_conversations,
-            ai::get_execution_context,
-            // Spotlight commands
-            spotlight::spotlight_get_commands,
-            spotlight::spotlight_execute_command,
-            spotlight::spotlight_search_context,
-            spotlight::spotlight_search_files,
-            // Editor commands
-            editor::editor_open_file,
-            editor::editor_save_file,
-        ])
-        .run(tauri::generate_context!())
-        .expect("failed to run Octomus");
-}
-```
-
----
-
-## 6. Cargo.toml — Dependențe Complete
-
-```toml
-[package]
-name = "octomus"
-version = "0.1.0"
-edition = "2021"
-
-[build-dependencies]
-tauri-build = { version = "2", features = [] }
-
-[dependencies]
-# Core framework
-tauri = { version = "2", features = [] }
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-tokio = { version = "1", features = ["full"] }
-
-# IDs & time
-uuid = { version = "1", features = ["v4", "serde"] }
-chrono = { version = "0.4", features = ["serde"] }
-
-# Terminal
-portable-pty = "0.8"                 # Cross-platform PTY
-vte = "0.13"                         # ANSI parser (Alacritty)
-
-# AI / Networking
-reqwest = { version = "0.12", features = ["json", "stream"] }
-async-trait = "0.1"
-futures = "0.3"
-eventsource-stream = "0.2"           # SSE parsing
-
-# Storage
-rusqlite = { version = "0.31", features = ["bundled"] }
-
-# Error handling & logging
-thiserror = "1"
-anyhow = "1"
-log = "0.4"
-env_logger = "0.11"
-
-[features]
-default = ["custom-protocol"]
-custom-protocol = ["tauri/custom-protocol"]
-```
-
----
-
-## 7. package.json — Dependențe Frontend
-
-```json
-{
-  "dependencies": {
-    "@tauri-apps/api": "^2.0.0",
-    "@tauri-apps/plugin-shell": "^2.0.0",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "lucide-react": "^0.575.0",
-    "@xterm/xterm": "^5.5.0",
-    "@xterm/addon-fit": "^0.10.0",
-    "@xterm/addon-web-links": "^0.11.0",
-    "zustand": "^4.5.0",
-    "react-markdown": "^9.0.0",
-    "react-syntax-highlighter": "^15.5.0",
-    "monaco-editor": "^0.47.0",
-    "@monaco-editor/react": "^4.6.0"
-  }
-}
-```
-
----
-
-## 8. Data Flow Diagrams
-
-### 8.1 Terminal Flow
+## 7. Relația cu Documentele Anterioare
 
 ```
-User keystroke
-    │
-    ▼
-SpotlightInput.tsx → detect mode
-    │
-    ├─ starts with "/" → SlashMenu.tsx
-    ├─ starts with "@" → ContextMenu.tsx
-    ├─ starts with "!" → Terminal mode
-    └─ else             → AI mode
-    │
-    ▼ (Terminal mode)
-invoke("terminal_write", { session_id, data })
-    │
-    ▼
-Rust: pty.write(data)
-    │
-    ▼
-PTY process (bash/zsh)
-    │
-    ▼
-Rust: pty.read() → vte::Parser
-    │
-    ├─ Normal output → emit("terminal:output", { data })
-    └─ OSC 7777      → emit("terminal:block", { block })
-    │
-    ▼
-React: xterm.write(data) + BlockView updates
-```
+00-index.md
+    └── harta de ansamblu și statusul curent
 
-### 8.2 AI Chat Flow
+01-terminal.md
+    └── detalii terminal/session/block runtime
 
-```
-User types prompt + Enter
-    │
-    ▼
-SpotlightInput.tsx → validate (non-empty, <1000 chars)
-    │
-    ▼
-invoke("chat_send", { prompt, context, attachments })
-    │
-    ▼
-Rust: build messages[] → provider.stream_response(messages, config, tx)
-    │
-    ▼
-Provider (reqwest SSE) ─┬─ Token     → emit("chat:token", { text })
-                        ├─ ToolCall  → execute tool → emit("chat:tool_result")
-                        ├─ Done      → emit("chat:done", { usage })
-                        └─ Error     → emit("chat:error", { error })
-    │
-    ▼
-React: listen("chat:token") → append to message → re-parse markdown
-React: listen("chat:done")  → set status=idle, show PreparedResponses
-```
+02-agent-sdk-harness.md, 03-ambient-agents.md, 04-chat-window.md
+    └── referințe Warp + adaptarea agentului Octomus
 
-### 8.3 Slash Command Flow
+05-input-and-menus.md, 10-settings-ui-menus.md
+    └── composer, meniuri, settings și interacțiuni UI
 
-```
-User types "/" in input
-    │
-    ▼
-SpotlightInput detects → opens SlashMenu
-    │
-    ▼
-SlashMenu: filter commands by prefix match
-    │
-    ▼ (user selects /compact)
-    │
-    ├─ has args? → insert "/compact " in input, wait for Enter
-    └─ no args?  → invoke("spotlight_execute_command", "/compact")
-         │
-         ▼
-    Rust: match command → execute action → return result
-         │
-         ▼
-    React: handle result (navigate, reset, open panel, etc.)
-```
+08-sessions-cloud-local.md
+    └── local/cloud runtime, octomus-cli și protocolul cloud
 
----
-
-## 9. SQLite Schema
-
-```sql
--- Conversations
-CREATE TABLE conversations (
-    id          TEXT PRIMARY KEY,
-    title       TEXT NOT NULL,
-    model_id    TEXT NOT NULL,
-    created_at  TEXT NOT NULL,
-    updated_at  TEXT NOT NULL
-);
-
--- Exchanges (message pairs)
-CREATE TABLE exchanges (
-    id                  TEXT PRIMARY KEY,
-    conversation_id     TEXT NOT NULL REFERENCES conversations(id),
-    user_content        TEXT NOT NULL,
-    assistant_content   TEXT,
-    status              TEXT NOT NULL DEFAULT 'idle',
-    model_id            TEXT,
-    prompt_tokens       INTEGER,
-    completion_tokens   INTEGER,
-    time_to_first_token INTEGER,
-    created_at          TEXT NOT NULL,
-    finished_at         TEXT
-);
-
--- Command History
-CREATE TABLE command_history (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    command     TEXT NOT NULL,
-    output      TEXT,
-    exit_code   INTEGER,
-    cwd         TEXT,
-    shell       TEXT,
-    created_at  TEXT NOT NULL
-);
-
--- Settings
-CREATE TABLE settings (
-    key   TEXT PRIMARY KEY,
-    value TEXT NOT NULL
-);
-
--- Context Attachments
-CREATE TABLE attachments (
-    id              TEXT PRIMARY KEY,
-    exchange_id     TEXT NOT NULL REFERENCES exchanges(id),
-    category        TEXT NOT NULL,
-    label           TEXT NOT NULL,
-    content         TEXT
-);
-```
-
----
-
-## 10. Keyboard Shortcuts
-
-| Shortcut | Action | Component |
-|----------|--------|-----------|
-| `⌘K` / `⌘Space` | Toggle Spotlight | Global |
-| `Enter` | Submit prompt / Select menu item | SpotlightInput |
-| `Shift+Enter` | New line in input | SpotlightInput |
-| `Escape` | Close menu / Close spotlight | SpotlightInput |
-| `↑` on first row | Open prompt history | SpotlightInput |
-| `↑/↓` | Navigate menu items / code blocks | SlashMenu, Transcript |
-| `⌘C` | Copy selected code block | CodeBlock |
-| `⌘Enter` | Execute code in terminal | CodeBlock |
-| `⌘L` | Reset conversation | Global |
-| `⌘T` | New tab | Global |
-| `⌘W` | Close tab | Global |
-| `⌘1-9` | Switch to tab N | Global |
-
----
-
-## 11. Relația cu Documentele Anterioare
-
-```
-06-skeleton.md (ACEST DOCUMENT)
-    │
-    ├── referă 01-terminal.md       → terminal/ module
-    ├── referă 02-agent-sdk.md      → ai/providers/ + ai/tools/
-    ├── referă 03-ambient-agents.md → ai/exchange.rs + ai/streaming.rs
-    ├── referă 04-chat-window.md    → components/Chat/* + hooks/useChat.ts
-    └── referă 05-input-menus.md    → components/Spotlight/* + spotlight/ module
+internal_memory_management.md
+    └── layout-ul persistent din ~/.octomus și local-first memory layer
 ```

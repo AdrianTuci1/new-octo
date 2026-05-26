@@ -1,6 +1,6 @@
 # Ambient Agents — Warp Reference & Octomus Adaptation
 
-> Reverse-engineered din Warp codebase (~55K bytes, Ambient Agents module).
+
 > Adaptat pentru Octomus: Tauri v2 + Rust backend + React frontend.
 
 ---

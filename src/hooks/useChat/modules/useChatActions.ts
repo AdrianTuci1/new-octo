@@ -1,10 +1,21 @@
-import { useCallback } from 'react';
+import { useCallback, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import type { UseChatOptions } from '../types';
-import type { AgentContinueRequest, AgentStartResponse, ExecutionPlanArtifact, ExecutionPlanWorkstream, PlanExecutionUpdate } from '../../../types/chat';
+import type {
+  AgentContinueRequest,
+  AgentStartResponse,
+  ExecutionPlanArtifact,
+  FileDiffPreviewStatus,
+  ExecutionPlanWorkstream,
+  PlanExecutionUpdate,
+  WorkspaceExplorationArtifact,
+  WorkspaceExplorationSegment
+} from '../../../types/chat';
 import { useMemoryStore } from '../../../stores/memoryStore';
 import { artifactsFromMessages, chatHistoryFromMessages, titleFromConversationContent, statusFromConversationContent } from '../helpers';
 import { ensureAgentEventBridge, pendingTokenText, setAssistantRegistration } from '../bridge';
+import { buildAttachmentContextText, buildAttachmentsFromFiles } from '../attachments';
+import { buildComposerContextSummary, parseComposerContextMentions } from '../../../components/Composer/contextMentions';
 import type { useChatState } from './useChatState';
 
 const RESERVED_SLASH_COMMANDS = new Set([
@@ -41,6 +52,27 @@ const SKILL_SLASH_ALIASES: Record<string, string> = {
     '@skills/create-environment',
     'Guide me using short bullet points.',
     'Explain local vs cloud environments, and say that this is the preferred path when the user wants a separate cloud tab instead of a cloud agent inside the current chat.'
+  ].join('\n'),
+  '/tab-configs': [
+    '@skills/tab-configs',
+    "Respond in the user's language if the context makes it clear; otherwise use English.",
+    'Keep it short and practical.',
+    'Say only what the user can do with tab configs, what they can ask you to change, and when split view / commands / parameters help.',
+    'End with a brief offer to create a new layout or modify an existing one.'
+  ].join('\n'),
+  '/create-tab-config': [
+    '@skills/create-tab-config',
+    "Respond in the user's language if the context makes it clear; otherwise use English.",
+    'Keep it short.',
+    'Help the user create a new tab config by saying what details you need and what the next step is.',
+    'Do not explain the full schema or give long examples.'
+  ].join('\n'),
+  '/update-tab-config': [
+    '@skills/update-tab-config',
+    "Respond in the user's language if the context makes it clear; otherwise use English.",
+    'Keep it short.',
+    'Help the user update an existing tab config by saying what needs to change and what details are still missing, if any.',
+    'Do not explain the full schema or give long examples.'
   ].join('\n'),
   '/create-mcp': [
     '@skills/add-mcp-server',
@@ -93,6 +125,8 @@ type UseChatActionsProps = {
   onCommandApprovalRef: React.MutableRefObject<UseChatOptions['onCommandApproval']>;
   onFileChangeApprovalRef: React.MutableRefObject<UseChatOptions['onFileChangeApproval']>;
   onWebSearchRef: React.MutableRefObject<UseChatOptions['onWebSearch']>;
+  onWorkspaceExplorationRef: React.MutableRefObject<UseChatOptions['onWorkspaceExploration']>;
+  onCloudAgentLaunchRef: React.MutableRefObject<UseChatOptions['onCloudAgentLaunch']>;
 };
 
 function resolveAgentPrompt(rawPrompt: string) {
@@ -139,7 +173,29 @@ function resolveAgentPrompt(rawPrompt: string) {
   ].join('\n');
 }
 
-export function useChatActions({ options, state, onCommandApprovalRef, onFileChangeApprovalRef, onWebSearchRef }: UseChatActionsProps) {
+export function useChatActions({
+  options,
+  state,
+  onCommandApprovalRef,
+  onFileChangeApprovalRef,
+  onWebSearchRef,
+  onWorkspaceExplorationRef,
+  onCloudAgentLaunchRef
+}: UseChatActionsProps) {
+  const toolResultContinuationRef = useRef<Record<string, {
+    assistantMessageId: string;
+    status: 'started' | 'failed';
+  }>>({});
+
+  const attachFiles = useCallback(async (files: File[]) => {
+    if (!files.length) {
+      return;
+    }
+
+    const attachments = await buildAttachmentsFromFiles(files);
+    state.addAttachments(attachments);
+  }, [state]);
+
   const formatPlanBody = useCallback((plan: ExecutionPlanArtifact) => {
     return [
       plan.summary?.trim() || 'Execution plan proposed.',
@@ -258,7 +314,9 @@ export function useChatActions({ options, state, onCommandApprovalRef, onFileCha
       applyPlanExecution: (update, toolCallId) => submitPlanExecution(toolCallId, update),
       onCommandApproval: (approval) => onCommandApprovalRef.current?.(approval),
       onFileChangeApproval: (approval) => onFileChangeApprovalRef.current?.(approval),
-      onWebSearch: (request) => onWebSearchRef.current?.(request)
+      onWebSearch: (request) => onWebSearchRef.current?.(request),
+      onWorkspaceExploration: (request) => onWorkspaceExplorationRef.current?.(request),
+      onCloudAgentLaunch: (request) => onCloudAgentLaunchRef.current?.(request)
     });
 
     await ensureAgentEventBridge();
@@ -298,6 +356,8 @@ export function useChatActions({ options, state, onCommandApprovalRef, onFileCha
     onCommandApprovalRef,
     onFileChangeApprovalRef,
     onWebSearchRef,
+    onWorkspaceExplorationRef,
+    onCloudAgentLaunchRef,
     options.cwd,
     options.modelId,
     options.terminalModelId,
@@ -338,8 +398,20 @@ export function useChatActions({ options, state, onCommandApprovalRef, onFileCha
   const submitQuery = async (promptOverride?: string) => {
     const prompt = typeof promptOverride === 'string' ? promptOverride : state.query;
     const trimmed = prompt.trim();
-    if (!trimmed) return;
+    if (!trimmed && state.attachments.length === 0) return;
     const resolvedPrompt = resolveAgentPrompt(trimmed);
+    const { mentions, promptWithoutMentions } = parseComposerContextMentions(resolvedPrompt);
+    const contextSummary = buildComposerContextSummary(mentions);
+    const attachmentContext = buildAttachmentContextText(state.attachments);
+    const fallbackPrompt = mentions.length > 0 && state.attachments.length > 0
+      ? 'Please review the referenced context and attached files.'
+      : mentions.length > 0
+        ? 'Please review the referenced context.'
+        : state.attachments.length > 0
+          ? 'Please review the attached files.'
+          : '';
+    const composedPrompt = promptWithoutMentions || fallbackPrompt;
+    const userMessageBody = promptWithoutMentions || fallbackPrompt || trimmed;
 
     if (options.requiresModelSetup) {
       options.onRequireModelSetup?.();
@@ -366,11 +438,33 @@ export function useChatActions({ options, state, onCommandApprovalRef, onFileCha
     state.setActiveConversationId(conversationId);
     options.onConversationCreated?.(conversationId);
 
+    if (state.attachments.length > 0) {
+      state.addMessage({
+        id: `tool-attachments-${ts}`,
+        role: 'tool',
+        title: 'Attached Files',
+        body: attachmentContext,
+        conversationId,
+        createdAt: new Date().toISOString()
+      });
+    }
+
+    if (contextSummary) {
+      state.addMessage({
+        id: `tool-context-${ts}`,
+        role: 'tool',
+        title: 'Referenced Context',
+        body: contextSummary,
+        conversationId,
+        createdAt: new Date().toISOString()
+      });
+    }
+
     state.addMessage({
       id: `user-${ts}`,
       role: 'user',
       title: 'User',
-      body: trimmed,
+      body: userMessageBody,
       conversationId,
       createdAt: new Date().toISOString()
     });
@@ -395,7 +489,7 @@ export function useChatActions({ options, state, onCommandApprovalRef, onFileCha
         id: `${assistantMessageId}::reasoning`,
         role: 'assistant',
         title: 'Thinking',
-        body: buildSyntheticThinkingSummary(trimmed),
+        body: buildSyntheticThinkingSummary(trimmed || 'Review the attached files.'),
         conversationId,
         runId,
         messageKind: 'reasoning',
@@ -408,6 +502,7 @@ export function useChatActions({ options, state, onCommandApprovalRef, onFileCha
     }
 
     state.setQuery('');
+    state.clearAttachments();
     options.onCloseTray?.();
 
     const owner = state.instanceIdRef.current;
@@ -421,7 +516,9 @@ export function useChatActions({ options, state, onCommandApprovalRef, onFileCha
       applyPlanExecution: (update, toolCallId) => submitPlanExecution(toolCallId, update),
       onCommandApproval: (approval) => onCommandApprovalRef.current?.(approval),
       onFileChangeApproval: (approval) => onFileChangeApprovalRef.current?.(approval),
-      onWebSearch: (request) => onWebSearchRef.current?.(request)
+      onWebSearch: (request) => onWebSearchRef.current?.(request),
+      onWorkspaceExploration: (request) => onWorkspaceExplorationRef.current?.(request),
+      onCloudAgentLaunch: (request) => onCloudAgentLaunchRef.current?.(request)
     });
 
     try {
@@ -434,7 +531,7 @@ export function useChatActions({ options, state, onCommandApprovalRef, onFileCha
           runId,
           conversationId,
           assistantMessageId,
-          prompt: resolvedPrompt,
+          prompt: composedPrompt,
           cwd: options.cwd ?? null,
           modelId: options.modelId ?? null,
           terminalModelId: options.terminalModelId ?? null,
@@ -474,14 +571,16 @@ export function useChatActions({ options, state, onCommandApprovalRef, onFileCha
   const submitToolResult = async (
     toolCallId: string,
     result: string,
-    kind: 'command' | 'web-search' | 'file-change' = 'command',
+    kind: 'command' | 'web-search' | 'file-change' | 'workspace-exploration' = 'command',
     label?: string,
     webSearchResults?: Array<{ title: string; url: string; snippet?: string }>,
     toolResultOptions?: {
       deferFollowUp?: boolean;
       webSearchStatus?: 'searching' | 'success' | 'error';
       fileDiffs?: import('../../../types/diff').FileDiff[];
+      fileChangeStatus?: FileDiffPreviewStatus;
       localAssistantSummary?: string;
+      workspaceExploration?: WorkspaceExplorationArtifact;
     }
   ) => {
     const ts = Date.now();
@@ -502,14 +601,22 @@ export function useChatActions({ options, state, onCommandApprovalRef, onFileCha
           ? 'Web Search'
           : kind === 'file-change'
             ? 'File Changes'
+            : kind === 'workspace-exploration'
+              ? 'Workspace Exploration'
             : 'Tool Output',
         body: result,
         toolKind: kind,
         fileDiffs: toolResultOptions?.fileDiffs ?? message.fileDiffs,
+        fileChangeStatus: toolResultOptions?.fileChangeStatus ?? message.fileChangeStatus,
         ...(kind === 'web-search' ? {
           webSearchStatus: toolResultOptions?.webSearchStatus ?? (webSearchResults ? 'success' : 'searching'),
           webSearchQuery: label,
           webSearchResults
+        } : kind === 'workspace-exploration' ? {
+          workspaceExploration: mergeWorkspaceExplorationArtifacts(
+            message.workspaceExploration,
+            toolResultOptions?.workspaceExploration
+          )
         } : {})
       }));
     } else {
@@ -520,16 +627,24 @@ export function useChatActions({ options, state, onCommandApprovalRef, onFileCha
           ? 'Web Search'
           : kind === 'file-change'
             ? 'File Changes'
+            : kind === 'workspace-exploration'
+              ? 'Workspace Exploration'
             : 'Tool Output',
         body: result,
         conversationId,
         toolCallId,
         toolKind: kind,
         fileDiffs: toolResultOptions?.fileDiffs,
+        fileChangeStatus: toolResultOptions?.fileChangeStatus,
         ...(kind === 'web-search' ? {
           webSearchStatus: toolResultOptions?.webSearchStatus ?? (webSearchResults ? 'success' : 'searching'),
           webSearchQuery: label,
           webSearchResults
+        } : kind === 'workspace-exploration' ? {
+          workspaceExploration: mergeWorkspaceExplorationArtifacts(
+            undefined,
+            toolResultOptions?.workspaceExploration
+          )
         } : {})
       });
     }
@@ -551,7 +666,20 @@ export function useChatActions({ options, state, onCommandApprovalRef, onFileCha
       return;
     }
 
+    const existingContinuation = toolResultContinuationRef.current[toolCallId];
+    if (existingContinuation?.status === 'started') {
+      return;
+    }
+
+    if (existingContinuation?.status === 'failed') {
+      delete toolResultContinuationRef.current[toolCallId];
+    }
+
     const nextAssistantMessageId = `assistant-followup-${ts}`;
+    toolResultContinuationRef.current[toolCallId] = {
+      assistantMessageId: nextAssistantMessageId,
+      status: 'started'
+    };
     state.addMessage({
       id: nextAssistantMessageId,
       role: 'assistant',
@@ -571,6 +699,10 @@ export function useChatActions({ options, state, onCommandApprovalRef, onFileCha
         nextAssistantMessageId
       );
     } catch (error) {
+      toolResultContinuationRef.current[toolCallId] = {
+        assistantMessageId: nextAssistantMessageId,
+        status: 'failed'
+      };
       state.updateMessage(nextAssistantMessageId, (message) => ({
         ...message,
         body: `Eroare la continuarea agentului: ${error}`,
@@ -581,7 +713,7 @@ export function useChatActions({ options, state, onCommandApprovalRef, onFileCha
     }
   };
 
-  return { saveCurrentConversation, submitQuery, submitToolResult, submitPlanProposal, submitPlanExecution };
+  return { saveCurrentConversation, submitQuery, submitToolResult, submitPlanProposal, submitPlanExecution, attachFiles };
 }
 
 function mergeWorkstreams(
@@ -595,4 +727,40 @@ function mergeWorkstreams(
   });
 
   return Array.from(nextById.values());
+}
+
+function mergeWorkspaceExplorationArtifacts(
+  current?: WorkspaceExplorationArtifact,
+  incoming?: WorkspaceExplorationArtifact
+): WorkspaceExplorationArtifact | undefined {
+  if (!current && !incoming) {
+    return undefined;
+  }
+
+  if (!current) {
+    return incoming;
+  }
+
+  if (!incoming) {
+    return current;
+  }
+
+  const currentSegments = current.segments ?? [];
+  const incomingSegments = incoming.segments ?? [];
+  const mergedSegments: WorkspaceExplorationSegment[] = [...currentSegments, ...incomingSegments];
+
+  const mergedSearches = mergedSegments.length > 0
+    ? mergedSegments.flatMap((segment) => segment.searches)
+    : [...(current.searches ?? []), ...(incoming.searches ?? [])];
+  const mergedFiles = mergedSegments.length > 0
+    ? mergedSegments.flatMap((segment) => segment.files)
+    : [...(current.files ?? []), ...(incoming.files ?? [])];
+
+  return {
+    query: incoming.query || current.query,
+    summary: incoming.summary?.trim() || current.summary,
+    segments: mergedSegments,
+    searches: mergedSearches,
+    files: mergedFiles
+  };
 }

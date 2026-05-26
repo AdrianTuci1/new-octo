@@ -133,6 +133,87 @@
 .composer-textarea-container {
   position: relative;
   flex: 1;
+  width: 100%;
+}
+
+.composer-file-input {
+  display: none;
+}
+
+.composer-attachments {
+  width: calc(100% - 16px);
+  margin: 8px 8px 0;
+  padding: 10px 12px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+  display: grid;
+  gap: 10px;
+}
+
+.composer-attachments-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.composer-attachments-clear {
+  background: transparent;
+  border: 0;
+  color: var(--text-soft);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.composer-attachments-clear:hover {
+  color: var(--text-main);
+}
+
+.composer-attachments-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.composer-attachment-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 5px 8px;
+  border-radius: 999px;
+  background: rgba(0, 163, 255, 0.12);
+  border: 1px solid rgba(0, 163, 255, 0.18);
+  color: var(--text-main);
+  font-size: 11px;
+}
+
+.composer-attachment-name {
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.composer-attachment-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-soft);
+  cursor: pointer;
+}
+
+.composer-attachment-remove:hover {
+  background: rgba(255, 255, 255, 0.15);
+  color: var(--text-main);
 }
 
 .composer-input-highlight {
@@ -156,6 +237,10 @@
 
 .composer-input-highlight-rest {
   color: var(--text-main);
+}
+
+.composer-input-highlight-mention {
+  color: #c27dff;
 }
 
 .chat-input:disabled {
@@ -307,10 +392,102 @@
   max-width: 132px;
 }
 
+.composer-context-indicator-chip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 24px;
+  padding: 0 4px;
+  color: var(--text-soft);
+  border-radius: 8px;
+  overflow: visible;
+}
+
+.composer-context-indicator-chip:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.composer-context-indicator-shell {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+}
+
+.composer-context-ring {
+  width: 14px;
+  height: 14px;
+  display: block;
+  transform: rotate(-90deg);
+}
+
+.composer-context-ring-track,
+.composer-context-ring-progress {
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+.composer-context-ring-track {
+  stroke: rgba(255, 255, 255, 0.16);
+}
+
+.composer-context-ring.agent .composer-context-ring-progress {
+  stroke: #4fd1c5;
+}
+
+.composer-context-ring.terminal .composer-context-ring-progress {
+  stroke: #d6f5b1;
+}
+
+.composer-context-indicator-tooltip {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 8px);
+  min-width: 220px;
+  max-width: 280px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(12, 15, 19, 0.96);
+  box-shadow: 0 14px 28px rgba(0, 0, 0, 0.28);
+  color: var(--text-main);
+  font-size: 11px;
+  line-height: 1.4;
+  white-space: normal;
+  opacity: 0;
+  transform: translateY(4px);
+  pointer-events: none;
+  transition: opacity 120ms ease, transform 120ms ease;
+  z-index: 30;
+}
+
+.composer-context-indicator-chip:hover .composer-context-indicator-tooltip,
+.composer-context-indicator-chip:focus-within .composer-context-indicator-tooltip {
+  opacity: 1;
+  transform: translateY(0);
+}
+
 .icon-button:hover,
 .toolbar-chip:hover {
   background: rgba(255, 255, 255, 0.15);
   color: var(--text-main);
+}
+
+.icon-button:disabled,
+.toolbar-chip:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.icon-button:disabled:hover,
+.toolbar-chip:disabled:hover {
+  background: var(--surface-2);
+  color: var(--text-soft);
 }
 
 .working-directory-button {
@@ -357,6 +534,197 @@
   overflow: hidden;
   z-index: 140;
   backdrop-filter: blur(20px);
+}
+
+.composer-context-menu {
+  position: fixed;
+  max-height: min(340px, calc(100vh - 64px));
+  border-radius: 12px;
+  background: rgba(18, 19, 21, 0.98);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.3);
+  overflow: hidden;
+  z-index: 145;
+  backdrop-filter: blur(22px);
+}
+
+.composer-context-menu-panel,
+.composer-context-menu-root-list {
+  display: flex;
+  flex-direction: column;
+  max-height: inherit;
+}
+
+.composer-context-menu-panel {
+  min-height: 176px;
+}
+
+.composer-context-menu-root-list {
+  overflow-y: auto;
+  padding: 4px;
+}
+
+.composer-context-menu-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  padding: 0 12px;
+  border: 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.045);
+  background: rgba(255, 255, 255, 0.02);
+  color: var(--text-main);
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.composer-context-menu-back:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.composer-context-menu-body {
+  display: grid;
+  gap: 8px;
+  padding: 8px;
+  overflow-y: auto;
+  max-height: inherit;
+}
+
+.composer-context-menu-section {
+  display: grid;
+  gap: 6px;
+}
+
+.composer-context-menu-section-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: rgba(244, 247, 246, 0.7);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.composer-context-menu-section-status {
+  margin-left: auto;
+  color: rgba(244, 247, 246, 0.42);
+  font-size: 9px;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.composer-context-menu-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 30px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 8px;
+  color: rgba(244, 247, 246, 0.9);
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.composer-context-menu-item:hover,
+.composer-context-menu-item.active {
+  background: rgba(53, 183, 227, 0.82);
+  color: #081216;
+}
+
+.composer-context-menu-item-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  flex: 0 0 auto;
+}
+
+.composer-context-menu-item-body {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.composer-context-menu-item-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  line-height: 1.2;
+}
+
+.composer-context-menu-item-description {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: rgba(244, 247, 246, 0.55);
+  font-size: 9px;
+  line-height: 1.2;
+}
+
+.composer-context-menu-item:hover .composer-context-menu-item-description,
+.composer-context-menu-item.active .composer-context-menu-item-description {
+  color: rgba(8, 18, 22, 0.78);
+}
+
+.composer-context-menu-chevron {
+  margin-left: auto;
+  flex: 0 0 auto;
+}
+
+.composer-context-menu-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 4px;
+  overflow-y: auto;
+}
+
+.composer-context-menu-root-item {
+  min-height: 32px;
+}
+
+.composer-context-menu-empty,
+.composer-context-menu-empty-state {
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+  color: rgba(244, 247, 246, 0.62);
+  font-size: 11px;
+}
+
+.composer-context-menu-empty-title {
+  color: rgba(244, 247, 246, 0.94);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.composer-context-menu-empty-copy {
+  color: rgba(244, 247, 246, 0.66);
+  line-height: 1.35;
+}
+
+.composer-context-menu-empty-hint {
+  color: rgba(244, 247, 246, 0.45);
+  font-size: 10px;
+}
+
+.composer-context-menu-empty-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: rgba(244, 247, 246, 0.7);
+  font-size: 10px;
+}
+
+.composer-context-menu-empty-meta-branch {
+  margin-left: auto;
+  color: rgba(244, 247, 246, 0.52);
 }
 
 .working-directory-menu-search {
@@ -502,10 +870,9 @@
   margin-left: 6px;
   border-radius: 6px;
   overflow: hidden;
-  background: rgba(74, 122, 188, 0.78);
-  box-shadow:
-    inset 0 0 0 1px rgba(255, 255, 255, 0.08),
-    0 3px 12px rgba(0, 0, 0, 0.16);
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow: none;
 }
 
 .composer-suggestion-accept-main,
@@ -514,7 +881,7 @@
   align-items: center;
   justify-content: center;
   min-height: 16px;
-  color: rgba(247, 250, 252, 0.94);
+  color: rgba(232, 236, 242, 0.88);
 }
 
 .composer-suggestion-accept-main {
@@ -524,14 +891,14 @@
 
 .composer-suggestion-accept-tail {
   width: 14px;
-  border-left: 1px solid rgba(255, 255, 255, 0.16);
+  border-left: 1px solid rgba(255, 255, 255, 0.12);
 }
 
 .composer-suggestion-accept-tail-mark {
   width: 4px;
   height: 4px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.75);
+  background: rgba(232, 236, 242, 0.78);
 }
 
 .chat-input {
@@ -564,6 +931,12 @@
 }
 
 .chat-input.has-slash-command-highlight {
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  caret-color: var(--text-main);
+}
+
+.chat-input.has-context-highlight {
   color: transparent;
   -webkit-text-fill-color: transparent;
   caret-color: var(--text-main);
@@ -909,6 +1282,62 @@
 
 .command-approval-diffs .modern-diff-body {
   max-height: min(52vh, 420px);
+}
+
+.command-approval-file-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.command-approval-file-tabs {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.command-approval-file-tab {
+  min-height: 30px;
+  padding: 0 10px;
+  border-radius: 9px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(244, 247, 246, 0.86);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.command-approval-file-tab.active {
+  border-color: rgba(64, 198, 255, 0.7);
+  background: rgba(64, 198, 255, 0.16);
+  color: #f4f7f6;
+}
+
+.command-approval-file-editor-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.command-approval-file-editor-path {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: rgba(244, 247, 246, 0.7);
+  word-break: break-all;
+}
+
+.command-approval-file-editor-note {
+  font-size: 12px;
+  color: rgba(244, 247, 246, 0.52);
+}
+
+.command-approval-monaco-shell {
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  background: #101315;
 }
 
 .command-approval-accept-group {

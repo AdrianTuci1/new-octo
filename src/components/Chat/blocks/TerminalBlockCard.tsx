@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import type { TerminalCommandBlock } from '../../../types/terminal';
 import { TerminalBlockDetail } from './TerminalBlockDetail';
 import { TerminalBlockSummary } from './TerminalBlockSummary';
@@ -13,7 +14,7 @@ type TerminalBlockCardProps = {
   workingDirectory?: string | null;
 };
 
-export function TerminalBlockCard({
+function TerminalBlockCardComponent({
   block,
   isExpanded,
   isSelected,
@@ -47,3 +48,14 @@ export function TerminalBlockCard({
     />
   );
 }
+
+export const TerminalBlockCard = memo(TerminalBlockCardComponent, (prev, next) => (
+  prev.block === next.block
+  && prev.isExpanded === next.isExpanded
+  && prev.isSelected === next.isSelected
+  && prev.onCollapse === next.onCollapse
+  && prev.onExpand === next.onExpand
+  && prev.onSelect === next.onSelect
+  && prev.onOpenConversation === next.onOpenConversation
+  && prev.workingDirectory === next.workingDirectory
+));

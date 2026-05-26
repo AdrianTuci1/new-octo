@@ -76,6 +76,14 @@
   min-width: 0;
 }
 
+.tray-footer-open-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
 .tray-switcher {
   display: flex;
   align-items: center;

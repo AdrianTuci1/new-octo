@@ -1,4 +1,4 @@
-import type { ChatMessage } from '../../../types/chat';
+import type { ChatMessage, WorkspaceExplorationArtifact } from '../../../types/chat';
 import type { TerminalCommandBlock } from '../../../types/terminal';
 import { extractInlineFileChangeApproval, visibleChatMessageBody } from '../../../hooks/useChat';
 
@@ -44,11 +44,64 @@ export function buildTimelineItems(
   terminalError?: string | null
 ): TimelineItem[] {
   const messageOrderById = new Map(messages.map((message, index) => [message.id, index]));
+  const messageById = new Map(messages.map((message) => [message.id, message]));
+  const toolCommandFallbacks = messages
+    .map((message, order) => {
+      if (message.role !== 'tool' || message.toolKind !== 'command') {
+        return null;
+      }
+
+      const parsed = parseTerminalCommandToolMessage(message);
+      if (!parsed) {
+        return null;
+      }
+
+      const timestamp = timeFromMessage(message);
+      const messageIndex = messageOrderById.get(message.id) ?? order;
+      const hasLiveTerminalMatch = terminalBlocks.some((block) => (
+        block.command.trim() === parsed.command.trim()
+        && Math.abs(timeFromBlock(block) - timestamp) < 15_000
+      ));
+
+      if (hasLiveTerminalMatch) {
+        return null;
+      }
+
+      if (parsed.failed) {
+        return {
+          id: `${message.id}-command-error`,
+          kind: 'terminal-error' as const,
+          at: timestamp,
+          order: messageIndex,
+          error: formatCommandError(parsed.command, parsed.output, parsed.exitCode)
+        };
+      }
+
+      return {
+        id: `${message.id}-command-block`,
+        kind: 'terminal-block' as const,
+        at: timestamp,
+        order: messageIndex,
+        block: {
+          id: `${message.id}-tool-command`,
+          command: parsed.command,
+          output: buildCommandBlockOutput(parsed.command, parsed.output),
+          startedAt: new Date(timestamp || Date.now()).toISOString(),
+          finishedAt: new Date(timestamp || Date.now()).toISOString(),
+          exitCode: parsed.exitCode,
+          durationMs: null,
+          status: 'finished' as const,
+          presentation: 'command' as const,
+          source: 'assistant' as const
+        }
+      };
+    })
+    .filter((item): item is Exclude<typeof item, null> => Boolean(item));
 
   const messageItems = messages
     .filter(m => {
       if (m.role === 'tool' && m.toolKind === 'command') {
-        return false;
+        return !parseTerminalCommandToolMessage(m);
       }
       if (m.role === 'assistant') {
         const visibleBody = visibleChatMessageBody(m.body);
@@ -61,15 +114,34 @@ export function buildTimelineItems(
       }
       return true;
     })
-    .map((message, order) => ({
-      id: message.id,
-      kind: 'message' as const,
-      at: timeFromMessage(message),
-      order: message.messageKind === 'reasoning' && message.parentMessageId
-        ? (messageOrderById.get(message.parentMessageId) ?? order) - 0.5
-        : order,
-      message
-    }));
+    .map((message, order) => {
+      const messageIndex = messageOrderById.get(message.id) ?? order;
+
+      if (message.messageKind === 'reasoning' && message.parentMessageId) {
+        const parentOrder = messageOrderById.get(message.parentMessageId) ?? messageIndex;
+        const parentMessage = messageById.get(message.parentMessageId);
+        const parentAt = parentMessage ? timeFromMessage(parentMessage) : timeFromMessage(message);
+        const isBeforeParent = messageIndex < parentOrder;
+        const positionOffset = messageIndex / 1_000_000;
+
+        return {
+          id: message.id,
+          kind: 'message' as const,
+          at: parentAt + (isBeforeParent ? -1 : 1) + positionOffset,
+          order: messageIndex,
+          message
+        };
+      }
+
+      return {
+        id: message.id,
+        kind: 'message' as const,
+        at: timeFromMessage(message),
+        order: messageIndex,
+        message
+      };
+    });
+  const compressedMessageItems = mergeAdjacentWorkspaceExplorationMessageItems(messageItems);
 
   const blockItems = terminalBlocks.map((block, order) => ({
     id: block.id,
@@ -90,11 +162,139 @@ export function buildTimelineItems(
     : [];
 
   return [
-    ...messageItems,
+    ...compressedMessageItems,
+    ...toolCommandFallbacks,
     ...blockItems,
     ...terminalErrorItem
   ].sort((left, right) => {
     if (left.at !== right.at) return left.at - right.at;
     return left.order - right.order;
   });
+}
+
+type ParsedTerminalToolMessage = {
+  command: string;
+  exitCode: number | null;
+  failed: boolean;
+  output: string;
+};
+
+function parseTerminalCommandToolMessage(message: ChatMessage): ParsedTerminalToolMessage | null {
+  const body = message.body ?? '';
+  if (!body.includes('[Terminal command result]')) {
+    return null;
+  }
+
+  const commandMatch = body.match(/^COMMAND:\s*(.+)$/m);
+  const exitCodeMatch = body.match(/^EXIT_CODE:\s*(.+)$/m);
+  const statusMatch = body.match(/^STATUS:\s*(.+)$/m);
+  const outputMatch = body.match(/^OUTPUT:\n([\s\S]*?)(?:\n\[Invisible harness instruction\]|$)/m);
+
+  const command = commandMatch?.[1]?.trim();
+  if (!command) {
+    return null;
+  }
+
+  const exitCodeRaw = exitCodeMatch?.[1]?.trim().toLowerCase() ?? 'unknown';
+  const exitCode = exitCodeRaw === 'unknown' ? null : Number(exitCodeRaw);
+  const output = outputMatch?.[1]?.trimEnd() ?? '';
+  const status = statusMatch?.[1]?.trim().toLowerCase();
+  const failed = status === 'failed' || (exitCode !== null && Number.isFinite(exitCode) && exitCode !== 0);
+
+  return {
+    command,
+    exitCode: Number.isFinite(exitCode ?? NaN) ? exitCode : null,
+    failed,
+    output
+  };
+}
+
+function buildCommandBlockOutput(command: string, output: string) {
+  return output.trim().length > 0 ? `${command}\n${output}` : command;
+}
+
+function formatCommandError(command: string, output: string, exitCode: number | null) {
+  const lines = [
+    `$ ${command}`,
+    exitCode === null ? 'exit code: unknown' : `exit code: ${exitCode}`
+  ];
+
+  if (output.trim()) {
+    lines.push('', output.trim());
+  }
+
+  return lines.join('\n');
+}
+
+function mergeAdjacentWorkspaceExplorationMessageItems(items: TimelineItem[]): TimelineItem[] {
+  const merged: TimelineItem[] = [];
+
+  for (const item of items) {
+    if (
+      item.kind === 'message'
+      && item.message.role === 'tool'
+      && item.message.toolKind === 'workspace-exploration'
+      && item.message.workspaceExploration
+    ) {
+      const previous = merged[merged.length - 1];
+      if (
+        previous?.kind === 'message'
+        && previous.message.role === 'tool'
+        && previous.message.toolKind === 'workspace-exploration'
+        && previous.message.workspaceExploration
+      ) {
+        merged[merged.length - 1] = {
+          ...previous,
+          id: previous.id,
+          at: Math.min(previous.at, item.at),
+          order: previous.order,
+          message: mergeWorkspaceExplorationMessages(previous.message, item.message)
+        };
+        continue;
+      }
+    }
+
+    merged.push(item);
+  }
+
+  return merged;
+}
+
+function mergeWorkspaceExplorationMessages(
+  current: ChatMessage,
+  incoming: ChatMessage
+): ChatMessage {
+  const currentArtifact = current.workspaceExploration;
+  const incomingArtifact = incoming.workspaceExploration;
+  if (!currentArtifact || !incomingArtifact) {
+    return incoming;
+  }
+
+  return {
+    ...current,
+    body: [current.body.trim(), incoming.body.trim()].filter(Boolean).join('\n\n'),
+    isStreaming: incoming.isStreaming ?? current.isStreaming,
+    status: incoming.status ?? current.status,
+    isError: incoming.isError ?? current.isError,
+    workspaceExploration: mergeWorkspaceExplorationArtifacts(currentArtifact, incomingArtifact)
+  };
+}
+
+function mergeWorkspaceExplorationArtifacts(
+  current: WorkspaceExplorationArtifact,
+  incoming: WorkspaceExplorationArtifact
+): WorkspaceExplorationArtifact {
+  const currentSegments = current.segments ?? [];
+  const incomingSegments = incoming.segments ?? [];
+  const mergedSegments = [...currentSegments, ...incomingSegments];
+  const mergedSearches = mergedSegments.flatMap((segment) => segment.searches);
+  const mergedFiles = mergedSegments.flatMap((segment) => segment.files);
+
+  return {
+    query: incoming.query || current.query,
+    summary: incoming.summary?.trim() || current.summary,
+    segments: mergedSegments,
+    searches: mergedSearches,
+    files: mergedFiles
+  };
 }

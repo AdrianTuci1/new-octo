@@ -17,9 +17,20 @@ type UseChatEffectsProps = {
   onCommandApprovalRef: React.MutableRefObject<UseChatOptions['onCommandApproval']>;
   onFileChangeApprovalRef: React.MutableRefObject<UseChatOptions['onFileChangeApproval']>;
   onWebSearchRef: React.MutableRefObject<UseChatOptions['onWebSearch']>;
+  onWorkspaceExplorationRef: React.MutableRefObject<UseChatOptions['onWorkspaceExploration']>;
+  onCloudAgentLaunchRef: React.MutableRefObject<UseChatOptions['onCloudAgentLaunch']>;
 };
 
-export function useChatEffects({ options, state, actions, onCommandApprovalRef, onFileChangeApprovalRef, onWebSearchRef }: UseChatEffectsProps) {
+export function useChatEffects({
+  options,
+  state,
+  actions,
+  onCommandApprovalRef,
+  onFileChangeApprovalRef,
+  onWebSearchRef,
+  onWorkspaceExplorationRef,
+  onCloudAgentLaunchRef
+}: UseChatEffectsProps) {
   const conversationRecord = useMemoryStore((s: any) => options.conversationId ? s.conversationRecords[options.conversationId] : undefined);
 
   useEffect(() => {
@@ -47,6 +58,14 @@ export function useChatEffects({ options, state, actions, onCommandApprovalRef, 
   }, [options.onWebSearch, onWebSearchRef]);
 
   useEffect(() => {
+    onWorkspaceExplorationRef.current = options.onWorkspaceExploration;
+  }, [options.onWorkspaceExploration, onWorkspaceExplorationRef]);
+
+  useEffect(() => {
+    onCloudAgentLaunchRef.current = options.onCloudAgentLaunch;
+  }, [options.onCloudAgentLaunch, onCloudAgentLaunchRef]);
+
+  useEffect(() => {
     const owner = state.instanceIdRef.current;
     const streamingMessageIds = state.messages
       .filter((message) => message.role === 'assistant' && message.isStreaming)
@@ -63,10 +82,12 @@ export function useChatEffects({ options, state, actions, onCommandApprovalRef, 
         applyPlanExecution: (update, toolCallId) => actions.submitPlanExecution(toolCallId, update),
         onCommandApproval: (approval) => onCommandApprovalRef.current?.(approval),
         onFileChangeApproval: (approval) => onFileChangeApprovalRef.current?.(approval),
-        onWebSearch: (request) => onWebSearchRef.current?.(request)
+        onWebSearch: (request) => onWebSearchRef.current?.(request),
+        onWorkspaceExploration: (request) => onWorkspaceExplorationRef.current?.(request),
+        onCloudAgentLaunch: (request) => onCloudAgentLaunchRef.current?.(request)
       });
     }
-  }, [actions, state.appendToMessage, state.messages, state.updateMessage, state.upsertReasoningMessage, onCommandApprovalRef, onFileChangeApprovalRef, onWebSearchRef, state.instanceIdRef]);
+  }, [actions, state.appendToMessage, state.messages, state.updateMessage, state.upsertReasoningMessage, onCommandApprovalRef, onFileChangeApprovalRef, onWebSearchRef, onWorkspaceExplorationRef, onCloudAgentLaunchRef, state.instanceIdRef]);
 
   useEffect(() => {
     const owner = state.instanceIdRef.current;

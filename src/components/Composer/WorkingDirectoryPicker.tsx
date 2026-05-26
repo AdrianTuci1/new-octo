@@ -4,7 +4,8 @@ import {
   useRef,
   useState,
   type CSSProperties,
-  type KeyboardEvent
+  type KeyboardEvent,
+  type RefObject
 } from 'react';
 import { createPortal } from 'react-dom';
 import { ArrowUp, Folder, FolderOpen } from 'lucide-react';
@@ -42,10 +43,6 @@ export function WorkingDirectoryPicker({
   onToggle
 }: WorkingDirectoryPickerProps) {
   const rootRef = useRef<HTMLDivElement | null>(null);
-  const menuRef = useRef<HTMLDivElement | null>(null);
-  const searchRef = useRef<HTMLInputElement | null>(null);
-  const [activeIndex, setActiveIndex] = useState(0);
-  const [menuStyle, setMenuStyle] = useState<CSSProperties>({});
 
   const actions = useMemo<WorkingDirectoryAction[]>(() => {
     const nextActions: WorkingDirectoryAction[] = [];
@@ -65,15 +62,65 @@ export function WorkingDirectoryPicker({
     return nextActions;
   }, [currentPath, listing?.entries, listing?.parentPath]);
 
+  return (
+    <div ref={rootRef} className="working-directory-picker">
+      <button
+        className={`working-directory-button ${isCompact ? 'compact' : ''}`}
+        onClick={onToggle}
+        title={currentPath ?? 'Working directory'}
+        type="button"
+      >
+        <FolderOpen size={12} />
+        <span className="working-directory-label">{buttonLabel}</span>
+      </button>
+
+      {isOpen && (
+        <WorkingDirectoryPickerMenu
+          actions={actions}
+          resetKey={`${listing?.currentPath ?? ''}:${searchQuery}`}
+          onClose={onClose}
+          onNavigateToParent={onNavigateToParent}
+          onSearchQueryChange={onSearchQueryChange}
+          onSelectDirectory={onSelectDirectory}
+          rootRef={rootRef}
+          searchQuery={searchQuery}
+        />
+      )}
+    </div>
+  );
+}
+
+type WorkingDirectoryPickerMenuProps = {
+  actions: WorkingDirectoryAction[];
+  resetKey: string;
+  onClose: () => void;
+  onNavigateToParent: () => void;
+  onSearchQueryChange: (value: string) => void;
+  onSelectDirectory: (path: string) => void;
+  rootRef: RefObject<HTMLDivElement | null>;
+  searchQuery: string;
+};
+
+function WorkingDirectoryPickerMenu({
+  actions,
+  resetKey,
+  onClose,
+  onNavigateToParent,
+  onSearchQueryChange,
+  onSelectDirectory,
+  rootRef,
+  searchQuery
+}: WorkingDirectoryPickerMenuProps) {
+  const menuRef = useRef<HTMLDivElement | null>(null);
+  const searchRef = useRef<HTMLInputElement | null>(null);
+  const [activeIndex, setActiveIndex] = useState(0);
+  const [menuStyle, setMenuStyle] = useState<CSSProperties>({});
+
   useEffect(() => {
     setActiveIndex(0);
-  }, [listing?.currentPath, searchQuery]);
+  }, [resetKey]);
 
   useEffect(() => {
-    if (!isOpen) {
-      return;
-    }
-
     searchRef.current?.focus();
 
     const updatePosition = () => {
@@ -112,12 +159,14 @@ export function WorkingDirectoryPicker({
       window.removeEventListener('resize', updatePosition);
       window.removeEventListener('scroll', updatePosition, true);
     };
-  }, [isOpen, onClose]);
+  }, [onClose, rootRef]);
 
   const triggerAction = (action: WorkingDirectoryAction | undefined) => {
     if (!action) {
       return;
     }
+
+    onClose();
 
     if (action.kind === 'parent') {
       onNavigateToParent();
@@ -152,65 +201,51 @@ export function WorkingDirectoryPicker({
     }
   };
 
-  return (
-    <div ref={rootRef} className="working-directory-picker">
-      <button
-        className={`working-directory-button ${isCompact ? 'compact' : ''}`}
-        onClick={onToggle}
-        title={currentPath ?? 'Working directory'}
-        type="button"
-      >
-        <FolderOpen size={12} />
-        <span className="working-directory-label">{buttonLabel}</span>
-      </button>
+  return createPortal(
+    <div ref={menuRef} className="working-directory-menu" style={menuStyle}>
+      <div className="working-directory-menu-search">
+        <input
+          ref={searchRef}
+          className="working-directory-search-input"
+          onChange={(event) => onSearchQueryChange(event.target.value)}
+          onKeyDown={handleSearchKeyDown}
+          placeholder="Search directories..."
+          value={searchQuery}
+        />
+      </div>
 
-      {isOpen && createPortal(
-        <div ref={menuRef} className="working-directory-menu" style={menuStyle}>
-          <div className="working-directory-menu-search">
-            <input
-              ref={searchRef}
-              className="working-directory-search-input"
-              onChange={(event) => onSearchQueryChange(event.target.value)}
-              onKeyDown={handleSearchKeyDown}
-              placeholder="Search directories..."
-              value={searchQuery}
-            />
-          </div>
+      <div className="working-directory-menu-list" role="listbox">
+        {actions.map((action, index) => {
+          if (action.kind === 'parent') {
+            return (
+              <button
+                key="parent"
+                className={`working-directory-item working-directory-parent ${activeIndex === index ? 'active' : ''}`}
+                onClick={() => onNavigateToParent()}
+                onMouseEnter={() => setActiveIndex(index)}
+                type="button"
+              >
+                <ArrowUp size={12} />
+                <span>.. (Parent Directory)</span>
+              </button>
+            );
+          }
 
-          <div className="working-directory-menu-list" role="listbox">
-            {actions.map((action, index) => {
-              if (action.kind === 'parent') {
-                return (
-                  <button
-                    key="parent"
-                    className={`working-directory-item working-directory-parent ${activeIndex === index ? 'active' : ''}`}
-                    onClick={() => onNavigateToParent()}
-                    onMouseEnter={() => setActiveIndex(index)}
-                    type="button"
-                  >
-                    <ArrowUp size={12} />
-                    <span>.. (Parent Directory)</span>
-                  </button>
-                );
-              }
-
-              return (
-                <button
-                  key={action.path}
-                  className={`working-directory-item ${action.isActive ? 'selected' : ''} ${activeIndex === index ? 'active' : ''}`}
-                  onClick={() => onSelectDirectory(action.path)}
-                  onMouseEnter={() => setActiveIndex(index)}
-                  type="button"
-                >
-                  <Folder size={12} />
-                  <span>{action.name}</span>
-                </button>
-              );
-            })}
-          </div>
-        </div>,
-        document.body
-      )}
-    </div>
+          return (
+            <button
+              key={action.path}
+              className={`working-directory-item ${action.isActive ? 'selected' : ''} ${activeIndex === index ? 'active' : ''}`}
+              onClick={() => onSelectDirectory(action.path)}
+              onMouseEnter={() => setActiveIndex(index)}
+              type="button"
+            >
+              <Folder size={12} />
+              <span>{action.name}</span>
+            </button>
+          );
+        })}
+      </div>
+    </div>,
+    document.body
   );
 }

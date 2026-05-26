@@ -1,11 +1,10 @@
 use std::{
     collections::{BTreeSet, HashSet},
-    fs,
     sync::OnceLock,
 };
 
-use crate::terminal::ShellHistoryEntry;
 use super::{CommandScope, ScopeMetadata};
+use crate::terminal::ShellHistoryEntry;
 
 pub fn collect_history_prefix_candidates(
     input: &str,
@@ -98,16 +97,7 @@ pub fn is_plausible_signature_candidate(
 }
 
 pub fn command_exists_in_path(command: &str) -> bool {
-    if let Ok(paths) = std::env::var("PATH") {
-        for path in std::env::split_paths(&paths) {
-            let candidate = path.join(command);
-            if candidate.exists() {
-                return true;
-            }
-        }
-    }
-
-    false
+    path_command_names().contains(command)
 }
 
 pub fn strip_wrapping_quotes(token: &str) -> &str {
@@ -155,32 +145,10 @@ pub fn path_command_names() -> &'static BTreeSet<String> {
 }
 
 pub fn discover_path_command_names() -> BTreeSet<String> {
-    let mut names = BTreeSet::new();
-    let Some(path_var) = std::env::var_os("PATH") else {
-        return names;
-    };
-
-    for directory in std::env::split_paths(&path_var) {
-        let Ok(entries) = fs::read_dir(directory) else {
-            continue;
-        };
-
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if !path.is_file() {
-                continue;
-            }
-
-            let Some(name) = path.file_name().and_then(|value| value.to_str()) else {
-                continue;
-            };
-            if is_plausible_completion_command_name(name) {
-                names.insert(name.to_string());
-            }
-        }
-    }
-
-    names
+    crate::terminal::fs::discover_shell_command_names()
+        .into_iter()
+        .filter(|name| is_plausible_completion_command_name(name))
+        .collect()
 }
 
 pub fn expand_completion_pattern(pattern: &str) -> Vec<String> {

@@ -12,11 +12,13 @@ tauri-build = { version = "2.0.0", features = [] }
 [dependencies]
 chrono = { version = "0.4", features = ["serde"] }
 derivative = "2.2.0"
+image = { version = "0.25", default-features = false, features = ["png"] }
 futures-lite = "2.6.1"
 futures-util = "0.3"
 itertools = "0.14.0"
 lazy_static = "1.5.0"
 log = "0.4.29"
+octomus-cloud-protocol = { path = "../octomus-cloud-protocol" }
 portable-pty = "0.8"
 rangemap = "1.7.1"
 regex = "1.12.3"
@@ -29,6 +31,7 @@ tauri = { version = "2.0.0", features = ["macos-private-api", "tray-icon"] }
 tauri-plugin-updater = "2.0.0"
 tokio = { version = "1.0", features = ["io-util", "process", "rt-multi-thread", "sync", "time"] }
 uuid = { version = "1.0", features = ["serde", "v4"] }
+walkdir = "2.5.0"
 
 [target."cfg(not(any(target_os = \"android\", target_os = \"ios\")))".dependencies]
 tauri-plugin-global-shortcut = "2.0.0"

@@ -52,6 +52,23 @@ function appliedFileChangeSummary(diffs: FileDiff[], requestedSummary?: string) 
   return `Am aplicat modificările pentru ${diffs.length} fișiere.`;
 }
 
+function rejectedFileChangeBody(diffs: FileDiff[]) {
+  if (diffs.length === 1) {
+    const diff = diffs[0];
+    if (diff.diffType.kind === 'create') {
+      return `Request canceled. File not created: \`${diff.filePath}\`.`;
+    }
+
+    if (diff.diffType.kind === 'delete') {
+      return `Request canceled. File not deleted: \`${diff.filePath}\`.`;
+    }
+
+    return `Request canceled. Changes not applied to \`${diff.filePath}\`.`;
+  }
+
+  return `Request canceled. Changes were not applied to ${diffs.length} files.`;
+}
+
 function agentContinuationInstruction(kind: 'command' | 'file-change') {
   if (kind === 'file-change') {
     return [
@@ -66,11 +83,37 @@ function agentContinuationInstruction(kind: 'command' | 'file-change') {
   ].join('\n');
 }
 
+function commandFailureInstruction(command: string, output: string, exitCode: number | null) {
+  const normalized = `${command}\n${output}`.toLowerCase();
+  const missingCommand = normalized.includes('command not found')
+    || normalized.includes('not recognized as an internal or external command')
+    || normalized.includes('no such file or directory');
+
+  if (missingCommand) {
+    return [
+      '[Invisible harness instruction]',
+      'The command failed because the CLI/tool is missing. Tell the user clearly that it is not installed or not available in PATH.',
+      'If the original goal was only to verify installation, stop after stating that result and offer the next safe step.',
+      'If installation is the natural next step, propose a concrete install command with propose_terminal_command instead of asking a vague clarification question.'
+    ].join('\n');
+  }
+
+  if (exitCode !== null && exitCode !== 0) {
+    return [
+      '[Invisible harness instruction]',
+      'The command failed. Summarize the failure concretely using the output. Only ask for clarification if the error truly leaves multiple plausible next actions.'
+    ].join('\n');
+  }
+
+  return '';
+}
+
 function terminalToolResult(command: string, result: { output?: string; block?: { exitCode?: number | null } }) {
   const exitCode = typeof result.block?.exitCode === 'number' ? result.block.exitCode : null;
   const output = result.output?.trim() || '(Comanda s-a executat fără output)';
   const failedByOutput = /\b(?:syntaxerror|traceback|error|failed|fail)\b/i.test(output);
   const failed = exitCode !== null ? exitCode !== 0 : failedByOutput;
+  const failureInstruction = failed ? commandFailureInstruction(command, output, exitCode) : '';
 
   return [
     `[Terminal command result]`,
@@ -79,6 +122,7 @@ function terminalToolResult(command: string, result: { output?: string; block?: 
     `STATUS: ${failed ? 'failed' : 'succeeded'}`,
     `OUTPUT:`,
     output,
+    failureInstruction,
     agentContinuationInstruction('command')
   ].join('\n');
 }
@@ -138,10 +182,52 @@ function isCommandSearchQuery(value: string) {
   return trimmed.startsWith('/') && !trimmed.includes(' ');
 }
 
+function shouldKeepCommandsTrayOpen(value: string) {
+  return isCommandSearchQuery(value) || value.trim().startsWith('/');
+}
+
+function shellQuotePath(path: string) {
+  if (!path) {
+    return "''";
+  }
+
+  return `'${path.replace(/'/g, `'\\''`)}'`;
+}
+
+function buildChangeDirectoryCommand(
+  currentPath: string | null | undefined,
+  nextPath: string,
+  preferParentShortcut = false
+) {
+  const normalizedCurrentPath = currentPath?.trim() || null;
+  const normalizedNextPath = nextPath.trim();
+
+  if (!normalizedNextPath) {
+    return '';
+  }
+
+  if (preferParentShortcut && normalizedCurrentPath) {
+    return 'cd ..';
+  }
+
+  if (normalizedCurrentPath) {
+    const prefix = normalizedCurrentPath.endsWith('/') ? normalizedCurrentPath : `${normalizedCurrentPath}/`;
+    if (normalizedNextPath.startsWith(prefix)) {
+      const relativePath = normalizedNextPath.slice(prefix.length);
+      if (relativePath) {
+        return `cd ${shellQuotePath(relativePath)}`;
+      }
+    }
+  }
+
+  return `cd ${shellQuotePath(normalizedNextPath)}`;
+}
+
 export function useLauncherHandlers({
   store, tray, props, runtime, 
   seededConversationAnchorTimesRef, pendingConversationAnchorRef,
-  launchAgentComposer, clearTerminalSurface, 
+  launchAgentComposer, clearTerminalSurface,
+  suppressComposerShellAutodetectRef
 }: {
   store: any;
   tray: any;
@@ -151,11 +237,14 @@ export function useLauncherHandlers({
   pendingConversationAnchorRef: any;
   launchAgentComposer: any;
   clearTerminalSurface: any;
+  suppressComposerShellAutodetectRef: any;
 }) {
   const { 
     chat, 
     terminal, 
     agentTerminal, 
+    workingDirectory,
+    activeSurfaceWorkingDirectory,
     resolvedConversationId, 
     resolvedPendingApproval, 
     setResolvedPendingApproval,
@@ -195,6 +284,7 @@ export function useLauncherHandlers({
 
     tray.closeTray();
     pendingConversationAnchorRef.current = null;
+    suppressComposerShellAutodetectRef.current = null;
     store.setComposerSurface('terminal');
     store.setLocalConversationId(null);
     store.setModeLock(null);
@@ -343,21 +433,11 @@ export function useLauncherHandlers({
   }, [setResolvedPendingApproval, store.setComposerSurface, store.setModeLock]);
 
   const handlePendingApprovalEdit = useCallback((approval: CommandApproval) => {
-    if (approval.kind === 'file-change') {
-      setResolvedPendingApproval(null);
-      store.setComposerSurface('agent');
-      store.setModeLock(null);
-      openFileDiffsInEditor(approval.fileDiffs, runtime.workingDirectory.currentPath);
-      return;
-    }
-
     if ('command' in approval) {
       store.setComposerSurface('agent');
       store.setModeLock(null);
     }
   }, [
-    runtime.workingDirectory.currentPath,
-    setResolvedPendingApproval,
     store.setComposerSurface,
     store.setModeLock
   ]);
@@ -376,7 +456,7 @@ export function useLauncherHandlers({
     const toolCallId = approval.kind === 'topic-change'
       ? null
       : approval.toolCallId ?? resolvedPendingApproval?.toolCallId ?? null;
-    if (!toolCallId) {
+    if (!toolCallId && approval.kind !== 'file-change') {
       return;
     }
 
@@ -385,13 +465,22 @@ export function useLauncherHandlers({
       : 'command' in approval
         ? approval.command
         : undefined;
+    const rejectedBody = approval.kind === 'file-change'
+      ? rejectedFileChangeBody(approval.fileDiffs)
+      : 'The user rejected the proposed command. Do not run it; suggest a safer alternative if needed.';
     void chat.submitToolResult(
-      toolCallId,
+      toolCallId ?? `local-file-change-rejected-${Date.now()}`,
+      rejectedBody,
+      approval.kind === 'file-change' ? 'file-change' : 'command',
+      label,
+      undefined,
       approval.kind === 'file-change'
-        ? 'The user rejected the proposed file changes.'
-        : 'The user rejected the proposed command. Do not run it; suggest a safer alternative if needed.',
-      'command',
-      label
+        ? {
+            fileDiffs: approval.fileDiffs,
+            fileChangeStatus: 'rejected',
+            deferFollowUp: !toolCallId
+          }
+        : undefined
     );
   }, [
     chat.submitToolResult,
@@ -434,6 +523,7 @@ export function useLauncherHandlers({
           undefined,
           {
             fileDiffs: approval.fileDiffs,
+            fileChangeStatus: 'accepted',
             deferFollowUp: !toolCallId,
             localAssistantSummary: !toolCallId
               ? appliedFileChangeSummary(approval.fileDiffs, approval.summary)
@@ -511,7 +601,7 @@ export function useLauncherHandlers({
     store.setSelectedHistoryIndex(0);
     store.setSelectedCommandIndex(0);
 
-    if (isCommandSearchQuery(value)) {
+    if (shouldKeepCommandsTrayOpen(value)) {
       if (!tray.isTrayOpen || tray.activeTrayMode !== 'commands') {
         tray.toggleTray('commands');
       }
@@ -533,16 +623,17 @@ export function useLauncherHandlers({
 
   const handleComposerQueryChange = useCallback((rawValue: string) => {
     const nextValue = consumeShellModeActivator(rawValue);
-    chat.setQuery(nextValue.value);
+    if (suppressComposerShellAutodetectRef.current !== null) {
+      suppressComposerShellAutodetectRef.current = null;
+    }
+    chat.setQuery(rawValue);
     store.setSelectedHistoryIndex(0);
     store.setSelectedCommandIndex(0);
-    if (nextValue.consumed) {
-      store.setModeLock('shell');
-    } else if (rawValue.length === 0 && store.modeLock === 'chat') {
+    if (nextValue.consumed && store.modeLock === 'chat') {
       store.setModeLock(null);
     }
 
-    if (isCommandSearchQuery(nextValue.value)) {
+    if (shouldKeepCommandsTrayOpen(nextValue.value)) {
       if (!tray.isTrayOpen || tray.activeTrayMode !== 'commands') {
         tray.toggleTray('commands');
       }
@@ -555,6 +646,7 @@ export function useLauncherHandlers({
     store.setModeLock,
     store.setSelectedCommandIndex,
     store.setSelectedHistoryIndex,
+    suppressComposerShellAutodetectRef,
     tray.activeTrayMode,
     tray.isTrayOpen,
     tray.toggleTray
@@ -584,6 +676,86 @@ export function useLauncherHandlers({
     chat.submitQuery,
     clearTerminalSurface,
     store.setComposerSurface,
+    store.setModeLock,
+    terminal
+  ]);
+
+  const changeWorkingDirectoryFromPicker = useCallback((nextPath: string, preferParentShortcut = false) => {
+    const normalizedNextPath = nextPath.trim();
+    if (!normalizedNextPath) {
+      return;
+    }
+
+    const currentPath = activeSurfaceWorkingDirectory?.trim() || workingDirectory.currentPath?.trim() || null;
+    if (currentPath === normalizedNextPath) {
+      workingDirectory.closePicker();
+      return;
+    }
+
+    const command = buildChangeDirectoryCommand(currentPath, normalizedNextPath, preferParentShortcut);
+    if (!command) {
+      workingDirectory.closePicker();
+      return;
+    }
+
+    workingDirectory.closePicker();
+
+    void runCommandInSurface(
+      command,
+      store.composerSurface === 'agent' ? 'agent' : 'terminal',
+      terminal,
+      agentTerminal,
+      clearTerminalSurface,
+      'user'
+    ).catch((error) => {
+      console.warn('[Launcher] failed to change working directory from picker', error);
+    });
+  }, [
+    activeSurfaceWorkingDirectory,
+    agentTerminal,
+    clearTerminalSurface,
+    store.composerSurface,
+    terminal,
+    workingDirectory
+  ]);
+
+  const handleNavigateToParentDirectory = useCallback(() => {
+    const parentPath = workingDirectory.listing?.parentPath?.trim();
+    if (!parentPath) {
+      return;
+    }
+
+    changeWorkingDirectoryFromPicker(parentPath, true);
+  }, [changeWorkingDirectoryFromPicker, workingDirectory.listing?.parentPath]);
+
+  const handleSelectWorkingDirectory = useCallback((path: string) => {
+    changeWorkingDirectoryFromPicker(path, false);
+  }, [changeWorkingDirectoryFromPicker]);
+
+  const executeTerminalCommand = useCallback((command: string) => {
+    const normalized = command.trim();
+    if (!normalized) {
+      return;
+    }
+
+    void runCommandInSurface(
+      normalized,
+      store.composerSurface === 'agent' ? 'agent' : 'terminal',
+      terminal,
+      agentTerminal,
+      clearTerminalSurface,
+      'user'
+    ).then(() => {
+      chat.setQuery('');
+      store.setModeLock(null);
+      store.setAutodetectedShellLatch(false);
+    });
+  }, [
+    agentTerminal,
+    chat.setQuery,
+    clearTerminalSurface,
+    store.composerSurface,
+    store.setAutodetectedShellLatch,
     store.setModeLock,
     terminal
   ]);
@@ -631,6 +803,9 @@ export function useLauncherHandlers({
     handleComposerRecommendationClick,
     handleToggleCommands,
     handleToggleTerminalAutoDetect,
-    handleHistoryEntrySelect
+    handleHistoryEntrySelect,
+    handleNavigateToParentDirectory,
+    handleSelectWorkingDirectory,
+    executeTerminalCommand
   };
 }

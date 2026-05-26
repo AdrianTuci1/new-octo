@@ -24,8 +24,12 @@ export type TerminalSessionState = {
   pendingApproval: CommandApproval | null;
   terminalBlockMetaById: Record<string, TerminalBlockSharedMeta>;
   agentTerminalBlockMetaById: Record<string, TerminalBlockSharedMeta>;
+  terminalBlocks: TerminalCommandBlock[];
+  agentTerminalBlocks: TerminalCommandBlock[];
   syntheticBlocks: TerminalCommandBlock[];
 };
+
+export type WorkspacePaneSessionBindings = Record<string, string>;
 
 export type SavedWorkspaceTabConfig = {
   id: string;
@@ -49,6 +53,8 @@ export function createEmptyTerminalSession(
     pendingApproval: null,
     terminalBlockMetaById: {},
     agentTerminalBlockMetaById: {},
+    terminalBlocks: [],
+    agentTerminalBlocks: [],
     syntheticBlocks: []
   };
 }
@@ -143,22 +149,35 @@ export function buildTerminalSessionState(tabs: WorkspaceChromeTab[]) {
   ) as Record<string, TerminalSessionState>;
 }
 
+export function buildPaneSessionBindings(
+  tabs: WorkspaceChromeTab[],
+  paneLayoutsByTabId: Record<string, WorkspacePaneLayout>
+) {
+  const paneIds = tabs
+    .filter((tab) => tab.kind === 'terminal')
+    .flatMap((tab) => collectPaneIdsFromLayout(paneLayoutsByTabId[tab.id] ?? createDefaultPaneLayout(tab.id)));
+
+  return Object.fromEntries(paneIds.map((paneId) => [paneId, paneId])) as WorkspacePaneSessionBindings;
+}
+
 export function mergeTerminalSessions(
   tabs: WorkspaceChromeTab[],
   paneLayoutsByTabId: Record<string, WorkspacePaneLayout>,
-  current: Record<string, {
-    activeConversationId: string | null;
-    composerSurface?: 'agent' | 'terminal';
-    workingDirectory?: string | null;
-    terminalSessionId?: string | null;
+    current: Record<string, {
+      activeConversationId: string | null;
+      composerSurface?: 'agent' | 'terminal';
+      workingDirectory?: string | null;
+      terminalSessionId?: string | null;
     agentTerminalSessionId?: string | null;
     terminalTarget?: TerminalSessionTarget | null;
     agentTerminalTarget?: TerminalSessionTarget | null;
-    pendingApproval?: CommandApproval | null;
-    terminalBlockMetaById?: Record<string, TerminalBlockSharedMeta>;
-    agentTerminalBlockMetaById?: Record<string, TerminalBlockSharedMeta>;
-    syntheticBlocks?: TerminalCommandBlock[];
-  }>,
+      pendingApproval?: CommandApproval | null;
+      terminalBlockMetaById?: Record<string, TerminalBlockSharedMeta>;
+      agentTerminalBlockMetaById?: Record<string, TerminalBlockSharedMeta>;
+      terminalBlocks?: TerminalCommandBlock[];
+      agentTerminalBlocks?: TerminalCommandBlock[];
+      syntheticBlocks?: TerminalCommandBlock[];
+    }>,
   defaultWorkingDirectory: string | null,
   seededConversations: Record<string, string | null> = {}
 ) {
@@ -181,6 +200,8 @@ export function mergeTerminalSessions(
         pendingApproval: current[paneId]?.pendingApproval ?? null,
         terminalBlockMetaById: current[paneId]?.terminalBlockMetaById ?? {},
         agentTerminalBlockMetaById: current[paneId]?.agentTerminalBlockMetaById ?? {},
+        terminalBlocks: current[paneId]?.terminalBlocks ?? [],
+        agentTerminalBlocks: current[paneId]?.agentTerminalBlocks ?? [],
         syntheticBlocks: current[paneId]?.syntheticBlocks ?? []
       } satisfies TerminalSessionState
     ])

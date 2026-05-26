@@ -48,6 +48,8 @@ pub struct AgentHarnessContext {
     pub messages: Vec<AgentInputMessage>,
     pub terminal_blocks: Vec<TerminalBlockContext>,
     pub cwd: Option<String>,
+    pub target_os: String,
+    pub target_arch: String,
     pub model_id: String,
     pub terminal_model_id: Option<String>,
 }

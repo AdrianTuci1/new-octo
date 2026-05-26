@@ -1,4 +1,6 @@
 import type { FileDiff } from './diff';
+import type { FileDiffPreviewStatus } from '../lib/fileDiffs';
+export type { FileDiffPreviewStatus } from '../lib/fileDiffs';
 
 export type ChatMessage = {
   id: string;
@@ -15,14 +17,16 @@ export type ChatMessage = {
   toolCallId?: string;
   toolCalls?: any[];
   fileDiffs?: FileDiff[];
+  fileChangeStatus?: FileDiffPreviewStatus;
   messageKind?: 'default' | 'reasoning';
   thinkingDurationSeconds?: number;
   hasNativeThinking?: boolean;
   parentMessageId?: string;
-  toolKind?: 'command' | 'web-search' | 'plan' | 'file-change';
+  toolKind?: 'command' | 'web-search' | 'plan' | 'file-change' | 'workspace-exploration';
   webSearchStatus?: 'searching' | 'success' | 'error';
   webSearchQuery?: string;
   webSearchResults?: WebSearchResult[];
+  workspaceExploration?: WorkspaceExplorationArtifact;
   executionPlan?: ExecutionPlanArtifact;
   followUpSuggestion?: {
     label: string;
@@ -79,6 +83,61 @@ export type WebSearchResult = {
 };
 
 export type WebSearchRequest = {
+  toolCallId: string;
+  query: string;
+  maxResults?: number;
+};
+
+export type CloudAgentLaunchRequest = {
+  toolCallId: string;
+  prompt: string;
+  provider?: 'custom-vm' | 'modal' | string | null;
+  profileId?: string | null;
+  cwd?: string | null;
+  repo?: string | null;
+  baseBranch?: string | null;
+  workBranch?: string | null;
+};
+
+export type WorkspaceExplorationSearch = {
+  source: 'code-index' | 'filesystem';
+  query: string;
+  resultCount: number;
+};
+
+export type WorkspaceExplorationFile = {
+  path: string;
+  source: 'code-index' | 'filesystem';
+  snippet?: string;
+};
+
+export type WorkspaceExplorationEntry = {
+  id: string;
+  kind: 'search' | 'read' | 'note';
+  text: string;
+  detail?: string;
+  path?: string;
+  createdAt: string;
+};
+
+export type WorkspaceExplorationSegment = {
+  id: string;
+  createdAt: string;
+  summary?: string;
+  entries: WorkspaceExplorationEntry[];
+  searches: WorkspaceExplorationSearch[];
+  files: WorkspaceExplorationFile[];
+};
+
+export type WorkspaceExplorationArtifact = {
+  query: string;
+  summary?: string;
+  segments: WorkspaceExplorationSegment[];
+  searches: WorkspaceExplorationSearch[];
+  files: WorkspaceExplorationFile[];
+};
+
+export type WorkspaceExplorationRequest = {
   toolCallId: string;
   query: string;
   maxResults?: number;
@@ -169,6 +228,18 @@ export type AgentProviderStatus = {
   source: string;
 };
 
+export type ChatAttachmentKind = 'text' | 'image' | 'binary';
+
+export type ChatAttachment = {
+  id: string;
+  name: string;
+  size: number;
+  mimeType?: string | null;
+  kind: ChatAttachmentKind;
+  content?: string | null;
+  truncated?: boolean;
+};
+
 export type AgentStatusEvent = {
   runId: string;
   conversationId: string;
@@ -221,4 +292,5 @@ export interface ConfiguredModel {
   baseUrl: string;
   friendlyName?: string;
   hasApiKey?: boolean;
+  supportsAttachments?: boolean;
 }

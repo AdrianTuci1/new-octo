@@ -1,6 +1,6 @@
 # Tool Call Lifecycle: De la LLM Response la Action Result
 
-> **Context:** Documentație extrasă din `warp/app/src/ai/agent/` pentru implementarea în Octomus Launcher.  
+
 > **Data:** 2026-05-02
 
 ---
@@ -28,7 +28,7 @@ pub enum AIAgentActionType {
     // ═══════════════════════════════════════════════════
     // COMENZI TERMINAL
     // ═══════════════════════════════════════════════════
-    
+
     /// Rulează o comandă și returnează output-ul
     RequestCommandOutput {
         command: String,
@@ -36,13 +36,13 @@ pub enum AIAgentActionType {
         /// false = ia un snapshot și continuă (comanda lungă)
         wait_until_completion: bool,
     },
-    
+
     /// Scrie input la o comandă deja rulând (ex: ctrl+c, răspuns prompt)
     WriteToLongRunningShellCommand {
         input: String,
         command_id: AIAgentActionId,
     },
-    
+
     /// Citește output-ul curent al unei comenzi long-running
     ReadShellCommandOutput {
         command_id: AIAgentActionId,
@@ -51,23 +51,23 @@ pub enum AIAgentActionType {
     // ═══════════════════════════════════════════════════
     // FIȘIERE & CODEBASE
     // ═══════════════════════════════════════════════════
-    
+
     /// Citește conținutul unuia sau mai multor fișiere
     ReadFiles {
         file_paths: Vec<String>,
     },
-    
+
     /// Aplică editări pe un fișier (search/replace diff)
     RequestFileEdits {
         file_path: String,
         edits: Vec<FileEdit>,
     },
-    
+
     /// Caută semantic în codebase (embeddings)
     SearchCodebase {
         query: String,
     },
-    
+
     /// Grep clasic (regex/literal)
     Grep {
         pattern: String,
@@ -76,7 +76,7 @@ pub enum AIAgentActionType {
         case_insensitive: bool,
         // + alte opțiuni
     },
-    
+
     /// Glob file matching
     FileGlob {
         patterns: Vec<String>,
@@ -85,7 +85,7 @@ pub enum AIAgentActionType {
     // ═══════════════════════════════════════════════════
     // DOCUMENTE (Warp Drive)
     // ═══════════════════════════════════════════════════
-    
+
     ReadDocuments { document_ids: Vec<String> },
     EditDocuments { edits: Vec<DocumentEdit> },
     CreateDocuments { documents: Vec<DocumentCreate> },
@@ -93,14 +93,14 @@ pub enum AIAgentActionType {
     // ═══════════════════════════════════════════════════
     // MCP (Model Context Protocol)
     // ═══════════════════════════════════════════════════
-    
+
     ReadMCPResource { server_id: String, uri: String },
     CallMCPTool { server_id: String, tool_name: String, arguments: Value },
 
     // ═══════════════════════════════════════════════════
     // UI / AGENT INTERACTIONS
     // ═══════════════════════════════════════════════════
-    
+
     UseComputer { action: ComputerAction },
     SuggestNewConversation { prompt: String },
     SuggestPrompt { prompt: String },
@@ -114,13 +114,13 @@ pub enum AIAgentActionType {
 pub struct AIAgentAction {
     /// ID unic pentru acțiune (generat de server)
     pub id: AIAgentActionId,
-    
+
     /// Task-ul căruia îi aparține
     pub task_id: TaskId,
-    
+
     /// Acțiunea propriu-zisă
     pub action: AIAgentActionType,
-    
+
     /// ⭐ FLAG CRITIC: dacă e true, TREBUIE trimis rezultat înapoi la LLM
     /// Dacă e false, e fire-and-forget
     pub requires_result: bool,
@@ -231,7 +231,7 @@ pub enum RequestCommandOutputResult {
         output: String,           // stdout + stderr combinat
         exit_code: Option<i32>,
     },
-    
+
     /// Comanda e long-running — snapshot al output-ului curent
     LongRunningCommandSnapshot {
         command: String,
@@ -239,10 +239,10 @@ pub enum RequestCommandOutputResult {
         cursor: String,           // poziția cursorului
         is_alt_screen_active: bool,
     },
-    
+
     /// User-ul a anulat comanda înainte de execuție
     CancelledBeforeExecution,
-    
+
     /// Comanda e pe denylist
     Denylisted { command: String },
 }
@@ -257,10 +257,10 @@ pub enum RequestFileEditsResult {
         diff: String,              // diff-ul generat
         file_path: String,
     },
-    
+
     /// User-ul a refuzat editările
     Cancelled,
-    
+
     /// Diff-ul nu a putut fi aplicat
     DiffApplicationFailed { error: String },
 }
@@ -371,25 +371,25 @@ pub enum OctomusActionType {
         /// Dacă true, așteaptă terminarea. Dacă false, ia snapshot.
         wait_until_completion: bool,
     },
-    
+
     /// Citește fișiere
     ReadFiles {
         file_paths: Vec<String>,
     },
-    
+
     /// Creează sau suprascrie un fișier
     WriteFile {
         file_path: String,
         content: String,
     },
-    
+
     /// Aplică un diff pe un fișier existent
     EditFile {
         file_path: String,
         search: String,
         replace: String,
     },
-    
+
     /// Grep prin fișiere
     Grep {
         pattern: String,
@@ -403,10 +403,10 @@ pub enum OctomusActionType {
 pub struct AgentAction {
     /// ID-ul tool call-ului (de la LLM)
     pub id: String,
-    
+
     /// Acțiunea propriu-zisă
     pub action: OctomusActionType,
-    
+
     /// Dacă LLM-ul așteaptă rezultat
     pub requires_result: bool,
 }
@@ -425,32 +425,32 @@ pub enum ActionResult {
         output: String,
         exit_code: Option<i32>,
     },
-    
+
     /// Snapshot al comenzii long-running
     CommandSnapshot {
         command: String,
         output: String,
     },
-    
+
     /// Fișiere citite
     FilesRead {
         files: Vec<FileContent>,
     },
-    
+
     /// Fișier scris/editat
     FileWritten {
         file_path: String,
         diff: Option<String>,
     },
-    
+
     /// Rezultat grep
     GrepMatches {
         matches: Vec<GrepMatch>,
     },
-    
+
     /// Acțiune refuzată de user
     Cancelled,
-    
+
     /// Eroare la execuție
     Error(String),
 }
@@ -492,10 +492,10 @@ pub async fn execute_action(
             grep_files(pattern, path.as_deref(), *is_regex, working_dir).await
         }
     };
-    
+
     // Emit event pentru UI
     sink.emit_tool_result(&action.id, &result);
-    
+
     AgentActionResult {
         tool_call_id: action.id.clone(),
         result,
@@ -510,7 +510,7 @@ pub async fn execute_all_actions(
     cancel: &AgentCancellation,
 ) -> Vec<AgentActionResult> {
     let mut results = Vec::with_capacity(actions.len());
-    
+
     for action in actions {
         if cancel.is_cancelled() {
             results.push(AgentActionResult {
@@ -519,10 +519,10 @@ pub async fn execute_all_actions(
             });
             continue;
         }
-        
+
         results.push(execute_action(action, working_dir, sink, cancel).await);
     }
-    
+
     results
 }
 ```
@@ -541,7 +541,7 @@ fn build_tool_result_messages(
             "tool_call_id": r.tool_call_id,
             "content": match &r.result {
                 ActionResult::CommandCompleted { output, exit_code, .. } => {
-                    format!("Exit code: {}\n\n{}", 
+                    format!("Exit code: {}\n\n{}",
                         exit_code.map_or("unknown".into(), |c| c.to_string()),
                         output
                     )
@@ -553,7 +553,7 @@ fn build_tool_result_messages(
                         .join("\n\n")
                 }
                 ActionResult::FileWritten { file_path, diff } => {
-                    format!("File written: {}\n{}", file_path, 
+                    format!("File written: {}\n{}", file_path,
                         diff.as_deref().unwrap_or("(no diff)"))
                 }
                 ActionResult::Cancelled => "Action was cancelled by the user.".into(),

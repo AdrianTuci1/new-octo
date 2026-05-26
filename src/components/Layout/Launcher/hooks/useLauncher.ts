@@ -22,7 +22,7 @@ export function useLauncher(props: LauncherProps) {
   const runtime = Modules.useLauncherRuntime(props, store, tray);
   
   // 2. Logic Orchestration (Specialized Domains)
-  const composer = Modules.useLauncherComposer({ store, runtime });
+  const composer = Modules.useLauncherComposer({ store, runtime, refs });
   const ui = Modules.useLauncherUIState({ store, tray, props, runtime });
   const history = Modules.useLauncherHistory({ runtime, store });
 
@@ -32,6 +32,7 @@ export function useLauncher(props: LauncherProps) {
     store, tray, props, runtime,
     seededConversationAnchorTimesRef: refs.seededConversationAnchorTimesRef,
     pendingConversationAnchorRef: refs.pendingConversationAnchorRef,
+    suppressComposerShellAutodetectRef: refs.suppressComposerShellAutodetectRef,
     launchAgentComposer: actions.launchAgentComposer,
     clearTerminalSurface: actions.clearTerminalSurface
   });
@@ -42,7 +43,7 @@ export function useLauncher(props: LauncherProps) {
   Hooks.useWindowSync(refs.shellRef, active);
 
   // 5. Shortcuts & System Integration
-  const shortcuts = Modules.useLauncherShortcuts({ active, store, tray, props, runtime, history, ui, handlers, refs, actions });
+  const shortcuts = Modules.useLauncherShortcuts({ active, store, tray, props, runtime, history, ui, handlers, refs, actions, composer });
 
   // 6. Assembler (Public Interface)
   return Modules.useLauncherInterface({
@@ -56,3 +57,5 @@ export function useLauncher(props: LauncherProps) {
     dockRef: refs.dockRef
   });
 }
+
+export type LauncherViewModel = ReturnType<typeof useLauncher>;

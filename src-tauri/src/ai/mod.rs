@@ -8,11 +8,11 @@ pub mod web_search;
 
 use tauri::{AppHandle, State};
 
+use agent::loop_contract::AgentLoopContract;
 use agent::types::{
     AgentContinueRequest, AgentProviderConfigRequest, AgentProviderStatus, AgentRunLookupRequest,
     AgentRunRequest, AgentRunSnapshot, AgentStartResponse,
 };
-use agent::loop_contract::AgentLoopContract;
 pub use agent_management::AgentHarnessManager;
 
 #[tauri::command]
@@ -79,6 +79,11 @@ pub fn agent_list_runs(
     manager: State<'_, AgentHarnessManager>,
 ) -> Result<Vec<AgentRunSnapshot>, String> {
     agent::agent_list_runs(manager)
+}
+
+#[tauri::command]
+pub fn agent_list_skills() -> Result<Vec<agent::openai::skills::SkillCatalogItem>, String> {
+    Ok(agent::openai::skills::list_available_skills())
 }
 
 #[tauri::command]

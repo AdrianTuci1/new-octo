@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from 'react';
-import type { ChatMessage } from '../../../types/chat';
-import { extractFollowUpSuggestion, extractInlinePlanArtifact } from '../parsers';
+import type { ChatAttachment, ChatMessage } from '../../../types/chat';
+import { extractFollowUpSuggestion, extractInlinePlanArtifact, visibleChatMessageBody } from '../parsers';
 import { pendingFollowUpPayloads } from '../bridge';
 
 const pendingInlinePlanPayloads: Record<string, string> = {};
@@ -46,6 +46,25 @@ function formatPlanBody(message: ChatMessage) {
   ].filter(Boolean).join('\n');
 }
 
+function findLatestReasoningIndex(messages: ChatMessage[], assistantMessageId: string) {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (message.messageKind === 'reasoning' && message.parentMessageId === assistantMessageId) {
+      return index;
+    }
+  }
+
+  return -1;
+}
+
+function shouldInsertReasoningAfterAssistant(assistantMessage: ChatMessage | null) {
+  if (!assistantMessage) {
+    return false;
+  }
+
+  return visibleChatMessageBody(assistantMessage.body).trim().length > 0;
+}
+
 export function useChatState() {
   const instanceIdRef = useRef(Symbol('useChatInstance'));
   const hydratedConversationRef = useRef<string | null>(null);
@@ -56,6 +75,7 @@ export function useChatState() {
   const [activeRunId, setActiveRunId] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [messages, setMessagesState] = useState<ChatMessage[]>([]);
+  const [attachments, setAttachmentsState] = useState<ChatAttachment[]>([]);
 
   const calculateThinkingDurationSeconds = useCallback((startedAt?: string) => {
     if (!startedAt) {
@@ -178,37 +198,79 @@ export function useChatState() {
     }
 
     setMessages((currentMessages) => {
-      const existingIndex = currentMessages.findIndex((message) => (
-        message.messageKind === 'reasoning' && message.parentMessageId === assistantMessageId
-      ));
+      const existingIndex = findLatestReasoningIndex(currentMessages, assistantMessageId);
 
       if (existingIndex >= 0) {
         const existingMessage = currentMessages[existingIndex];
-        return currentMessages.map((message, index) => (
-          index === existingIndex
-            ? {
-                ...message,
-                body: text,
-                isStreaming: payload.isComplete !== true,
-                status: payload.isComplete ? 'completed' : 'running',
-                thinkingDurationSeconds: payload.isComplete
-                  ? calculateThinkingDurationSeconds(existingMessage.createdAt)
-                  : message.thinkingDurationSeconds
-              }
-            : message.id === assistantMessageId
+        const shouldStartNewSegment = existingMessage.status === 'completed' && payload.isComplete !== true;
+
+        if (!shouldStartNewSegment) {
+          return currentMessages.map((message, index) => (
+            index === existingIndex
               ? {
                   ...message,
-                  hasNativeThinking: true
+                  body: text,
+                  isStreaming: payload.isComplete !== true,
+                  status: payload.isComplete ? 'completed' : 'running',
+                  thinkingDurationSeconds: payload.isComplete
+                    ? calculateThinkingDurationSeconds(existingMessage.createdAt)
+                    : message.thinkingDurationSeconds
                 }
-              : message
-        ));
+              : message.id === assistantMessageId
+                ? {
+                    ...message,
+                    hasNativeThinking: true
+                  }
+                : message
+          ));
+        }
+
+        const assistantIndex = currentMessages.findIndex((message) => message.id === assistantMessageId);
+        const assistantMessage = assistantIndex >= 0 ? currentMessages[assistantIndex] : null;
+        const insertAfterAssistant = shouldInsertReasoningAfterAssistant(assistantMessage);
+        const createdAt = new Date().toISOString();
+        const segmentIndex = currentMessages.filter((message) => (
+          message.messageKind === 'reasoning' && message.parentMessageId === assistantMessageId
+        )).length + 1;
+        const reasoningMessage = {
+          id: `${assistantMessageId}::reasoning-${segmentIndex}`,
+          role: 'assistant' as const,
+          title: 'Thinking',
+          body: text,
+          messageKind: 'reasoning' as const,
+          parentMessageId: assistantMessageId,
+          isStreaming: payload.isComplete !== true,
+          status: payload.isComplete ? 'completed' as const : 'running' as const,
+          thinkingDurationSeconds: payload.isComplete
+            ? calculateThinkingDurationSeconds(createdAt)
+            : undefined,
+          createdAt
+        };
+
+        if (assistantIndex < 0) {
+          return [...currentMessages, reasoningMessage];
+        }
+
+        const nextMessages = [...currentMessages];
+        nextMessages[assistantIndex] = {
+          ...nextMessages[assistantIndex],
+          hasNativeThinking: true
+        };
+        nextMessages.splice(insertAfterAssistant ? assistantIndex + 1 : assistantIndex, 0, reasoningMessage);
+        return nextMessages;
       }
 
       const assistantIndex = currentMessages.findIndex((message) => message.id === assistantMessageId);
       const assistantMessage = assistantIndex >= 0 ? currentMessages[assistantIndex] : null;
+      const insertAfterAssistant = shouldInsertReasoningAfterAssistant(assistantMessage);
       const createdAt = assistantMessage?.createdAt ?? new Date().toISOString();
+      const segmentIndex = currentMessages.filter((message) => (
+        message.messageKind === 'reasoning' && message.parentMessageId === assistantMessageId
+      )).length + 1;
       const reasoningMessage = {
-        id: `${assistantMessageId}::reasoning`,
+        id: segmentIndex === 1
+          ? `${assistantMessageId}::reasoning`
+          : `${assistantMessageId}::reasoning-${segmentIndex}`,
         role: 'assistant' as const,
         title: 'Thinking',
         body: text,
@@ -233,16 +295,14 @@ export function useChatState() {
           hasNativeThinking: true
         };
       }
-      nextMessages.splice(assistantIndex, 0, reasoningMessage);
+      nextMessages.splice(insertAfterAssistant ? assistantIndex + 1 : assistantIndex, 0, reasoningMessage);
       return nextMessages;
     });
   }, [calculateThinkingDurationSeconds, setMessages]);
 
   const finalizeReasoningMessage = useCallback((assistantMessageId: string) => {
     setMessages((currentMessages) => {
-      const reasoningIndex = currentMessages.findIndex((message) => (
-        message.messageKind === 'reasoning' && message.parentMessageId === assistantMessageId
-      ));
+      const reasoningIndex = findLatestReasoningIndex(currentMessages, assistantMessageId);
 
       if (reasoningIndex < 0) {
         return currentMessages.map((message) => (
@@ -285,7 +345,24 @@ export function useChatState() {
     setActiveConversationId(null);
     setActiveRunId(null);
     setMessages([]);
+    setAttachmentsState([]);
   }, [setMessages]);
+
+  const addAttachments = useCallback((nextAttachments: ChatAttachment[]) => {
+    if (nextAttachments.length === 0) {
+      return;
+    }
+
+    setAttachmentsState((current) => [...current, ...nextAttachments]);
+  }, []);
+
+  const removeAttachment = useCallback((attachmentId: string) => {
+    setAttachmentsState((current) => current.filter((attachment) => attachment.id !== attachmentId));
+  }, []);
+
+  const clearAttachments = useCallback(() => {
+    setAttachmentsState([]);
+  }, []);
 
   return {
     instanceIdRef,
@@ -300,12 +377,16 @@ export function useChatState() {
     query,
     setQuery,
     messages,
+    attachments,
     setMessages,
     addMessage,
     updateMessage,
     appendToMessage,
     upsertReasoningMessage,
     finalizeReasoningMessage,
-    clearMessages
+    clearMessages,
+    addAttachments,
+    removeAttachment,
+    clearAttachments
   };
 }

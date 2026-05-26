@@ -1,6 +1,5 @@
 use super::validation::{DiffDelta, DiffType};
 use similar::{DiffOp, TextDiff};
-use std::ops::Range;
 
 pub fn compute_diff(base: &str, new: &str) -> DiffType {
     let diffs = TextDiff::configure()
@@ -15,7 +14,7 @@ pub fn compute_diff(base: &str, new: &str) -> DiffType {
             DiffOp::Delete {
                 old_index,
                 old_len,
-                new_index,
+                new_index: _,
             } => {
                 deltas.push(DiffDelta {
                     replacement_line_range: (*old_index + 1)..(*old_index + *old_len + 1),

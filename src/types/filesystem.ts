@@ -14,3 +14,15 @@ export type FilesystemDirectoryListing = {
   parentPath?: string | null;
   entries: FilesystemEntry[];
 };
+
+export type FilesystemSearchEntry = {
+  name: string;
+  path: string;
+  isDirectory: boolean;
+  children: FilesystemSearchEntry[];
+};
+
+export type FilesystemSearchListing = {
+  currentPath: string;
+  entries: FilesystemSearchEntry[];
+};

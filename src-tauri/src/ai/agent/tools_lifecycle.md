@@ -11,6 +11,7 @@ Octomus pune la dispoziție 6 unelte de bază, definite structural în [tools.rs
 | Nume Unealtă | Scopul Principal | Comportament la Execuție |
 | :--- | :--- | :--- |
 | `lookup_web` | Căutare pe internet | Trimis către interfață pentru a declanșa sub-agentul de căutare web. |
+| `explore_workspace` | Explorare recursivă workspace | Trimis către interfață pentru a declanșa căutări locale și afișarea unui card collapsible. |
 | `propose_plan` | Crearea planurilor de lucru | Randează un timeline interactiv cu workstream-uri în UI (Blocks). |
 | `update_plan` | Actualizarea planurilor | Re-randează și actualizează pașii din timeline. |
 | `plan_execution` | Schimbarea stării unui pas | Marchează pașii ca porniți, finalizați sau eșuați. |
@@ -41,6 +42,7 @@ graph TD
     %% Calea 2: Planificare & Web
     ToolName -->|propose_plan / update_plan / plan_execution| FrontendNormal
     ToolName -->|lookup_web| FrontendNormal
+    ToolName -->|explore_workspace| FrontendNormal
 
     %% Calea 3: Metadata
     ToolName -->|suggest_follow_up| MetadataOnly[Interceptat de JSON Extractor -> Randează Chips în Composer]

@@ -1,6 +1,5 @@
 # Input Area, Buttons & Slash/@ Menus — Warp Reference & Octomus Adaptation
 
-> Reverse-engineered din Warp codebase: `ai_assistant/panel.rs` (45K), `slash_command_menu/` (44K), `ai_context_menu/` (70K+).
 > Adaptat pentru Octomus: Tauri v2 + Rust backend + React frontend.
 
 ---
@@ -387,272 +386,42 @@ enum InputSuggestionsMode {
 
 ## 6. Octomus Adaptation
 
-### 6.1 Slash Command System (React + Rust)
+### 6.1 Current Frontend Files
 
-```rust
-// src-tauri/src/spotlight/commands.rs
+Octomus does not have a `src/components/Spotlight/` directory or a `src-tauri/src/spotlight/` backend module. The current input/menu surface is split across the composer, tray, settings menus, and native menu bridge.
 
-use serde::{Deserialize, Serialize};
+| Concern | Current files |
+|---------|---------------|
+| Main prompt composer | `src/components/Composer/ComposerBar.tsx`, `src/components/Composer/useComposerBar.ts` |
+| Terminal composer | `src/components/Composer/TerminalComposer.tsx`, `src/components/Composer/CommandApprovalComposer.tsx` |
+| Context mentions | `src/components/Composer/ComposerContextMenu.tsx`, `src/components/Composer/contextMentions.ts` |
+| Model/setup controls | `src/components/Composer/ModelSetupOverlay.tsx`, `src/hooks/useModelSelection.ts` |
+| Built-in command constants | `src/lib/constants.ts` |
+| Tray commands/history/models | `src/components/Tray/TrayCommands.tsx`, `TrayHistory.tsx`, `TrayModels.tsx` |
+| Native menu bridge | `src-tauri/src/menus/*`, `src-tauri/src/keybindings.rs` |
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SlashCommand {
-    pub name: &'static str,
-    pub description: &'static str,
-    pub icon: &'static str,           // Lucide icon name
-    pub category: CommandCategory,
-    pub requires_arg: bool,
-    pub arg_hint: Option<&'static str>,
-}
+### 6.2 Current Backend Context APIs
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum CommandCategory {
-    Conversation,   // /new, /fork, /compact, /queue
-    Navigation,     // /open-file, /open-repo
-    Configuration,  // /model, /profile, /add-rule
-    Context,        // /index, /init
-    Export,          // /export-to-clipboard, /export-to-file
-    System,         // /feedback, /changelog, /usage
-}
+Context data comes from the terminal, code index, memory, MCP, and agent commands already registered in `src-tauri/src/main.rs`.
 
-pub fn builtin_commands() -> Vec<SlashCommand> {
-    vec![
-        SlashCommand {
-            name: "/new",
-            description: "Start a new conversation",
-            icon: "message-square-plus",
-            category: CommandCategory::Conversation,
-            requires_arg: false,
-            arg_hint: None,
-        },
-        SlashCommand {
-            name: "/model",
-            description: "Switch LLM model",
-            icon: "cpu",
-            category: CommandCategory::Configuration,
-            requires_arg: false,
-            arg_hint: None,
-        },
-        SlashCommand {
-            name: "/compact",
-            description: "Summarize conversation to free context",
-            icon: "minimize-2",
-            category: CommandCategory::Conversation,
-            requires_arg: false,
-            arg_hint: Some("<optional instructions>"),
-        },
-        SlashCommand {
-            name: "/fork",
-            description: "Fork conversation into new tab",
-            icon: "git-branch",
-            category: CommandCategory::Conversation,
-            requires_arg: false,
-            arg_hint: Some("<optional prompt>"),
-        },
-        SlashCommand {
-            name: "/open",
-            description: "Open file in editor",
-            icon: "file-code",
-            category: CommandCategory::Navigation,
-            requires_arg: true,
-            arg_hint: Some("<path[:line[:col]]>"),
-        },
-        SlashCommand {
-            name: "/plan",
-            description: "Research and create a task plan",
-            icon: "clipboard-list",
-            category: CommandCategory::Conversation,
-            requires_arg: true,
-            arg_hint: Some("<describe your task>"),
-        },
-        SlashCommand {
-            name: "/export",
-            description: "Export conversation to clipboard",
-            icon: "copy",
-            category: CommandCategory::Export,
-            requires_arg: false,
-            arg_hint: None,
-        },
-        // ... more commands
-    ]
-}
-```
+| Data | Commands/modules |
+|------|------------------|
+| Files and directories | `terminal_list_directory_entries`, `terminal_search_directory_entries`, `terminal_read_file`, `terminal_write_file` |
+| Runtime context | `terminal_get_runtime_context`, `terminal_get_path_context` |
+| Git context | `terminal_get_git_context`, `terminal_get_worktree_diff`, `terminal_switch_git_branch` |
+| Command catalog/history | `terminal_list_commands`, `terminal_get_recent_history`, `terminal_get_prediction` |
+| Composer intelligence | `terminal_get_composer_intelligence`, `ai_predict_command_smart` |
+| Conversations/settings | `memory_*` commands via `src-tauri/src/memory/` |
+| Agent and skills | `agent_*` commands via `src-tauri/src/ai/agent/` |
 
-### 6.2 Context Menu (React)
+### 6.3 Adaptation Notes
 
-```tsx
-// src/components/ContextMenu.tsx
+The original Warp-derived concepts still map cleanly to Octomus:
 
-interface ContextCategory {
-  id: string;
-  name: string;
-  icon: string;  // Lucide icon
-  items: ContextItem[];
-}
-
-interface ContextItem {
-  id: string;
-  label: string;
-  detail?: string;      // File path, symbol type, etc.
-  category: string;
-  insertText: string;   // What gets inserted into prompt
-}
-
-// Categories for Octomus:
-const CATEGORIES: ContextCategory[] = [
-  { id: 'files',     name: 'Files',         icon: 'folder' },
-  { id: 'code',      name: 'Code Symbols',  icon: 'code' },
-  { id: 'terminal',  name: 'Terminal',       icon: 'terminal' },
-  { id: 'history',   name: 'Conversations',  icon: 'message-circle' },
-  { id: 'rules',     name: 'Rules',          icon: 'book-open' },
-  { id: 'web',       name: 'Web',            icon: 'globe' },
-];
-```
-
-### 6.3 Slash Command Menu Component (React)
-
-```tsx
-// src/components/SlashMenu.tsx
-
-interface SlashMenuProps {
-  query: string;           // Text after "/"
-  commands: SlashCommand[];
-  selectedIndex: number;
-  onSelect: (cmd: SlashCommand) => void;
-  onClose: () => void;
-}
-
-function SlashMenu({ query, commands, selectedIndex, onSelect }: SlashMenuProps) {
-  const filtered = commands.filter(cmd =>
-    cmd.name.slice(1).toLowerCase().startsWith(query.toLowerCase())
-  );
-
-  return (
-    <div className="slash-menu">
-      {filtered.map((cmd, i) => (
-        <div
-          key={cmd.name}
-          className={`slash-item ${i === selectedIndex ? 'selected' : ''}`}
-          onClick={() => onSelect(cmd)}
-        >
-          <Icon name={cmd.icon} size={16} />
-          <span className="name">{cmd.name}</span>
-          <span className="description">{cmd.description}</span>
-          {cmd.arg_hint && (
-            <span className="hint">{cmd.arg_hint}</span>
-          )}
-        </div>
-      ))}
-    </div>
-  );
-}
-```
-
-### 6.4 Input Component with Menu Detection
-
-```tsx
-// src/components/SpotlightInput.tsx
-
-function SpotlightInput() {
-  const [text, setText] = useState('');
-  const [menuState, setMenuState] = useState<'none' | 'slash' | 'context'>('none');
-
-  const handleChange = (value: string) => {
-    setText(value);
-
-    // Detect menu triggers
-    if (value.startsWith('/')) {
-      setMenuState('slash');
-    } else if (value.includes('@') && !value.endsWith(' ')) {
-      setMenuState('context');
-    } else {
-      setMenuState('none');
-    }
-  };
-
-  const handleKeyDown = (e: KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      if (menuState !== 'none') {
-        // Select current menu item
-      } else {
-        submitPrompt(text);
-      }
-    }
-    if (e.key === 'ArrowUp' && menuState !== 'none') {
-      e.preventDefault(); // Navigate menu up
-    }
-    if (e.key === 'ArrowDown' && menuState !== 'none') {
-      e.preventDefault(); // Navigate menu down
-    }
-    if (e.key === 'Escape') {
-      setMenuState('none');
-    }
-  };
-
-  return (
-    <div className="spotlight-input">
-      {menuState === 'slash' && (
-        <SlashMenu query={text.slice(1)} ... />
-      )}
-      {menuState === 'context' && (
-        <ContextMenu query={extractAtQuery(text)} ... />
-      )}
-      <textarea
-        value={text}
-        onChange={e => handleChange(e.target.value)}
-        onKeyDown={handleKeyDown}
-        placeholder="Ask a question..."
-      />
-      <div className="input-toolbar">
-        <button onClick={() => setMenuState('context')}>@ Context</button>
-        <button onClick={() => { setText('/'); setMenuState('slash'); }}>/ Commands</button>
-        <button className="submit" onClick={() => submitPrompt(text)}>
-          Submit ▶
-        </button>
-      </div>
-    </div>
-  );
-}
-```
-
-### 6.5 Tauri Commands for Context Data
-
-```rust
-// src-tauri/src/spotlight/context.rs
-
-#[tauri::command]
-async fn list_files(
-    state: State<'_, AppState>,
-    query: String,
-) -> Result<Vec<FileItem>, String> {
-    // Fuzzy search files in cwd/repo
-}
-
-#[tauri::command]
-async fn list_code_symbols(
-    state: State<'_, AppState>,
-    query: String,
-) -> Result<Vec<CodeSymbol>, String> {
-    // Search functions, classes, etc. via tree-sitter or LSP
-}
-
-#[tauri::command]
-fn get_slash_commands() -> Vec<SlashCommand> {
-    builtin_commands()
-}
-
-#[tauri::command]
-async fn execute_slash_command(
-    state: State<'_, AppState>,
-    command: String,
-    args: Option<String>,
-) -> Result<SlashCommandResult, String> {
-    match command.as_str() {
-        "/new" => { /* start new conversation */ }
-        "/model" => { /* open model picker */ }
-        "/compact" => { /* summarize conversation */ }
-        "/open" => { /* open file in editor */ }
-        _ => Err(format!("Unknown command: {command}")),
-    }
-}
-```
+| Warp concept | Octomus home |
+|--------------|--------------|
+| Slash commands | `src/lib/constants.ts`, tray commands, composer handlers |
+| @ context menu | `ComposerContextMenu.tsx` + terminal/code/memory commands |
+| Prompt history | `src/components/Tray/TrayHistory.tsx`, memory conversation APIs |
+| Input mode and prediction | `useComposerIntelligence.ts`, `terminal_get_composer_intelligence`, `terminal_get_prediction` |
+| Settings/menu shortcuts | `src-tauri/src/menus/*`, `src-tauri/src/keybindings.rs`, settings sections |

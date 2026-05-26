@@ -15,7 +15,12 @@ type ConfiguredModelRecord = {
   modelId?: unknown;
   friendlyName?: unknown;
   baseUrl?: unknown;
+  supportsAttachments?: unknown;
 };
+
+function readBoolean(value: unknown) {
+  return typeof value === 'boolean' ? value : null;
+}
 
 function buildModelFromSettings(
   selectedModelId: string | null,
@@ -40,6 +45,7 @@ function buildModelFromSettings(
   const modelId = readString(selectedConfiguredModel?.modelId)
     ?? readString(providerStatus?.modelId)
     ?? selectedModelId;
+  const supportsAttachments = readBoolean(selectedConfiguredModel?.supportsAttachments) ?? false;
 
   return {
     id: selectedModelId,
@@ -47,7 +53,8 @@ function buildModelFromSettings(
     label: friendlyName ?? modelId ?? selectedModelId,
     provider: providerLabel,
     baseUrl,
-    note: modelId ? `Model ID: ${modelId}` : (baseUrl ? `Base URL: ${baseUrl}` : 'Stored securely on this device.')
+    note: modelId ? `Model ID: ${modelId}` : (baseUrl ? `Base URL: ${baseUrl}` : 'Stored securely on this device.'),
+    supportsAttachments
   };
 }
 
@@ -109,6 +116,7 @@ export function useModelSelection() {
   const requiresModelSetup = isProviderStatusLoaded && !isConfigured;
   const selectedModelLabel = selectedModel?.label ?? "You don't have any model";
   const selectedModelApiId = selectedModel?.modelId ?? selectedModel?.id ?? null;
+  const selectedModelSupportsAttachments = selectedModel?.supportsAttachments ?? false;
 
   const selectModel = (modelId: string, persist = false) => {
     setSelectedModelId(modelId);
@@ -124,6 +132,7 @@ export function useModelSelection() {
     selectedModelId: resolvedSelectedModelId,
     selectedModelApiId,
     selectedModelLabel,
+    selectedModelSupportsAttachments,
     isConfigured,
     isProviderStatusLoaded,
     requiresModelSetup,

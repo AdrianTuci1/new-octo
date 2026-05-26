@@ -1,7 +1,5 @@
 # Raport de Extracție: Warp Agent Logic → Octomus
 
-> **Data:** 2026-05-02  
-> **Scop:** Maparea completă a funcționalităților din `warp/app/src/ai` și `warp/app/src/ai_assistant` care pot fi preluate/adaptate pentru sistemul de agenți din Octomus Launcher.
 
 ---
 

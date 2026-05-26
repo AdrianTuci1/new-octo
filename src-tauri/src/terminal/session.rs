@@ -61,6 +61,7 @@ pub struct TerminalSession {
     pub shell: String,
     runtime: TerminalSessionRuntime,
     cwd: Mutex<Option<String>>,
+    previous_cwd: Mutex<Option<String>>,
     status: Mutex<TerminalSessionStatus>,
     master: Mutex<Option<Box<dyn MasterPty + Send>>>,
     writer: Mutex<Option<Box<dyn Write + Send>>>,
@@ -96,6 +97,7 @@ impl TerminalSession {
             shell,
             runtime,
             cwd: Mutex::new(cwd),
+            previous_cwd: Mutex::new(None),
             status: Mutex::new(initial_status),
             master: Mutex::new(Some(master)),
             writer: Mutex::new(Some(writer)),
@@ -116,6 +118,7 @@ impl TerminalSession {
             shell,
             runtime,
             cwd: Mutex::new(cwd),
+            previous_cwd: Mutex::new(None),
             status: Mutex::new(initial_status),
             master: Mutex::new(None),
             writer: Mutex::new(None),
@@ -155,11 +158,18 @@ impl TerminalSession {
     }
 
     pub fn set_cwd(&self, cwd: Option<String>) {
-        if let Some(cwd) = cwd {
-            if let Ok(mut current_cwd) = self.cwd.lock() {
-                *current_cwd = Some(cwd);
+        if let Ok(mut current_cwd) = self.cwd.lock() {
+            if let Ok(mut previous_cwd) = self.previous_cwd.lock() {
+                if current_cwd.as_ref() != cwd.as_ref() {
+                    *previous_cwd = current_cwd.clone();
+                }
+                *current_cwd = cwd;
             }
         }
+    }
+
+    pub fn previous_cwd(&self) -> Option<String> {
+        self.previous_cwd.lock().ok().and_then(|cwd| cwd.clone())
     }
 
     pub fn write(&self, data: &str) -> Result<(), String> {

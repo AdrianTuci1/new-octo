@@ -1,7 +1,6 @@
 # Settings, Session Sharing & Telemetry
 
-> Reverse-engineered din Warp: `settings/` (~600K), `terminal/shared_session/` (~80K),
-> `server/telemetry/` (~15K logic + 1.2M events).
+
 > Adaptat pentru Octomus: Tauri v2 + Rust + React.
 
 ---

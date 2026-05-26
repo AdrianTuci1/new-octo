@@ -24,6 +24,7 @@ import type {
 
 type RunCommandOptions = {
   source?: TerminalCommandSource;
+  waitForCompletion?: boolean;
 };
 
 type UseTerminalCommandBlocksOptions = {
@@ -31,9 +32,11 @@ type UseTerminalCommandBlocksOptions = {
   initialSessionId?: string | null;
   target?: TerminalSessionTarget | null;
   sharedBlockMetaById?: Record<string, TerminalBlockSharedMeta>;
+  sharedCommandBlocks?: TerminalCommandBlock[];
   sharedSyntheticBlocks?: TerminalCommandBlock[];
   persistSession?: boolean;
   onBlockMetaChange?: (metaById: Record<string, TerminalBlockSharedMeta>) => void;
+  onCommandBlocksChange?: (blocks: TerminalCommandBlock[]) => void;
   onSyntheticBlocksChange?: (blocks: TerminalCommandBlock[]) => void;
   onSessionChange?: (sessionId: string | null) => void;
 };
@@ -74,9 +77,11 @@ export function useTerminalCommandBlocks(options: UseTerminalCommandBlocksOption
   const initialSessionId = options.initialSessionId ?? null;
   const target = options.target ?? null;
   const sharedBlockMetaById = options.sharedBlockMetaById ?? EMPTY_META;
+  const sharedCommandBlocks = options.sharedCommandBlocks ?? EMPTY_SYNTHETIC_BLOCKS;
   const sharedSyntheticBlocks = options.sharedSyntheticBlocks ?? EMPTY_SYNTHETIC_BLOCKS;
   const persistSession = options.persistSession ?? false;
   const onBlockMetaChange = options.onBlockMetaChange;
+  const onCommandBlocksChange = options.onCommandBlocksChange;
   const onSyntheticBlocksChange = options.onSyntheticBlocksChange;
   const onSessionChange = options.onSessionChange;
   const sessionRef = useRef<TerminalSessionInfo | null>(null);
@@ -84,14 +89,16 @@ export function useTerminalCommandBlocks(options: UseTerminalCommandBlocksOption
   const persistedSessionIdRef = useRef<string | null>(initialSessionId);
   const sessionOriginCwdRef = useRef<string | null>(cwd);
   const sharedBlockMetaRef = useRef<Record<string, TerminalBlockSharedMeta>>(sharedBlockMetaById);
+  const commandBlocksRef = useRef<TerminalCommandBlock[]>(sharedCommandBlocks);
   const syntheticBlocksRef = useRef<TerminalCommandBlock[]>(sharedSyntheticBlocks);
   const activeBlockIdRef = useRef<string | null>(null);
   const didResolveInitialCwdRef = useRef(cwd !== null);
   const blocksRef = useRef<TerminalCommandBlock[]>([]);
-  const commandBlocksRef = useRef<TerminalCommandBlock[]>([]);
   const commandInFlightRef = useRef(false);
   const pendingCommandOutputRef = useRef('');
   const pendingOutputRef = useRef<Record<string, string>>({});
+  const outputBufferRef = useRef<Record<string, string>>({});
+  const outputFlushFrameRef = useRef<number | null>(null);
   const blockOptionsRef = useRef<Record<string, RunCommandOptions>>({});
   const [blocks, setBlocks] = useState<TerminalCommandBlock[]>([]);
   const [expandedBlockIds, setExpandedBlockIds] = useState<string[]>([]);
@@ -109,6 +116,10 @@ export function useTerminalCommandBlocks(options: UseTerminalCommandBlocksOption
     onBlockMetaChange?.(metaById);
   }, [onBlockMetaChange]);
 
+  const publishCommandBlocks = useCallback((nextBlocks: TerminalCommandBlock[]) => {
+    onCommandBlocksChange?.(sortTimelineBlocks(nextBlocks));
+  }, [onCommandBlocksChange]);
+
   const publishSyntheticBlocks = useCallback((nextBlocks: TerminalCommandBlock[]) => {
     onSyntheticBlocksChange?.(sortTimelineBlocks(nextBlocks));
   }, [onSyntheticBlocksChange]);
@@ -120,17 +131,78 @@ export function useTerminalCommandBlocks(options: UseTerminalCommandBlocksOption
   }), []);
 
   const commitTimeline = useCallback((nextCommandBlocks: TerminalCommandBlock[], nextSyntheticBlocks = syntheticBlocksRef.current) => {
-    commandBlocksRef.current = nextCommandBlocks;
-    syntheticBlocksRef.current = sortTimelineBlocks(nextSyntheticBlocks.map((block) => applySharedMeta(block)));
+    const normalizedCommandBlocks = sortTimelineBlocks(nextCommandBlocks.map((block) => applySharedMeta(block)));
+    const normalizedSyntheticBlocks = sortTimelineBlocks(nextSyntheticBlocks.map((block) => applySharedMeta(block)));
+
+    commandBlocksRef.current = normalizedCommandBlocks;
+    syntheticBlocksRef.current = normalizedSyntheticBlocks;
+    publishCommandBlocks(commandBlocksRef.current);
     const nextBlocks = sortTimelineBlocks([
       ...commandBlocksRef.current,
       ...syntheticBlocksRef.current
     ]);
     blocksRef.current = nextBlocks;
     setBlocks(nextBlocks);
-  }, [applySharedMeta]);
+  }, [applySharedMeta, publishCommandBlocks]);
+
+  const flushBufferedOutputs = useCallback(() => {
+    const bufferedEntries = Object.entries(outputBufferRef.current);
+    if (bufferedEntries.length === 0) {
+      return;
+    }
+
+    const currentBuffer = outputBufferRef.current;
+    const nextBuffer: Record<string, string> = {};
+    const currentCommandBlocks = commandBlocksRef.current;
+    const currentBlockIds = new Set(currentCommandBlocks.map((block) => block.id));
+    const nextCommandBlocks = currentCommandBlocks.map((block) => {
+      const addition = currentBuffer[block.id];
+      if (!addition) {
+        return block;
+      }
+
+      return {
+        ...block,
+        output: `${block.output}${addition}`
+      };
+    });
+
+    bufferedEntries.forEach(([blockId, addition]) => {
+      if (!currentBlockIds.has(blockId)) {
+        nextBuffer[blockId] = addition;
+      }
+    });
+
+    outputBufferRef.current = nextBuffer;
+
+    if (nextCommandBlocks.every((block, index) => block === currentCommandBlocks[index])) {
+      return;
+    }
+
+    commitTimeline(nextCommandBlocks);
+  }, [commitTimeline]);
+
+  const scheduleOutputFlush = useCallback(() => {
+    if (outputFlushFrameRef.current !== null) {
+      return;
+    }
+
+    outputFlushFrameRef.current = window.requestAnimationFrame(() => {
+      outputFlushFrameRef.current = null;
+      flushBufferedOutputs();
+    });
+  }, [flushBufferedOutputs]);
 
   const lastSharedSyntheticBlocksRef = useRef<TerminalCommandBlock[]>(sharedSyntheticBlocks);
+  const lastSharedCommandBlocksRef = useRef<TerminalCommandBlock[]>(sharedCommandBlocks);
+
+  useEffect(() => {
+    if (lastSharedCommandBlocksRef.current === sharedCommandBlocks && commandBlocksRef.current.length === sharedCommandBlocks.length) {
+      return;
+    }
+    lastSharedCommandBlocksRef.current = sharedCommandBlocks;
+    commitTimeline(sharedCommandBlocks, syntheticBlocksRef.current);
+  }, [commitTimeline, sharedCommandBlocks]);
 
   useEffect(() => {
     if (lastSharedSyntheticBlocksRef.current === sharedSyntheticBlocks && syntheticBlocksRef.current.length === sharedSyntheticBlocks.length) {
@@ -155,6 +227,11 @@ export function useTerminalCommandBlocks(options: UseTerminalCommandBlocksOption
     blocksRef.current = normalizedBlocks;
     pendingCommandOutputRef.current = '';
     pendingOutputRef.current = {};
+    outputBufferRef.current = {};
+    if (outputFlushFrameRef.current !== null) {
+      window.cancelAnimationFrame(outputFlushFrameRef.current);
+      outputFlushFrameRef.current = null;
+    }
     blockOptionsRef.current = Object.fromEntries(
       normalizedBlocks.map((block) => [block.id, { source: block.source }])
     );
@@ -223,70 +300,47 @@ export function useTerminalCommandBlocks(options: UseTerminalCommandBlocksOption
   }, [cwd, onSessionChange, target]);
 
   const upsertBlock = useCallback((block: TerminalBlock) => {
-    setBlocks((currentBlocks) => {
-      const currentCommandBlocks = currentBlocks.filter((currentBlock) => currentBlock.presentation !== 'conversation-link');
-      const existing = currentCommandBlocks.find((currentBlock) => currentBlock.id === block.id);
-      const pendingCommandOutput = commandInFlightRef.current ? pendingCommandOutputRef.current : '';
-      const pendingOutput = `${pendingOutputRef.current[block.id] ?? ''}${pendingCommandOutput}`;
-      const canonicalBlock = existing?.finishedAt && !block.finishedAt ? existing : block;
-      const sharedMeta = sharedBlockMetaRef.current[block.id];
-      const source = existing?.source ?? sharedMeta?.source ?? blockOptionsRef.current[block.id]?.source ?? (commandInFlightRef.current && pendingCommandOutputRef.current === '' ? blockOptionsRef.current['PENDING']?.source : undefined);
-      
-      const nextBlock = applySharedMeta({
-        ...mergeBlock(canonicalBlock, `${existing?.output ?? ''}${pendingOutput}`, sharedMeta),
-        source
-      });
+    const currentCommandBlocks = commandBlocksRef.current;
+    const existing = currentCommandBlocks.find((currentBlock) => currentBlock.id === block.id);
+    const pendingCommandOutput = commandInFlightRef.current ? pendingCommandOutputRef.current : '';
+    const bufferedOutput = outputBufferRef.current[block.id] ?? '';
+    delete outputBufferRef.current[block.id];
+    const pendingOutput = `${pendingOutputRef.current[block.id] ?? ''}${pendingCommandOutput}${bufferedOutput}`;
+    const canonicalBlock = existing?.finishedAt && !block.finishedAt ? existing : block;
+    const sharedMeta = sharedBlockMetaRef.current[block.id];
+    const source = existing?.source ?? sharedMeta?.source ?? blockOptionsRef.current[block.id]?.source ?? (commandInFlightRef.current && pendingCommandOutputRef.current === '' ? blockOptionsRef.current['PENDING']?.source : undefined);
 
-      if (pendingOutput) {
-        delete pendingOutputRef.current[block.id];
-        pendingCommandOutputRef.current = '';
-      }
-
-      if (nextBlock.status === 'running') {
-        activeBlockIdRef.current = nextBlock.id;
-        commandInFlightRef.current = false;
-      } else if (activeBlockIdRef.current === nextBlock.id) {
-        activeBlockIdRef.current = null;
-      }
-
-      const nextCommandBlocks = existing
-        ? currentCommandBlocks.map((currentBlock) => (
-            currentBlock.id === nextBlock.id ? nextBlock : currentBlock
-          ))
-        : [...currentCommandBlocks, nextBlock].slice(-80);
-      commitTimeline(nextCommandBlocks);
-      return sortTimelineBlocks([
-        ...nextCommandBlocks,
-        ...syntheticBlocksRef.current
-      ]);
+    const nextBlock = applySharedMeta({
+      ...mergeBlock(canonicalBlock, `${existing?.output ?? ''}${pendingOutput}`, sharedMeta),
+      source
     });
+
+    if (pendingOutput) {
+      delete pendingOutputRef.current[block.id];
+      pendingCommandOutputRef.current = '';
+    }
+
+    if (nextBlock.status === 'running') {
+      activeBlockIdRef.current = nextBlock.id;
+      commandInFlightRef.current = false;
+    } else if (activeBlockIdRef.current === nextBlock.id) {
+      activeBlockIdRef.current = null;
+    }
+
+    const nextCommandBlocks = existing
+      ? currentCommandBlocks.map((currentBlock) => (
+          currentBlock.id === nextBlock.id ? nextBlock : currentBlock
+        ))
+      : [...currentCommandBlocks, nextBlock].slice(-80);
+    commitTimeline(nextCommandBlocks);
   }, [applySharedMeta, commitTimeline]);
 
   const appendOutput = useCallback((blockId: string, data: string) => {
     if (!data) return;
 
-    setBlocks((currentBlocks) => {
-      const currentCommandBlocks = currentBlocks.filter((block) => block.presentation !== 'conversation-link');
-      if (!currentCommandBlocks.some((block) => block.id === blockId)) {
-        pendingOutputRef.current[blockId] = `${pendingOutputRef.current[blockId] ?? ''}${data}`;
-        return currentBlocks;
-      }
-
-      const nextCommandBlocks = currentCommandBlocks.map((block) =>
-        block.id === blockId
-          ? {
-              ...block,
-              output: `${block.output}${data}`
-            }
-          : block
-      );
-      commitTimeline(nextCommandBlocks);
-      return sortTimelineBlocks([
-        ...nextCommandBlocks,
-        ...syntheticBlocksRef.current
-      ]);
-    });
-  }, [commitTimeline]);
+    outputBufferRef.current[blockId] = `${outputBufferRef.current[blockId] ?? ''}${data}`;
+    scheduleOutputFlush();
+  }, [scheduleOutputFlush]);
 
   useEffect(() => {
     persistedSessionIdRef.current = initialSessionId;
@@ -401,6 +455,7 @@ export function useTerminalCommandBlocks(options: UseTerminalCommandBlocksOption
       const activeSession = sessionRef.current;
       if (!activeSession || event.payload.sessionId !== activeSession.id) return;
 
+      sessionOriginCwdRef.current = event.payload.cwd ?? null;
       sessionRef.current = {
         ...activeSession,
         cwd: event.payload.cwd ?? null
@@ -425,6 +480,7 @@ export function useTerminalCommandBlocks(options: UseTerminalCommandBlocksOption
       sessionRef.current = nextSessionInfo;
       setSessionInfo(nextSessionInfo);
       if (event.payload.cwd !== undefined) {
+        sessionOriginCwdRef.current = event.payload.cwd ?? null;
         setSessionCwd(event.payload.cwd ?? null);
       }
     });
@@ -571,6 +627,11 @@ export function useTerminalCommandBlocks(options: UseTerminalCommandBlocksOption
       sessionRef.current = null;
       setSessionInfo(null);
       resetCompletionState();
+      outputBufferRef.current = {};
+      if (outputFlushFrameRef.current !== null) {
+        window.cancelAnimationFrame(outputFlushFrameRef.current);
+        outputFlushFrameRef.current = null;
+      }
     };
   }, [appendOutput, persistSession, resetCompletionState, upsertBlock, upsertCompletionState]);
 
@@ -609,6 +670,11 @@ export function useTerminalCommandBlocks(options: UseTerminalCommandBlocksOption
     activeBlockIdRef.current = null;
     pendingCommandOutputRef.current = '';
     pendingOutputRef.current = {};
+    outputBufferRef.current = {};
+    if (outputFlushFrameRef.current !== null) {
+      window.cancelAnimationFrame(outputFlushFrameRef.current);
+      outputFlushFrameRef.current = null;
+    }
     blockOptionsRef.current = {};
     setSessionCwd(null);
     setSessionInfo(null);
@@ -631,7 +697,8 @@ export function useTerminalCommandBlocks(options: UseTerminalCommandBlocksOption
         const response = await invoke<TerminalRunCommandResponse>('terminal_run_command', {
           request: {
             sessionId: session.id,
-            command: normalized
+            command: normalized,
+            waitForCompletion: options.waitForCompletion ?? options.source !== 'user'
           }
         });
         blockOptionsRef.current[response.block.id] = options;
@@ -664,6 +731,11 @@ export function useTerminalCommandBlocks(options: UseTerminalCommandBlocksOption
     commandInFlightRef.current = false;
     pendingCommandOutputRef.current = '';
     pendingOutputRef.current = {};
+    outputBufferRef.current = {};
+    if (outputFlushFrameRef.current !== null) {
+      window.cancelAnimationFrame(outputFlushFrameRef.current);
+      outputFlushFrameRef.current = null;
+    }
     blockOptionsRef.current = {};
     sessionRef.current = null;
     sessionPromiseRef.current = null;

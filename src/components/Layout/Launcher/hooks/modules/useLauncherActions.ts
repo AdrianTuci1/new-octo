@@ -35,6 +35,7 @@ export function useLauncherActions({
     
     refs.pendingConversationAnchorRef.current = { conversationId: nextId, startedAt: new Date().toISOString() };
     refs.pendingAutoSubmitPromptRef.current = autoSubmit && nextPrompt ? nextPrompt : null;
+    refs.suppressComposerShellAutodetectRef.current = nextPrompt || null;
 
     void runtime.chat.saveCurrentConversation?.();
     runtime.agentTerminal.replaceBlocks([]);
@@ -43,6 +44,8 @@ export function useLauncherActions({
     
     runtime.setResolvedPendingApproval(null);
     store.setModeLock(null);
+    store.setAutodetectedShellLatch(false);
+    store.setAllowSingleCharacterCommandPrediction(false);
     tray.closeTray();
     store.setComposerSurface('agent');
     runtime.chat.clearMessages();

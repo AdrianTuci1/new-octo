@@ -2,7 +2,7 @@
 
 This repository is moving toward a dual-output architecture:
 
-- `Octomus Desktop`: the Tauri application used as the control plane.
+- `Octomus`: the Tauri application used as the control plane.
 - `octomus-cli`: a headless runtime entrypoint that can later evolve into the remote harness runtime for cloud terminals and agent execution.
 
 ## Execution Model
@@ -11,7 +11,7 @@ This repository is moving toward a dual-output architecture:
 
 The desktop app remains responsible for:
 
-- user interface and launcher flows
+- Octomus UI flows
 - workspace tabs and settings
 - secret selection and credential mapping
 - cloud session lifecycle orchestration

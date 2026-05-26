@@ -1,10 +1,4 @@
-use std::{
-    collections::HashMap,
-    io::Read,
-    process::Command,
-    sync::Mutex,
-    thread,
-};
+use std::{collections::HashMap, io::Read, path::PathBuf, process::Command, sync::Mutex, thread};
 
 use tauri::{AppHandle, Emitter, State};
 
@@ -16,16 +10,19 @@ use super::events::{
     TerminalCompletionUpdateEvent, TerminalCompletionsFinishedEvent,
     TerminalCompletionsPromptEvent, TerminalCompletionsStartedEvent, TerminalDataEvent,
     TerminalExitEvent, TerminalSessionCwdEvent, EVENT_BLOCK, EVENT_BLOCK_OUTPUT,
-    EVENT_COMPLETION_RESULT, EVENT_COMPLETION_UPDATE, EVENT_COMPLETIONS_FINISHED,
-    EVENT_COMPLETIONS_PROMPT, EVENT_COMPLETIONS_STARTED, EVENT_DATA, EVENT_EXIT,
-    EVENT_SESSION_CWD,
+    EVENT_COMPLETIONS_FINISHED, EVENT_COMPLETIONS_PROMPT, EVENT_COMPLETIONS_STARTED,
+    EVENT_COMPLETION_RESULT, EVENT_COMPLETION_UPDATE, EVENT_DATA, EVENT_EXIT, EVENT_SESSION_CWD,
 };
+use super::fs::home_dir;
 use super::requests::{
-    CreateTerminalSessionRequest, RunTerminalCommandRequest, TerminalRunCommandResponse,
-    TerminalSessionRequest, WriteTerminalSessionRequest, ResizeTerminalSessionRequest,
+    CreateTerminalSessionRequest, ResizeTerminalSessionRequest, RunTerminalCommandRequest,
+    TerminalRunCommandResponse, TerminalSessionRequest, WriteTerminalSessionRequest,
 };
-use super::session::{SharedTerminalSession, TerminalSessionInfo, TerminalSessionKind, TerminalSessionStatus};
+use super::session::{
+    SharedTerminalSession, TerminalSessionInfo, TerminalSessionKind, TerminalSessionStatus,
+};
 use super::transport;
+use crate::shell_signatures::parser::parse_shell_input;
 
 #[derive(Clone)]
 pub struct ManagedTerminalSession {
@@ -121,9 +118,7 @@ pub fn terminal_create_session(
     let cwd = request.cwd.clone();
     let spawned = match target.resolved_kind() {
         TerminalSessionKind::Local => transport::local::create_session(rows, cols, cwd)?,
-        TerminalSessionKind::Cloud => {
-            transport::cloud::create_session(rows, cols, cwd, &target)?
-        }
+        TerminalSessionKind::Cloud => transport::cloud::create_session(rows, cols, cwd, &target)?,
     };
     let session = spawned.session;
     let info = session.info();
@@ -177,40 +172,87 @@ pub fn terminal_run_command(
         let _ = app.emit(EVENT_BLOCK, event);
     }
 
-    let output = run_shell_command(&session.shell, session.cwd().as_deref(), command);
+    if request.wait_for_completion == Some(false) {
+        let app_handle = app.clone();
+        let session_handle = session.clone();
+        let block_id = block.id.clone();
+        let command = command.to_string();
+        thread::spawn(move || {
+            finish_terminal_command(app_handle, session_handle, block_id, command);
+        });
+
+        return Ok(TerminalRunCommandResponse {
+            block,
+            output: String::new(),
+            pending: Some(true),
+        });
+    }
+
+    let (finished_block, output_text) =
+        finish_terminal_command(app, session, block.id.clone(), command.to_string());
+
+    Ok(TerminalRunCommandResponse {
+        block: finished_block,
+        output: output_text,
+        pending: Some(false),
+    })
+}
+
+fn finish_terminal_command(
+    app: AppHandle,
+    session: SharedTerminalSession,
+    block_id: String,
+    command: String,
+) -> (TerminalBlock, String) {
+    let output = run_shell_command(&session.shell, session.cwd().as_deref(), &command);
     let (exit_code, output_text) = match output {
         Ok((exit_code, output_text)) => (Some(exit_code), output_text),
         Err(error) => (Some(1), format!("{error}\n")),
     };
 
+    if exit_code == Some(0) {
+        if let Some(next_cwd) = resolve_command_cwd_change(
+            &command,
+            session.cwd().as_deref(),
+            session.previous_cwd().as_deref(),
+        ) {
+            session.set_cwd(Some(next_cwd));
+        }
+    }
+
     if !output_text.is_empty() {
-        let _ = session.with_blocks(|blocks| blocks.append_output(&block.id, &output_text));
+        let _ = session.with_blocks(|blocks| blocks.append_output(&block_id, &output_text));
         let _ = app.emit(
             EVENT_BLOCK_OUTPUT,
             TerminalBlockOutputEvent {
                 session_id: session.id.clone(),
-                block_id: block.id.clone(),
+                block_id: block_id.clone(),
                 data: output_text.clone(),
             },
         );
     }
 
     let finished_events = session
-        .with_blocks(|blocks| blocks.finish_command(&session.id, &block.id, exit_code))
+        .with_blocks(|blocks| blocks.finish_command(&session.id, &block_id, exit_code))
         .unwrap_or_default();
     let finished_block = finished_events
         .first()
         .map(|event| event.block.clone())
-        .unwrap_or(block);
+        .unwrap_or_else(|| TerminalBlock {
+            id: block_id,
+            command,
+            output: output_text.clone(),
+            started_at: chrono::Utc::now(),
+            finished_at: Some(chrono::Utc::now()),
+            exit_code,
+            duration_ms: None,
+        });
 
     for event in finished_events {
         let _ = app.emit(EVENT_BLOCK, event);
     }
 
-    Ok(TerminalRunCommandResponse {
-        block: finished_block,
-        output: output_text,
-    })
+    (finished_block, output_text)
 }
 
 pub fn terminal_resize(
@@ -344,7 +386,9 @@ fn spawn_reader_thread(
                                             },
                                         );
                                     }
-                                    super::ansi::ShellHook::CompletionUpdateDescription { value } => {
+                                    super::ansi::ShellHook::CompletionUpdateDescription {
+                                        value,
+                                    } => {
                                         session.update_last_completion_result(value.clone());
                                         let _ = app.emit(
                                             EVENT_COMPLETION_UPDATE,
@@ -416,6 +460,54 @@ fn run_shell_command(
     output_text.push_str(&String::from_utf8_lossy(&output.stderr));
 
     Ok((output.status.code().unwrap_or(1), output_text))
+}
+
+fn resolve_command_cwd_change(
+    command: &str,
+    current_cwd: Option<&str>,
+    previous_cwd: Option<&str>,
+) -> Option<String> {
+    let parsed = parse_shell_input(command);
+    let first = parsed.tokens.first()?.as_str();
+    if first != "cd" {
+        return None;
+    }
+
+    let target = parsed.tokens.get(1).map(String::as_str).unwrap_or("");
+    resolve_cd_target(target, current_cwd, previous_cwd)
+}
+
+fn resolve_cd_target(
+    target: &str,
+    current_cwd: Option<&str>,
+    previous_cwd: Option<&str>,
+) -> Option<String> {
+    let target = target.trim();
+    let home = home_dir();
+
+    let resolved = if target.is_empty() {
+        home
+    } else if target == "-" {
+        previous_cwd
+            .map(PathBuf::from)
+            .or_else(|| current_cwd.map(PathBuf::from))
+    } else if target == "~" {
+        home
+    } else if let Some(rest) = target.strip_prefix("~/") {
+        home.map(|home_dir| home_dir.join(rest))
+    } else {
+        let path = PathBuf::from(target);
+        if path.is_absolute() {
+            Some(path)
+        } else {
+            current_cwd.map(|cwd| PathBuf::from(cwd).join(path))
+        }
+    }?;
+
+    resolved
+        .canonicalize()
+        .map(|path| path.to_string_lossy().to_string())
+        .ok()
 }
 
 #[cfg(test)]

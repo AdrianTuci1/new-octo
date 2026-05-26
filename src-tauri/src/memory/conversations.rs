@@ -405,8 +405,44 @@ pub(crate) fn title_from_messages(messages: &[Value]) -> String {
         })
         .unwrap_or_else(|| "New agent conversation".to_string());
 
-    let normalized = title.split_whitespace().collect::<Vec<_>>().join(" ");
-    truncate_chars(&normalized, 80)
+    let normalized = sanitize_title_text(&title);
+    if normalized.is_empty() {
+        "New agent conversation".to_string()
+    } else {
+        truncate_chars(&normalized, 80)
+    }
+}
+
+fn sanitize_title_text(value: &str) -> String {
+    let without_zero_width = value
+        .chars()
+        .filter(|ch| {
+            !matches!(
+                ch,
+                '\u{200B}' | '\u{200C}' | '\u{200D}' | '\u{2060}' | '\u{FEFF}'
+            )
+        })
+        .collect::<String>();
+
+    without_zero_width
+        .lines()
+        .filter_map(|line| {
+            let trimmed = line.trim();
+            if trimmed.is_empty()
+                || trimmed.eq_ignore_ascii_case("<thinking>")
+                || trimmed.eq_ignore_ascii_case("</thinking>")
+                || trimmed.eq_ignore_ascii_case("[invisible harness instruction]")
+            {
+                None
+            } else {
+                Some(trimmed)
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 pub(crate) fn status_from_messages(messages: &[Value]) -> String {
@@ -505,4 +541,20 @@ impl BuiltExchange {
 struct ToolCallState {
     title: Option<String>,
     created_at: String,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::title_from_messages;
+    use serde_json::json;
+
+    #[test]
+    fn title_from_messages_strips_zero_width_and_harness_markers() {
+        let messages = vec![json!({
+            "role": "assistant",
+            "body": "\u{200B}[Invisible harness instruction]\n\n\u{200D}duckdb nu este instalat"
+        })];
+
+        assert_eq!(title_from_messages(&messages), "duckdb nu este instalat");
+    }
 }

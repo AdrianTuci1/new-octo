@@ -6,10 +6,7 @@ use crate::{
     },
 };
 
-use super::{
-    command_argument_expects_path,
-    parser::parse_shell_input,
-};
+use super::{command_argument_expects_path, parser::parse_shell_input};
 
 #[derive(Debug, Clone)]
 struct PathEntry {
@@ -36,7 +33,9 @@ pub fn predict_path_completion(
         return None;
     }
 
-    let directories_only = tokens.first().is_some_and(|command| matches!(*command, "cd"));
+    let directories_only = tokens
+        .first()
+        .is_some_and(|command| matches!(*command, "cd"));
     let (directory_path, partial_name, replacement_prefix, quote_prefix) =
         build_path_completion_request(current_token, cwd)?;
 
@@ -66,8 +65,7 @@ pub fn predict_path_completion(
 
     let normalized_partial = partial_name.to_lowercase();
     let next_entry = candidate_entries.into_iter().find(|entry| {
-        normalized_partial.is_empty()
-            || entry.name.to_lowercase().starts_with(&normalized_partial)
+        normalized_partial.is_empty() || entry.name.to_lowercase().starts_with(&normalized_partial)
     })?;
 
     let replacement = format!(
@@ -143,16 +141,19 @@ fn build_path_completion_request(
     }
 
     if token.starts_with('/') {
-        return build_nested_path_request(token, "/", "/")
-            .map(|(a, b, c)| (a, b, c, quote_prefix));
+        return build_nested_path_request(token, "/", "/").map(|(a, b, c)| (a, b, c, quote_prefix));
     }
 
     if token.starts_with("./") || token.starts_with("../") || token.contains('/') {
-        return build_nested_path_request(token, cwd, "")
-            .map(|(a, b, c)| (a, b, c, quote_prefix));
+        return build_nested_path_request(token, cwd, "").map(|(a, b, c)| (a, b, c, quote_prefix));
     }
 
-    Some((cwd.to_string(), token.to_string(), String::new(), quote_prefix))
+    Some((
+        cwd.to_string(),
+        token.to_string(),
+        String::new(),
+        quote_prefix,
+    ))
 }
 
 fn build_nested_path_request(

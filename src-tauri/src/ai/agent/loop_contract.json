@@ -33,6 +33,7 @@
     "plan_execution",
     "propose_terminal_command",
     "propose_file_change",
+    "explore_workspace",
     "propose_mcp_server",
     "suggest_follow_up"
   ],
@@ -202,6 +203,7 @@
         "plan_execution",
         "propose_terminal_command",
         "propose_file_change",
+        "explore_workspace",
         "propose_mcp_server",
         "suggest_follow_up"
       ],
@@ -232,6 +234,13 @@
           "type": "emit_tool_call",
           "tool": "propose_file_change",
           "description": "Use for file creation or edits instead of heredocs or raw file dumps."
+        },
+        {
+          "id": "explore-workspace",
+          "actor": "model",
+          "type": "emit_tool_call",
+          "tool": "explore_workspace",
+          "description": "Use for read-only recursive workspace search when you need files, functions, or variables."
         },
         {
           "id": "propose-mcp-server",

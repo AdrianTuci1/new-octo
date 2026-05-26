@@ -1,16 +1,19 @@
-import { Bot, FileText, MessagesSquare, Sparkles, Code2, Settings, Cloud, Clipboard, FolderOpen, GitBranch, User } from 'lucide-react';
+import { Bot, FileText, MessagesSquare, Sparkles, Code2, Settings, Cloud, Clipboard, FolderOpen, GitBranch, User, Server } from 'lucide-react';
+import { getPrimaryModifierLabel } from './platform';
 import type { HelpItem, CommandItem } from '../types/ui';
+
+const primaryModifier = getPrimaryModifierLabel();
 
 export const HELP_ITEMS: HelpItem[] = [
   { keys: ['!'], label: 'input shell command' },
-  { keys: ['⌘', 'I'], label: 'toggle shell mode' },
+  { keys: [primaryModifier, 'I'], label: 'toggle shell mode' },
   { keys: ['/'], label: 'for slash commands' },
   { keys: ['@'], label: 'for file paths and attaching other context' },
-  { keys: ['⇧', '⌘', '+'], label: 'open code review' },
-  { keys: ['⇧', '⌘', 'A'], label: 'toggle conversation list' },
-  { keys: ['⌘', 'Y'], label: 'search and continue conversations' },
-  { keys: ['⌘', '↩'], label: 'start a new conversation' },
-  { keys: ['⇧', '⌘', 'I'], label: 'toggle auto-accept' },
+  { keys: ['⇧', primaryModifier, '+'], label: 'open code review' },
+  { keys: ['⇧', primaryModifier, 'A'], label: 'toggle conversation list' },
+  { keys: [primaryModifier, 'Y'], label: 'search and continue conversations' },
+  { keys: [primaryModifier, '↩'], label: 'start a new conversation' },
+  { keys: ['⇧', primaryModifier, 'I'], label: 'toggle auto-accept' },
   { keys: ['^', 'C'], label: 'pause agent' },
   { keys: ['esc'], label: 'go back to terminal' }
 ];
@@ -33,6 +36,9 @@ export const COMMAND_ITEMS: CommandItem[] = [
   { label: '/prompts', detail: 'Search saved prompts', icon: Sparkles },
   { label: '/open-skill', detail: 'Open or inspect a skill', icon: Settings },
   { label: '/open-settings-file', detail: 'Open a local Octomus settings file', icon: Settings },
+  { label: '/tab-configs', detail: 'Browse installed tab config layouts', icon: Server },
+  { label: '/create-tab-config', detail: 'Create a new tab config layout', icon: Code2 },
+  { label: '/update-tab-config', detail: 'Edit an existing tab config layout', icon: Code2 },
   { label: '/profile', detail: 'Inspect or update an agent profile', icon: User },
   { label: '/plan', detail: 'Prompt the agent to research and create a plan', icon: Code2 },
   { label: '/create-mcp', detail: 'Create or configure an MCP server', icon: Code2 },
@@ -70,4 +76,3 @@ export const COMPOSER_PLACEHOLDERS = [
   "Octomus anything e.g. Debug the memory leak in my Go worker",
   "Octomus anything e.g. Create a bash script to backup logs to AWS S3"
 ];
-

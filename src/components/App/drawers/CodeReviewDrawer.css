@@ -193,69 +193,117 @@
 }
 
 .code-review-file-diff {
-  overflow-x: auto;
   background: #050505;
   padding: 8px 0;
 }
 
+.code-review-diff-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
 .code-review-diff-line {
   display: grid;
-  grid-template-columns: 58px 20px minmax(max-content, 1fr);
-  min-height: 22px;
-  align-items: stretch;
+  grid-template-columns: 42px 18px minmax(0, 1fr);
+  align-items: start;
+  gap: 0;
+  padding: 2px 12px 2px 10px;
+  border-top: 1px solid transparent;
+  color: var(--text-main);
   font-family: var(--font-mono);
   font-size: 12px;
-  line-height: 22px;
+  line-height: 1.45;
+}
+
+.code-review-diff-line:first-child {
+  border-top: 0;
 }
 
 .code-review-diff-line.addition {
-  background: rgba(90, 220, 95, 0.17);
+  background: rgba(90, 220, 95, 0.14);
 }
 
 .code-review-diff-line.deletion {
-  background: rgba(255, 90, 76, 0.16);
+  background: rgba(255, 90, 76, 0.14);
 }
 
 .code-review-diff-line.hunk {
   background: rgba(112, 162, 255, 0.11);
-  color: #9ec6ff;
+  color: var(--text-soft);
 }
 
 .code-review-diff-line.meta {
+  background: rgba(255, 255, 255, 0.03);
   color: var(--text-dim);
-  opacity: 0.72;
-}
-
-.code-review-diff-gutter,
-.code-review-diff-prefix {
-  color: rgba(255, 255, 255, 0.42);
-  user-select: none;
 }
 
 .code-review-diff-gutter {
-  padding: 0 8px;
+  padding-right: 8px;
+  color: var(--text-dim);
+  font-size: 11px;
   text-align: right;
-  background: rgba(255, 255, 255, 0.025);
+  user-select: none;
+}
+
+.code-review-diff-line.addition .code-review-diff-gutter {
+  color: #8dff5f;
+}
+
+.code-review-diff-line.deletion .code-review-diff-gutter {
+  color: #ff7a70;
+}
+
+.code-review-diff-line.hunk .code-review-diff-gutter {
+  color: #82b1ff;
 }
 
 .code-review-diff-prefix {
+  color: var(--text-dim);
+  font-weight: 800;
   text-align: center;
+  user-select: none;
 }
 
-.code-review-diff-line.addition .code-review-diff-prefix,
-.code-review-diff-line.addition .code-review-diff-content {
-  color: #d7ffd1;
+.code-review-diff-prefix.addition {
+  color: #8dff5f;
 }
 
-.code-review-diff-line.deletion .code-review-diff-prefix,
-.code-review-diff-line.deletion .code-review-diff-content {
-  color: #ffd1cd;
+.code-review-diff-prefix.deletion {
+  color: #ff7a70;
+}
+
+.code-review-diff-prefix.hunk {
+  color: #82b1ff;
 }
 
 .code-review-diff-content {
-  padding-right: 18px;
-  color: rgba(255, 255, 255, 0.84);
-  white-space: pre;
+  min-width: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.code-review-diff-content.syntax {
+  color: var(--text-main);
+}
+
+.code-review-diff-content .mtk1,
+.code-review-diff-content .mtk2,
+.code-review-diff-content .mtk3,
+.code-review-diff-content .mtk4,
+.code-review-diff-content .mtk5,
+.code-review-diff-content .mtk6,
+.code-review-diff-content .mtk7,
+.code-review-diff-content .mtk8,
+.code-review-diff-content .mtk9,
+.code-review-diff-content .mtk10,
+.code-review-diff-content .mtk11,
+.code-review-diff-content .mtk12,
+.code-review-diff-content .mtk13,
+.code-review-diff-content .mtk14,
+.code-review-diff-content .mtk15 {
+  white-space: pre-wrap;
 }
 
 .code-review-empty-state,

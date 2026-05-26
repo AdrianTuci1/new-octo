@@ -8,7 +8,164 @@ import { normalizeAgentSettings } from '../../../../App/settings/agentSettings';
 import { normalizeCodeSettings } from '../../../../App/settings/codeSettings';
 import type { LauncherProps } from '../types';
 import type { CommandApproval, FileChangeApproval } from '../../../../../types';
-import type { WebSearchRequest, WebSearchResponse } from '../../../../../types/chat';
+import type {
+  WebSearchRequest,
+  WebSearchResponse,
+  CloudAgentLaunchRequest,
+  WorkspaceExplorationRequest,
+  WorkspaceExplorationEntry,
+  WorkspaceExplorationSegment,
+  WorkspaceExplorationSearch
+} from '../../../../../types/chat';
+import type { TerminalCommandBlock } from '../../../../../types/terminal';
+
+function sortTerminalBlocksChronologically(blocks: TerminalCommandBlock[]) {
+  return [...blocks].sort((left, right) => {
+    const leftTime = Date.parse(left.startedAt || '') || 0;
+    const rightTime = Date.parse(right.startedAt || '') || 0;
+
+    if (leftTime !== rightTime) {
+      return leftTime - rightTime;
+    }
+
+    return left.id.localeCompare(right.id);
+  });
+}
+
+function dedupeTerminalBlocks(blocks: TerminalCommandBlock[]) {
+  const blockById = new Map<string, TerminalCommandBlock>();
+  blocks.forEach((block) => {
+    blockById.set(block.id, block);
+  });
+
+  return [...blockById.values()];
+}
+
+const WORKSPACE_QUERY_STOP_WORDS = new Set([
+  'a',
+  'ai',
+  'al',
+  'ale',
+  'all',
+  'and',
+  'are',
+  'as',
+  'at',
+  'ca',
+  'cat',
+  'ce',
+  'cum',
+  'cu',
+  'de',
+  'despre',
+  'din',
+  'do',
+  'does',
+  'este',
+  'for',
+  'how',
+  'in',
+  'is',
+  'it',
+  'la',
+  'mod',
+  'ne',
+  'of',
+  'on',
+  'pe',
+  'prin',
+  'restul',
+  'sau',
+  'si',
+  'sunt',
+  'the',
+  'to',
+  'ul',
+  'un',
+  'una',
+  'unei',
+  'unor',
+  'va'
+]);
+
+function normalizeWorkspaceToken(token: string) {
+  const trimmed = token
+    .trim()
+    .replace(/^[^A-Za-z0-9]+|[^A-Za-z0-9]+$/g, '');
+
+  if (!trimmed) {
+    return '';
+  }
+
+  const normalized = trimmed
+    .split(/[-_]/g)
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase()
+    .replace(/\b([a-z0-9]+?)(?:ului|elor|ilor|urile|urilor|ul|le|lor)\b/g, '$1')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  return normalized;
+}
+
+function buildWorkspaceSearchQueries(query: string, maxQueries = 4) {
+  const normalizedQuery = query.replace(/\s+/g, ' ').trim();
+  const queries: string[] = [];
+  const seen = new Set<string>();
+
+  const pushQuery = (value: string) => {
+    const cleaned = value.replace(/\s+/g, ' ').trim();
+    const key = cleaned.toLowerCase();
+    if (!cleaned || seen.has(key)) {
+      return;
+    }
+    seen.add(key);
+    queries.push(cleaned);
+  };
+
+  if (normalizedQuery && normalizedQuery.split(/\s+/).length <= 6) {
+    pushQuery(normalizedQuery);
+  }
+
+  const normalizedTokens = (normalizedQuery.match(/[A-Za-z0-9][A-Za-z0-9_-]*/g) ?? [])
+    .flatMap((token) => normalizeWorkspaceToken(token).split(/\s+/g))
+    .map((token) => token.trim())
+    .filter((token) => token.length >= 2 && !WORKSPACE_QUERY_STOP_WORDS.has(token));
+
+  normalizedTokens
+    .filter((token) => token.length >= 4)
+    .forEach(pushQuery);
+
+  if (normalizedTokens.length >= 2) {
+    pushQuery(`${normalizedTokens[0]} ${normalizedTokens[1]}`);
+  }
+
+  if (queries.length === 0 && normalizedQuery) {
+    pushQuery(normalizedQuery);
+  }
+
+  return queries.slice(0, Math.max(1, maxQueries));
+}
+
+function displayWorkspacePath(path: string, cwd?: string | null) {
+  const normalizedPath = path.trim();
+  const normalizedCwd = cwd?.trim();
+  if (!normalizedPath || !normalizedCwd) {
+    return normalizedPath;
+  }
+
+  const prefix = normalizedCwd.endsWith('/') ? normalizedCwd : `${normalizedCwd}/`;
+  if (normalizedPath === normalizedCwd) {
+    return '.';
+  }
+
+  if (normalizedPath.startsWith(prefix)) {
+    return normalizedPath.slice(prefix.length);
+  }
+
+  return normalizedPath;
+}
 
 export function useLauncherRuntime(props: LauncherProps, store: any, tray: any) {
   const {
@@ -17,9 +174,11 @@ export function useLauncherRuntime(props: LauncherProps, store: any, tray: any) 
     initialTerminalSessionId = null,
     persistTerminalSession = false,
     initialAgentTerminalSessionId = null,
+    startupCommands = [],
     terminalTarget = null,
     agentTerminalTarget = null,
     active = true,
+    initialComposerSurface = 'terminal'
   } = props;
 
   // Use selectors for store to prevent unnecessary re-renders of this orchestrator
@@ -37,6 +196,11 @@ export function useLauncherRuntime(props: LauncherProps, store: any, tray: any) 
   const setComposerSurface = useLauncherStore(state => state.setComposerSurface);
   const setModeLock = useLauncherStore(state => state.setModeLock);
   const openModelDrawer = useUIStore((state) => state.openModelDrawer);
+
+  function fileNameFromPath(path: string) {
+    const normalized = path.endsWith('/') ? path.slice(0, -1) : path;
+    return normalized.split('/').pop() || normalized;
+  }
 
   const workingDirectoryRaw = Hooks.useWorkingDirectory({
     initialPath: initialWorkingDirectory,
@@ -83,6 +247,7 @@ export function useLauncherRuntime(props: LauncherProps, store: any, tray: any) 
     modelSelectionRaw.selectedModelApiId,
     modelSelectionRaw.models,
     modelSelectionRaw.selectedModelLabel,
+    modelSelectionRaw.selectedModelSupportsAttachments,
     modelSelectionRaw.isConfigured,
     modelSelectionRaw.requiresModelSetup
   ]);
@@ -123,8 +288,10 @@ export function useLauncherRuntime(props: LauncherProps, store: any, tray: any) 
     target: terminalTarget,
     persistSession: persistTerminalSession,
     sharedBlockMetaById: props.sharedTerminalBlockMetaById,
+    sharedCommandBlocks: props.sharedTerminalBlocks,
     sharedSyntheticBlocks: props.sharedSyntheticBlocks,
     onBlockMetaChange: props.onTerminalBlockMetaChange,
+    onCommandBlocksChange: props.onTerminalBlocksChange,
     onSyntheticBlocksChange: props.onSyntheticBlocksChange,
     onSessionChange: props.onTerminalSessionChange
   });
@@ -153,7 +320,9 @@ export function useLauncherRuntime(props: LauncherProps, store: any, tray: any) 
     target: agentTerminalTarget,
     persistSession: persistTerminalSession,
     sharedBlockMetaById: props.sharedAgentTerminalBlockMetaById,
+    sharedCommandBlocks: props.sharedAgentTerminalBlocks,
     onBlockMetaChange: props.onAgentTerminalBlockMetaChange,
+    onCommandBlocksChange: props.onAgentTerminalBlocksChange,
     onSessionChange: props.onAgentTerminalSessionChange
   });
 
@@ -175,6 +344,29 @@ export function useLauncherRuntime(props: LauncherProps, store: any, tray: any) 
     agentTerminalRaw.replaceBlocks,
     agentTerminalRaw.clearBlocks
   ]);
+
+  const activeSurfaceWorkingDirectory = store.composerSurface === 'terminal'
+    ? terminal.cwd ?? workingDirectory.currentPath
+    : agentTerminal.cwd ?? workingDirectory.currentPath;
+  const effectiveWorkingDirectory = activeSurfaceWorkingDirectory ?? workingDirectory.currentPath;
+
+  useEffect(() => {
+    if (!effectiveWorkingDirectory || effectiveWorkingDirectory === workingDirectory.currentPath) {
+      return;
+    }
+
+    workingDirectory.syncCurrentPath(effectiveWorkingDirectory);
+  }, [effectiveWorkingDirectory, workingDirectory]);
+
+  const conversationTerminalBlocks = useMemo(
+    () => sortTerminalBlocksChronologically(
+      dedupeTerminalBlocks([
+        ...terminalRaw.blocks.filter(Utils.isCommandBlock),
+        ...agentTerminalRaw.blocks.filter(Utils.isCommandBlock)
+      ])
+    ),
+    [agentTerminalRaw.blocks, terminalRaw.blocks]
+  );
 
   const requestWebSearch = useCallback(async (request: WebSearchRequest) => {
     if (!agentSettings.enabled || !agentSettings.permissions.webSearch || !activeProfileCallWebTools) {
@@ -228,6 +420,271 @@ export function useLauncherRuntime(props: LauncherProps, store: any, tray: any) 
     }
   }, [agentSettings.enabled, agentSettings.permissions.webSearch, activeProfileCallWebTools]);
 
+  const requestCloudAgentLaunch = useCallback(async (request: CloudAgentLaunchRequest) => {
+    try {
+      const result = await props.onCloudAgentLaunch?.({
+        prompt: request.prompt,
+        cwd: effectiveWorkingDirectory,
+        repo: request.repo,
+        baseBranch: request.baseBranch,
+        workBranch: request.workBranch,
+        profileId: request.profileId
+      });
+      void chatApiRef.current?.submitToolResult(
+        request.toolCallId,
+        result ? 'Cloud agent launched in a new cloud tab.' : 'Cloud agent launch was cancelled.',
+        'cloud-agent',
+        request.prompt,
+        [],
+        { cloudAgentStatus: result ? 'started' : 'cancelled' }
+      );
+    } catch (error) {
+      void chatApiRef.current?.submitToolResult(
+        request.toolCallId,
+        `Cloud agent launch failed: ${error}`,
+        'cloud-agent',
+        request.prompt,
+        [],
+        { cloudAgentStatus: 'error' }
+      );
+    }
+  }, [effectiveWorkingDirectory, props]);
+
+  const requestWorkspaceExploration = useCallback(async (request: WorkspaceExplorationRequest) => {
+    if (!agentSettings.enabled) {
+      const createdAt = new Date().toISOString();
+      const noteEntry: WorkspaceExplorationEntry = {
+        id: `workspace-exploration-disabled-${Date.now()}`,
+        kind: 'note',
+        text: 'Workspace exploration is disabled in Agent settings.',
+        createdAt
+      };
+      void chatApiRef.current?.submitToolResult(
+        request.toolCallId,
+        'Workspace exploration is disabled in Agent settings.',
+        'workspace-exploration',
+        request.query,
+        [],
+        {
+          workspaceExploration: {
+            query: request.query,
+            summary: 'Workspace exploration is disabled in Agent settings.',
+            segments: [{
+              id: `workspace-exploration-disabled-${Date.now()}`,
+              createdAt,
+              summary: 'Workspace exploration is disabled in Agent settings.',
+              entries: [noteEntry],
+              searches: [],
+              files: []
+            }],
+            searches: [],
+            files: []
+          }
+        }
+      );
+      return;
+    }
+
+    const query = request.query.trim();
+    if (!query) {
+      return;
+    }
+
+    const cwd = effectiveWorkingDirectory;
+    const maxResults = request.maxResults ?? 6;
+    const searchQueries = buildWorkspaceSearchQueries(query);
+
+    type FilesystemSearchEntry = {
+      path: string;
+      isDirectory: boolean;
+    };
+
+    type FilesystemSearchListing = {
+      currentPath: string;
+      entries: FilesystemSearchEntry[];
+    };
+
+    type CodeIndexSearchResult = {
+      path: string;
+      snippet: string;
+      relativePath: string;
+      language: string;
+    };
+
+    try {
+      const createdAt = new Date().toISOString();
+      const searches: WorkspaceExplorationSearch[] = [];
+      const fileMap = new Map<string, { path: string; source: 'code-index' | 'filesystem'; snippet?: string }>();
+      const collectedErrors: string[] = [];
+      const entries: WorkspaceExplorationEntry[] = [];
+
+      if (codeSettings.indexing.enabled) {
+        for (const searchQuery of searchQueries) {
+          try {
+            const results = await invoke<CodeIndexSearchResult[]>('code_index_search', {
+              query: searchQuery,
+              maxResults: Math.max(1, Math.min(20, maxResults))
+            });
+
+            searches.push({
+              source: 'code-index',
+              query: searchQuery,
+              resultCount: results.length
+            });
+            entries.push({
+              id: `workspace-exploration-${createdAt}-code-index-search-${searches.length}`,
+              kind: 'search',
+              text: `Searched for ${searchQuery}`,
+              detail: `in code index (${results.length} match${results.length === 1 ? '' : 'es'})`,
+              createdAt
+            });
+
+            results.forEach((entry) => {
+              if (!entry.path.trim()) return;
+              if (!fileMap.has(entry.path)) {
+                fileMap.set(entry.path, {
+                  path: entry.path,
+                  source: 'code-index',
+                  snippet: entry.snippet?.trim() || undefined
+                });
+              }
+            });
+          } catch (error) {
+            collectedErrors.push(error instanceof Error ? error.message : String(error));
+          }
+        }
+      }
+
+      for (const searchQuery of searchQueries) {
+        try {
+          const listing = await invoke<FilesystemSearchListing>('terminal_search_directory_entries', {
+            request: {
+              path: cwd,
+              query: searchQuery
+            }
+          });
+
+          const resultCount = listing.entries.filter((entry) => !entry.isDirectory).length;
+          searches.push({
+            source: 'filesystem',
+            query: searchQuery,
+            resultCount
+          });
+          entries.push({
+            id: `workspace-exploration-${createdAt}-filesystem-search-${searches.length}`,
+            kind: 'search',
+            text: `Searched for ${searchQuery}`,
+            detail: `in workspace files (${resultCount} match${resultCount === 1 ? '' : 'es'})`,
+            createdAt
+          });
+
+          listing.entries.forEach((entry) => {
+            if (entry.isDirectory || !entry.path.trim()) return;
+            if (!fileMap.has(entry.path)) {
+              fileMap.set(entry.path, {
+                path: entry.path,
+                source: 'filesystem'
+              });
+            }
+          });
+        } catch (error) {
+          collectedErrors.push(error instanceof Error ? error.message : String(error));
+        }
+      }
+
+      const files = Array.from(fileMap.values()).slice(0, maxResults);
+      if (files.length === 0) {
+        entries.push({
+          id: `workspace-exploration-${createdAt}-no-results`,
+          kind: 'note',
+          text: `No matching files found for "${query}".`,
+          detail: `Tried search queries: ${searchQueries.join(', ')}`,
+          createdAt
+        });
+      }
+      const summary = `Explored ${files.length} file${files.length === 1 ? '' : 's'}, ${searches.length} search${searches.length === 1 ? '' : 'es'}.`;
+      files.forEach((file, index) => {
+        const displayPath = displayWorkspacePath(file.path, cwd);
+        entries.push({
+          id: `workspace-exploration-${createdAt}-file-${index}`,
+          kind: 'read',
+          text: `Found ${displayPath || fileNameFromPath(file.path)}`,
+          detail: file.snippet?.trim() || `via ${file.source}`,
+          path: file.path,
+          createdAt
+        });
+      });
+
+      const segment: WorkspaceExplorationSegment = {
+        id: `workspace-exploration-${createdAt}`,
+        createdAt,
+        summary,
+        entries,
+        searches,
+        files
+      };
+      const formatted = [
+        summary,
+        searchQueries.length > 1 ? `Search queries: ${searchQueries.join(', ')}` : '',
+        ...(collectedErrors.length > 0 ? [`Search warnings: ${collectedErrors.join(' | ')}`] : []),
+        ...entries.map((entry) => [
+          entry.text,
+          entry.path ? `Path: ${displayWorkspacePath(entry.path, cwd)}` : '',
+          entry.detail ? `Detail: ${entry.detail}` : ''
+        ].filter(Boolean).join('\n'))
+      ].join('\n');
+
+      void chatApiRef.current?.submitToolResult(
+        request.toolCallId,
+        formatted,
+        'workspace-exploration',
+        request.query,
+        [],
+        {
+          workspaceExploration: {
+            query,
+            summary,
+            segments: [segment],
+            searches,
+            files
+          }
+        }
+      );
+    } catch (error) {
+      const createdAt = new Date().toISOString();
+      const noteEntry: WorkspaceExplorationEntry = {
+        id: `workspace-exploration-error-${Date.now()}`,
+        kind: 'note',
+        text: `Workspace exploration failed for "${request.query}".`,
+        detail: error instanceof Error ? error.message : String(error),
+        createdAt
+      };
+      void chatApiRef.current?.submitToolResult(
+        request.toolCallId,
+        `Workspace exploration failed for "${request.query}": ${error}`,
+        'workspace-exploration',
+        request.query,
+        [],
+        {
+          workspaceExploration: {
+            query,
+            summary: `Workspace exploration failed for "${request.query}".`,
+            segments: [{
+              id: `workspace-exploration-error-${Date.now()}`,
+              createdAt,
+              summary: `Workspace exploration failed for "${request.query}".`,
+              entries: [noteEntry],
+              searches: [],
+              files: []
+            }],
+            searches: [],
+            files: []
+          }
+        }
+      );
+    }
+  }, [agentSettings.enabled, codeSettings.indexing.enabled, effectiveWorkingDirectory]);
+
   const onConversationCreated = useCallback((nextId: string) => {
     setLocalConversationId(nextId);
     if (hasControlledConversation) props.onConversationChange?.(nextId);
@@ -247,7 +704,7 @@ export function useLauncherRuntime(props: LauncherProps, store: any, tray: any) 
 
   const chatRaw = Hooks.useChat({
     conversationId: resolvedConversationId,
-    cwd: workingDirectory.currentPath,
+    cwd: effectiveWorkingDirectory,
     modelId: profileBaseModelId,
     terminalModelId: profileTerminalModelId,
     requiresModelSetup: modelSelection.requiresModelSetup,
@@ -256,14 +713,50 @@ export function useLauncherRuntime(props: LauncherProps, store: any, tray: any) 
       openModelDrawer();
     },
     onCloseTray: tray.closeTray,
-    terminalBlocks: agentTerminal.blocks,
+    terminalBlocks: conversationTerminalBlocks,
     onCommandApproval: requestCommandApproval,
     onFileChangeApproval: requestFileChangeApproval,
     onWebSearch: requestWebSearch,
+    onWorkspaceExploration: requestWorkspaceExploration,
+    onCloudAgentLaunch: requestCloudAgentLaunch,
     onConversationCreated,
     onNewChat,
     active
   });
+
+  const startupCommandsSignature = useMemo(() => startupCommands.join('\u0000'), [startupCommands]);
+  const startupCommandsConsumedRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!startupCommands.length || startupCommandsConsumedRef.current === startupCommandsSignature) {
+      return;
+    }
+
+    startupCommandsConsumedRef.current = startupCommandsSignature;
+    let cancelled = false;
+    const terminalSurface = initialComposerSurface === 'agent' ? agentTerminal : terminal;
+
+    void (async () => {
+      try {
+        for (const command of startupCommands) {
+          if (cancelled) {
+            return;
+          }
+
+          await terminalSurface.runCommand(command, { source: 'assistant' });
+        }
+      } catch (error) {
+        console.warn('[LauncherRuntime] failed to run startup commands', error);
+      } finally {
+        if (!cancelled) {
+          props.onStartupCommandsConsumed?.();
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [agentTerminal, initialComposerSurface, props, startupCommands, startupCommandsSignature, terminal]);
 
   useEffect(() => {
     chatApiRef.current = chatRaw;
@@ -271,14 +764,19 @@ export function useLauncherRuntime(props: LauncherProps, store: any, tray: any) 
 
   const chat = useMemo(() => chatRaw, [
     chatRaw.messages,
+    chatRaw.attachments,
     chatRaw.query,
     chatRaw.setQuery,
     chatRaw.submitQuery,
     chatRaw.clearMessages,
-    chatRaw.saveCurrentConversation
+    chatRaw.saveCurrentConversation,
+    chatRaw.attachFiles,
+    chatRaw.addAttachments,
+    chatRaw.removeAttachment,
+    chatRaw.clearAttachments
   ]);
 
-  const { value: queryWithoutActivator } = consumeShellModeActivator(chat.query);
+  const { consumed: hasShellActivator, value: queryWithoutActivator } = consumeShellModeActivator(chat.query);
 
   const terminalCommandBlocks = useMemo(() => terminal.blocks.filter(Utils.isCommandBlock), [terminal.blocks]);
   const agentTerminalCommandBlocks = useMemo(() => agentTerminal.blocks.filter(Utils.isCommandBlock), [agentTerminal.blocks]);
@@ -302,9 +800,13 @@ export function useLauncherRuntime(props: LauncherProps, store: any, tray: any) 
     terminal,
     agentTerminal,
     chat,
+    hasShellActivator,
     queryWithoutActivator,
     terminalCommandBlocks,
     agentTerminalCommandBlocks,
+    conversationTerminalBlocks,
+    activeSurfaceWorkingDirectory,
+    effectiveWorkingDirectory,
     hasControlledConversation,
     hasControlledPendingApproval,
   }), [
@@ -325,9 +827,13 @@ export function useLauncherRuntime(props: LauncherProps, store: any, tray: any) 
     terminal,
     agentTerminal,
     chat,
+    hasShellActivator,
     queryWithoutActivator,
     terminalCommandBlocks,
     agentTerminalCommandBlocks,
+    conversationTerminalBlocks,
+    activeSurfaceWorkingDirectory,
+    effectiveWorkingDirectory,
     hasControlledConversation,
     hasControlledPendingApproval,
   ]);

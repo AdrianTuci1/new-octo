@@ -1,15 +1,9 @@
-
 /**
  * Module: useLauncherEffects
  */
 import { useEffect, useRef } from 'react';
 import { buildConversationLinkTitle } from '../helpers';
 import type { LauncherProps } from '../types';
-
-function isCommandSearchQuery(value: string) {
-  const trimmed = value.trimStart();
-  return trimmed.startsWith('/') && !trimmed.includes(' ');
-}
 
 export type LauncherEffectsParams = {
   store: any;
@@ -23,6 +17,30 @@ export type LauncherEffectsParams = {
   clearTerminalSurface: () => void;
 };
 
+type LauncherEffectContext = {
+  store: any;
+  props: LauncherProps;
+  runtime: any;
+  history: any;
+  ui: any;
+  tray: any;
+  refs: any;
+  actions: any;
+  clearTerminalSurface: () => void;
+  initialComposerSurface: 'agent' | 'terminal';
+  resetOnMount: boolean;
+  persistTerminalSession: boolean;
+  initialTerminalSessionId: string | null;
+  initialAgentTerminalSessionId: string | null;
+  pendingApproval: LauncherProps['pendingApproval'];
+  terminalAutoDetectSetting: boolean | undefined;
+  didResetOnMountRef: React.MutableRefObject<boolean>;
+  didPromptModelSetupRef: React.MutableRefObject<boolean>;
+  suppressComposerSurfaceReportRef: React.MutableRefObject<boolean>;
+  lastReportedComposerSurfaceRef: React.MutableRefObject<'agent' | 'terminal' | null>;
+  lastReportedWorkingDirectoryRef: React.MutableRefObject<string | null>;
+};
+
 export function useLauncherEffects(params: LauncherEffectsParams) {
   const {
     store,
@@ -33,31 +51,17 @@ export function useLauncherEffects(params: LauncherEffectsParams) {
     tray,
     refs,
     actions,
-    clearTerminalSurface,
+    clearTerminalSurface
   } = params;
-
   const {
     initialComposerSurface = 'terminal',
     resetOnMount = false,
     persistTerminalSession = false,
     initialTerminalSessionId = null,
     initialAgentTerminalSessionId = null,
-    pendingApproval,
+    pendingApproval
   } = props;
-
-  // Destructure from domains
-  const { 
-    chat, 
-    workingDirectory, 
-    agentTerminal, 
-    modelSelection, 
-    resolvedConversationId, 
-    setResolvedPendingApproval,
-    memoryStore,
-    terminal: runtimeTerminal
-  } = runtime;
-
-  const terminalAutoDetectSetting = memoryStore.settings?.values.terminalAutoDetectEnabled;
+  const terminalAutoDetectSetting = runtime.memoryStore.settings?.values.terminalAutoDetectEnabled;
 
   const didResetOnMountRef = useRef(false);
   const didPromptModelSetupRef = useRef(false);
@@ -65,109 +69,224 @@ export function useLauncherEffects(params: LauncherEffectsParams) {
   const lastReportedComposerSurfaceRef = useRef<'agent' | 'terminal' | null>(null);
   const lastReportedWorkingDirectoryRef = useRef<string | null>(null);
 
-  // 1. History Sync
+  const context: LauncherEffectContext = {
+    store,
+    props,
+    runtime,
+    history,
+    ui,
+    tray,
+    refs,
+    actions,
+    clearTerminalSurface,
+    initialComposerSurface,
+    resetOnMount,
+    persistTerminalSession,
+    initialTerminalSessionId,
+    initialAgentTerminalSessionId,
+    pendingApproval,
+    terminalAutoDetectSetting,
+    didResetOnMountRef,
+    didPromptModelSetupRef,
+    suppressComposerSurfaceReportRef,
+    lastReportedComposerSurfaceRef,
+    lastReportedWorkingDirectoryRef
+  };
+
+  useHistorySelectionSync(context);
+  useVisibleModelSelectionSync(context);
+  useInitialComposerSurfaceSync(context);
+  usePendingAutoSubmit(context);
+  useTerminalAutoDetectSettingSync(context);
+  useComposerSurfaceReporter(context);
+  useWorkingDirectoryReporter(context);
+  useLauncherMountReset(context);
+  useModelSetupOnboarding(context);
+  useConversationAnchorSync(context);
+
+  return {
+    suppressComposerSurfaceReportRef
+  };
+}
+
+function useHistorySelectionSync({
+  history,
+  store
+}: LauncherEffectContext) {
   useEffect(() => {
     const maxIndex = Math.max(0, history.historyEntries.length - 1);
     if (store.selectedHistoryIndex > maxIndex) {
       store.setSelectedHistoryIndex(maxIndex);
     }
   }, [history.historyEntries.length, store.selectedHistoryIndex, store.setSelectedHistoryIndex]);
+}
 
-  // 2. Model Selection Sync
+function useVisibleModelSelectionSync({
+  runtime,
+  store,
+  ui
+}: LauncherEffectContext) {
   useEffect(() => {
-    const nextIndex = ui.visibleModels.findIndex((model: any) => model.id === modelSelection.selectedModelId);
+    const nextIndex = ui.visibleModels.findIndex((model: any) => model.id === runtime.modelSelection.selectedModelId);
     const targetIndex = nextIndex >= 0 ? nextIndex : 0;
     if (store.selectedModelIndex !== targetIndex) {
       store.setSelectedModelIndex(targetIndex);
     }
-  }, [modelSelection.selectedModelId, ui.visibleModels, store.selectedModelIndex, store.setSelectedModelIndex]);
+  }, [runtime.modelSelection.selectedModelId, store.selectedModelIndex, store.setSelectedModelIndex, ui.visibleModels]);
+}
 
-  // 3. Initial Surface Sync
+function useInitialComposerSurfaceSync({
+  initialComposerSurface,
+  store,
+  suppressComposerSurfaceReportRef
+}: LauncherEffectContext) {
   useEffect(() => {
-    if (store.composerSurface === initialComposerSurface) return;
+    if (store.composerSurface === initialComposerSurface) {
+      return;
+    }
+
     suppressComposerSurfaceReportRef.current = true;
     store.setComposerSurface(initialComposerSurface);
-  }, [initialComposerSurface]);
+  }, [initialComposerSurface, store.composerSurface, store.setComposerSurface, suppressComposerSurfaceReportRef]);
+}
 
-  // 4. Auto-Submit Logic
+function usePendingAutoSubmit({
+  refs,
+  runtime,
+  store
+}: LauncherEffectContext) {
   useEffect(() => {
     const pendingPrompt = refs.pendingAutoSubmitPromptRef.current;
-    if (!pendingPrompt || store.composerSurface !== 'agent' || chat.query.trim() !== pendingPrompt) return;
+    if (!pendingPrompt || store.composerSurface !== 'agent' || runtime.chat.query.trim() !== pendingPrompt) {
+      return;
+    }
+
     refs.pendingAutoSubmitPromptRef.current = null;
     window.requestAnimationFrame(() => {
-      void chat.submitQuery();
+      void runtime.chat.submitQuery();
     });
-  }, [chat.query, store.composerSurface, chat.submitQuery, refs.pendingAutoSubmitPromptRef]);
+  }, [refs.pendingAutoSubmitPromptRef, runtime.chat.query, runtime.chat.submitQuery, store.composerSurface]);
+}
 
-  // 5. Memory Settings Sync
+function useTerminalAutoDetectSettingSync({
+  store,
+  terminalAutoDetectSetting
+}: LauncherEffectContext) {
   useEffect(() => {
     if (typeof terminalAutoDetectSetting === 'boolean' && store.terminalAutoDetectEnabled !== terminalAutoDetectSetting) {
       store.setTerminalAutoDetectEnabled(terminalAutoDetectSetting);
     }
-  }, [terminalAutoDetectSetting, store.terminalAutoDetectEnabled, store.setTerminalAutoDetectEnabled]);
+  }, [store.setTerminalAutoDetectEnabled, store.terminalAutoDetectEnabled, terminalAutoDetectSetting]);
+}
 
-  // 6. Command Tray Sync
-  useEffect(() => {
-    const shouldShowCommandTray = isCommandSearchQuery(chat.query);
-
-    if (shouldShowCommandTray) {
-      if (!tray.isTrayOpen || tray.activeTrayMode !== 'commands') {
-        tray.toggleTray('commands');
-      }
-      return;
-    }
-
-    if (tray.isTrayOpen && tray.activeTrayMode === 'commands') {
-      tray.closeTray();
-    }
-  }, [chat.query, tray.activeTrayMode, tray.closeTray, tray.isTrayOpen, tray.toggleTray]);
-
-  // 7. Report Surface Change
+function useComposerSurfaceReporter({
+  props,
+  store,
+  suppressComposerSurfaceReportRef,
+  lastReportedComposerSurfaceRef
+}: LauncherEffectContext) {
   useEffect(() => {
     if (suppressComposerSurfaceReportRef.current) {
       suppressComposerSurfaceReportRef.current = false;
       lastReportedComposerSurfaceRef.current = store.composerSurface;
       return;
     }
-    if (lastReportedComposerSurfaceRef.current === store.composerSurface) return;
+
+    if (lastReportedComposerSurfaceRef.current === store.composerSurface) {
+      return;
+    }
+
     lastReportedComposerSurfaceRef.current = store.composerSurface;
     props.onComposerSurfaceChange?.(store.composerSurface);
-  }, [props.onComposerSurfaceChange, store.composerSurface]);
+  }, [lastReportedComposerSurfaceRef, props, store.composerSurface, suppressComposerSurfaceReportRef]);
+}
 
-  // 8. Report Working Directory Change
+function useWorkingDirectoryReporter({
+  props,
+  runtime,
+  lastReportedWorkingDirectoryRef
+}: LauncherEffectContext) {
   useEffect(() => {
-    if (lastReportedWorkingDirectoryRef.current === workingDirectory.currentPath) return;
-    lastReportedWorkingDirectoryRef.current = workingDirectory.currentPath;
-    props.onWorkingDirectoryChange?.(workingDirectory.currentPath);
-  }, [props.onWorkingDirectoryChange, workingDirectory.currentPath]);
+    const reportedWorkingDirectory = runtime.activeSurfaceWorkingDirectory ?? runtime.workingDirectory.currentPath;
+    if (lastReportedWorkingDirectoryRef.current === reportedWorkingDirectory) {
+      return;
+    }
 
-  // 9. Reset On Mount
+    lastReportedWorkingDirectoryRef.current = reportedWorkingDirectory;
+    props.onWorkingDirectoryChange?.(reportedWorkingDirectory);
+  }, [
+    lastReportedWorkingDirectoryRef,
+    props,
+    runtime.activeSurfaceWorkingDirectory,
+    runtime.workingDirectory.currentPath
+  ]);
+}
+
+function useLauncherMountReset({
+  actions,
+  clearTerminalSurface,
+  didResetOnMountRef,
+  initialAgentTerminalSessionId,
+  initialComposerSurface,
+  initialTerminalSessionId,
+  pendingApproval,
+  persistTerminalSession,
+  resetOnMount,
+  runtime,
+  store,
+  suppressComposerSurfaceReportRef,
+  tray
+}: LauncherEffectContext) {
   useEffect(() => {
-    if (!resetOnMount || didResetOnMountRef.current) return;
+    if (!resetOnMount || didResetOnMountRef.current) {
+      return;
+    }
+
     didResetOnMountRef.current = true;
     const shouldClearRuntimeSessions = !persistTerminalSession && !initialTerminalSessionId && !initialAgentTerminalSessionId;
-    if (!resolvedConversationId) chat.clearMessages();
-    chat.setQuery('');
+
+    if (!runtime.resolvedConversationId) {
+      runtime.chat.clearMessages();
+    }
+
+    runtime.chat.setQuery('');
     tray.closeTray();
+
     if (shouldClearRuntimeSessions) {
       clearTerminalSurface();
-      agentTerminal.clearBlocks();
+      runtime.agentTerminal.clearBlocks();
     }
-    suppressComposerSurfaceReportRef.current = true;
-    store.setComposerSurface(initialComposerSurface);
-    const hasControlledPendingApproval = pendingApproval !== undefined;
-    if (!hasControlledPendingApproval) setResolvedPendingApproval(null);
-    store.setModeLock(null);
-    store.setAutodetectedShellLatch(false);
-    store.setAllowSingleCharacterCommandPrediction(false);
-    store.setTerminalAutoDetectEnabled(true);
-    store.setHistoryTab('all');
-    store.setSelectedHistoryIndex(0);
-    store.setModelTab('all');
-    store.setSelectedModelIndex(0);
-  }, [resetOnMount]);
 
-  // 10. Model Setup Onboarding
+    suppressComposerSurfaceReportRef.current = true;
+    store.reset(initialComposerSurface);
+
+    if (pendingApproval === undefined) {
+      runtime.setResolvedPendingApproval(null);
+    }
+  }, [
+    clearTerminalSurface,
+    didResetOnMountRef,
+    initialAgentTerminalSessionId,
+    initialComposerSurface,
+    initialTerminalSessionId,
+    pendingApproval,
+    persistTerminalSession,
+    resetOnMount,
+    runtime,
+    store,
+    suppressComposerSurfaceReportRef,
+    tray,
+    actions
+  ]);
+}
+
+function useModelSetupOnboarding({
+  actions,
+  didPromptModelSetupRef,
+  runtime,
+  store,
+  tray
+}: LauncherEffectContext) {
   useEffect(() => {
     if (store.composerSurface !== 'agent' || !runtime.modelSelection.requiresModelSetup || didPromptModelSetupRef.current) {
       return;
@@ -176,28 +295,42 @@ export function useLauncherEffects(params: LauncherEffectsParams) {
     didPromptModelSetupRef.current = true;
     tray.closeTray();
     actions.openModelDrawer();
-  }, [actions, runtime.modelSelection.requiresModelSetup, tray]);
+  }, [actions, didPromptModelSetupRef, runtime.modelSelection.requiresModelSetup, store.composerSurface, tray]);
+}
 
-  // 11. Anchor Sync
+function useConversationAnchorSync({
+  refs,
+  runtime
+}: LauncherEffectContext) {
   useEffect(() => {
     const anchor = refs.pendingConversationAnchorRef.current;
-    if (!anchor || resolvedConversationId !== anchor.conversationId || chat.messages.length === 0) return;
+    if (!anchor || runtime.resolvedConversationId !== anchor.conversationId || runtime.chat.messages.length === 0) {
+      return;
+    }
+
     refs.seededConversationAnchorTimesRef.current[anchor.conversationId] = anchor.startedAt;
-    runtimeTerminal.upsertSyntheticBlock({
-      id: `conversation-link-${anchor.conversationId}`, 
-      command: '', 
-      output: '', 
-      startedAt: anchor.startedAt, 
-      finishedAt: anchor.startedAt, 
-      status: 'finished', 
-      presentation: 'conversation-link', 
+    runtime.terminal.upsertSyntheticBlock({
+      id: `conversation-link-${anchor.conversationId}`,
+      command: '',
+      output: '',
+      startedAt: anchor.startedAt,
+      finishedAt: anchor.startedAt,
+      status: 'finished',
+      presentation: 'conversation-link',
       conversationId: anchor.conversationId,
-      conversationTitle: buildConversationLinkTitle(anchor.conversationId, chat.messages, memoryStore.conversations)
+      conversationTitle: buildConversationLinkTitle(
+        anchor.conversationId,
+        runtime.chat.messages,
+        runtime.memoryStore.conversations
+      )
     });
     refs.pendingConversationAnchorRef.current = null;
-  }, [memoryStore.conversations, chat.messages, resolvedConversationId, runtimeTerminal.upsertSyntheticBlock, refs.pendingConversationAnchorRef, refs.seededConversationAnchorTimesRef]);
-
-  return {
-    suppressComposerSurfaceReportRef,
-  };
+  }, [
+    refs.pendingConversationAnchorRef,
+    refs.seededConversationAnchorTimesRef,
+    runtime.chat.messages,
+    runtime.memoryStore.conversations,
+    runtime.resolvedConversationId,
+    runtime.terminal.upsertSyntheticBlock
+  ]);
 }

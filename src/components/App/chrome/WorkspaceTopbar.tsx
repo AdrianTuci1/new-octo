@@ -2,20 +2,27 @@ import './WorkspaceTopbar.css';
 import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { ChevronDown, ChevronRight, Cloud, GitBranch, LayoutGrid, Minus, PanelLeftOpen, Plus, Search, Server, Sparkles, TerminalSquare } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useUIStore } from '../../../stores';
+import { useEditorStore } from '../../../stores/editorStore';
 import type { GitWorktreeDiff } from '../../../types/gitDiff';
 import { ProfileAvatar } from '../profile/ProfileAvatar';
 import { useProfileSettings } from '../settings/useProfileSettings';
-import type { WorkspaceChromeTab } from './workspaceChromeTypes';
+import type { WorkspaceActivePaneContext, WorkspaceChromeTab } from './workspaceChromeTypes';
 import { WorkspaceTopbarTab } from './WorkspaceTopbarTab';
 import { WorkspaceTopbarTabMenu } from './WorkspaceTopbarTabMenu';
 import type { LucideIcon } from 'lucide-react';
 
+type TabConfigSummary = {
+  displayName: string;
+  fileName: string;
+  path: string;
+};
+
 type PlusMenuItem = {
-  id: 'agent' | 'terminal' | 'cloud-term' | 'my-tab-config' | 'named-tab-config' | 'worktree-config' | 'tab-config';
+  id: 'agent' | 'terminal' | 'cloud-term' | 'cloud-agent' | 'create-tab-config' | 'update-tab-config' | 'tab-configs' | 'worktree-config';
   label: string;
-  action: 'new-terminal' | 'new-cloud-terminal' | 'none';
+  action: 'new-terminal' | 'new-cloud-terminal' | 'new-cloud-agent' | 'save-current-config' | 'none';
   shortcut?: string;
   icon: LucideIcon;
   hasChevron?: boolean;
@@ -42,16 +49,30 @@ const PLUS_MENU_ITEMS: PlusMenuItem[] = [
     icon: Cloud
   },
   {
-    id: 'my-tab-config',
-    label: 'My tab config',
-    action: 'none',
-    icon: Server
+    id: 'cloud-agent',
+    label: 'Cloud agent',
+    action: 'new-cloud-agent',
+    icon: Sparkles
   },
   {
-    id: 'named-tab-config',
-    label: 'New tab: adriantucicovenco',
+    id: 'create-tab-config',
+    label: 'Create tab config',
+    action: 'save-current-config',
+    icon: Plus
+  },
+  {
+    id: 'update-tab-config',
+    label: 'Update tab config',
     action: 'none',
-    icon: Server
+    icon: Server,
+    hasChevron: true
+  },
+  {
+    id: 'tab-configs',
+    label: 'Tab configs',
+    action: 'none',
+    icon: Server,
+    hasChevron: true
   },
   {
     id: 'worktree-config',
@@ -59,12 +80,6 @@ const PLUS_MENU_ITEMS: PlusMenuItem[] = [
     action: 'none',
     icon: GitBranch,
     hasChevron: true
-  },
-  {
-    id: 'tab-config',
-    label: 'New tab config',
-    action: 'none',
-    icon: Plus
   }
 ];
 
@@ -74,19 +89,21 @@ type WorkspaceTopbarProps = {
   activeTabId: string;
   launcherTabId: string | null;
   tabs: WorkspaceChromeTab[];
-  activeWorkingDirectory: string | null;
+  activePaneContext: WorkspaceActivePaneContext | null;
   onBringTabInLauncher: (tabId: string) => void;
   onCloseOtherTabs: (tabId: string) => void;
   onCloseTabsToRight: (tabId: string) => void;
   onSelectTab: (tabId: string) => void;
   onNewTerminalTab: () => void;
   onNewCloudTerminalTab: () => void;
+  onNewCloudAgentTab: () => void;
   onCloseTab: (tabId: string) => void;
   onMoveTab: (tabId: string, direction: 'left' | 'right') => void;
   onRemoveTabFromLauncher: (tabId: string) => void;
   onRenameTab: (tabId: string) => void;
   onSaveTabAsConfig: (tabId: string) => void;
   onSetTabTint: (tabId: string, tintColor: string | null) => void;
+  onOpenTabConfig: (configPath: string) => void;
   onToggleSidebar: () => void;
   isSidebarOpen: boolean;
   isAgentsActive: boolean;
@@ -99,19 +116,21 @@ export function WorkspaceTopbar({
   activeTabId,
   launcherTabId,
   tabs,
-  activeWorkingDirectory,
+  activePaneContext,
   onBringTabInLauncher,
   onCloseOtherTabs,
   onCloseTabsToRight,
   onSelectTab,
   onNewTerminalTab,
   onNewCloudTerminalTab,
+  onNewCloudAgentTab,
   onCloseTab,
   onMoveTab,
   onRemoveTabFromLauncher,
   onRenameTab,
   onSaveTabAsConfig,
   onSetTabTint,
+  onOpenTabConfig,
   onToggleSidebar,
   isSidebarOpen,
   isAgentsActive,
@@ -122,10 +141,18 @@ export function WorkspaceTopbar({
   const headerRef = useRef<HTMLElement | null>(null);
   const dragSpacerRef = useRef<HTMLDivElement | null>(null);
   const { profile } = useProfileSettings();
+  const openEditorFile = useEditorStore((state) => state.openFile);
   const isCodeReviewDrawerOpen = useUIStore((state) => state.isCodeReviewDrawerOpen);
   const toggleCodeReviewDrawer = useUIStore((state) => state.toggleCodeReviewDrawer);
   const [menuState, setMenuState] = useState<{ tabId: string; left: number; top: number } | null>(null);
   const [gitDiffSummary, setGitDiffSummary] = useState<GitWorktreeDiff | null>(null);
+  const [tabConfigs, setTabConfigs] = useState<TabConfigSummary[]>([]);
+  const [isTabConfigsLoading, setIsTabConfigsLoading] = useState(true);
+  const activeTab = useMemo(
+    () => tabs.find((tab) => tab.id === activeTabId) ?? null,
+    [activeTabId, tabs]
+  );
+  const shouldShowGitDiff = activePaneContext?.canShowGitDiff ?? (activeTab?.kind !== 'settings');
 
   const menuTab = useMemo(
     () => tabs.find((tab) => tab.id === menuState?.tabId) ?? null,
@@ -158,14 +185,14 @@ export function WorkspaceTopbar({
     let cancelled = false;
 
     const refreshDiffSummary = async () => {
-      if (!activeWorkingDirectory) {
+      if (!activePaneContext?.workingDirectory || !shouldShowGitDiff) {
         setGitDiffSummary(null);
         return;
       }
 
       try {
         const summary = await invoke<GitWorktreeDiff>('terminal_get_worktree_diff', {
-          request: { path: activeWorkingDirectory, includePatch: false }
+          request: { path: activePaneContext.workingDirectory, includePatch: false }
         });
         if (!cancelled) {
           setGitDiffSummary(summary);
@@ -187,7 +214,7 @@ export function WorkspaceTopbar({
       window.clearInterval(intervalId);
       window.removeEventListener('focus', handleFocus);
     };
-  }, [activeWorkingDirectory]);
+  }, [activePaneContext?.workingDirectory, shouldShowGitDiff]);
 
   useEffect(() => {
     if (!menuState) {
@@ -249,6 +276,35 @@ export function WorkspaceTopbar({
   const [plusMenuState, setPlusMenuState] = useState<{ left: number; top: number } | null>(null);
   const [selectedPlusItemId, setSelectedPlusItemId] = useState<PlusMenuItem['id']>('agent');
   const [defaultPlusItemId, setDefaultPlusItemId] = useState<PlusMenuItem['id']>(DEFAULT_PLUS_ITEM_ID);
+  const [tabConfigPanelMode, setTabConfigPanelMode] = useState<'browse' | 'edit'>('browse');
+
+  const loadTabConfigs = useCallback(async () => {
+    setIsTabConfigsLoading(true);
+    try {
+      const nextConfigs = await invoke<TabConfigSummary[]>('octomus_list_tab_configs');
+      setTabConfigs(nextConfigs);
+    } catch (error) {
+      console.warn('[WorkspaceTopbar] failed to load tab configs', error);
+      setTabConfigs([]);
+    } finally {
+      setIsTabConfigsLoading(false);
+    }
+  }, []);
+
+  const handleOpenTabConfigInEditor = useCallback(async (configPath: string, fileName: string) => {
+    try {
+      const contents = await invoke<string>('terminal_read_file', {
+        request: { path: configPath }
+      });
+      openEditorFile(configPath, fileName, contents);
+    } catch (error) {
+      console.warn('[WorkspaceTopbar] failed to open tab config in editor', error);
+    }
+  }, [openEditorFile]);
+
+  useEffect(() => {
+    void loadTabConfigs();
+  }, [loadTabConfigs]);
 
   useEffect(() => {
     if (!plusMenuState) {
@@ -272,6 +328,8 @@ export function WorkspaceTopbar({
     const headerRect = headerRef.current?.getBoundingClientRect();
     const triggerRect = element.getBoundingClientRect();
     setSelectedPlusItemId(defaultPlusItemId);
+    setTabConfigPanelMode('browse');
+    void loadTabConfigs();
     setPlusMenuState({
       left: triggerRect.left - (headerRect?.left ?? 0),
       top: triggerRect.bottom - (headerRect?.top ?? 0) + 6
@@ -283,6 +341,7 @@ export function WorkspaceTopbar({
     [defaultPlusItemId]
   );
   const isWorktreeSubmenuOpen = plusMenuState && selectedPlusItemId === 'worktree-config';
+  const isTabConfigPanelOpen = plusMenuState && (selectedPlusItemId === 'tab-configs' || selectedPlusItemId === 'update-tab-config');
   const selectedPlusItem = useMemo(
     () => PLUS_MENU_ITEMS.find((item) => item.id === selectedPlusItemId) ?? PLUS_MENU_ITEMS[0],
     [selectedPlusItemId]
@@ -301,14 +360,36 @@ export function WorkspaceTopbar({
       return;
     }
 
+    if (item.action === 'new-cloud-agent') {
+      setPlusMenuState(null);
+      onNewCloudAgentTab();
+      return;
+    }
+
+    if (item.action === 'save-current-config') {
+      setPlusMenuState(null);
+      onSaveTabAsConfig(activeTabId);
+      return;
+    }
+
     setSelectedPlusItemId(item.id);
+    if (item.id === 'update-tab-config') {
+      setTabConfigPanelMode('edit');
+      return;
+    }
+
+    if (item.id === 'tab-configs') {
+      setTabConfigPanelMode('browse');
+      return;
+    }
+
     if (item.id !== 'worktree-config') {
       setPlusMenuState(null);
     }
   };
 
   const handleMakeDefault = () => {
-    if (selectedPlusItem.id === 'worktree-config' || selectedPlusItem.id === defaultPlusItemId) {
+    if (selectedPlusItem.id === 'worktree-config' || selectedPlusItem.id === 'update-tab-config' || selectedPlusItem.id === 'tab-configs' || selectedPlusItem.id === defaultPlusItemId) {
       return;
     }
 
@@ -347,7 +428,7 @@ export function WorkspaceTopbar({
   };
 
   const primaryPlusItems = useMemo(
-    () => PLUS_MENU_ITEMS.filter((item) => item.id !== 'worktree-config' && item.id !== 'tab-config'),
+    () => PLUS_MENU_ITEMS.filter((item) => item.id !== 'worktree-config' && item.id !== 'update-tab-config' && item.id !== 'tab-configs'),
     []
   );
 
@@ -436,7 +517,7 @@ export function WorkspaceTopbar({
             {primaryPlusItems.map((item) => renderPlusMenuItem(item))}
             <div className="plus-context-menu-divider" />
             {renderPlusMenuItem(PLUS_MENU_ITEMS.find((item) => item.id === 'worktree-config') ?? PLUS_MENU_ITEMS[0])}
-            {renderPlusMenuItem(PLUS_MENU_ITEMS.find((item) => item.id === 'tab-config') ?? PLUS_MENU_ITEMS[0])}
+            {renderPlusMenuItem(PLUS_MENU_ITEMS.find((item) => item.id === 'tab-configs') ?? PLUS_MENU_ITEMS[0])}
           </div>
 
           {isWorktreeSubmenuOpen ? (
@@ -453,6 +534,61 @@ export function WorkspaceTopbar({
                 <span>Add new repo</span>
               </button>
             </div>
+          ) : isTabConfigPanelOpen ? (
+            <div
+              className="plus-context-menu-sidebar plus-context-menu-sidebar-tab-configs"
+              onMouseEnter={() => setSelectedPlusItemId(tabConfigPanelMode === 'edit' ? 'update-tab-config' : 'tab-configs')}
+            >
+              <div className="plus-sidebar-title">Tab configs</div>
+              <div className="plus-tab-config-actions">
+                <button
+                  type="button"
+                  className={tabConfigPanelMode === 'browse' ? 'selected' : ''}
+                  onClick={() => {
+                    setSelectedPlusItemId('tab-configs');
+                    setTabConfigPanelMode('browse');
+                  }}
+                >
+                  Browse
+                </button>
+                <button
+                  type="button"
+                  className={tabConfigPanelMode === 'edit' ? 'selected' : ''}
+                  onClick={() => {
+                    setSelectedPlusItemId('update-tab-config');
+                    setTabConfigPanelMode('edit');
+                  }}
+                >
+                  Update
+                </button>
+              </div>
+              <div className="plus-tab-config-list">
+                {isTabConfigsLoading ? (
+                  <div className="plus-sidebar-empty">Loading tab configs...</div>
+                ) : tabConfigs.length > 0 ? (
+                  tabConfigs.map((config) => (
+                    <button
+                      key={config.path}
+                      type="button"
+                      className="plus-tab-config-item"
+                      onClick={() => {
+                        setPlusMenuState(null);
+                        if (tabConfigPanelMode === 'edit') {
+                          void handleOpenTabConfigInEditor(config.path, config.fileName);
+                        } else {
+                          onOpenTabConfig(config.path);
+                        }
+                      }}
+                    >
+                      <span className="plus-tab-config-name">{config.fileName}</span>
+                      <span className="plus-tab-config-meta">{tabConfigPanelMode === 'edit' ? 'Open in editor' : 'Launch layout'}</span>
+                    </button>
+                  ))
+                ) : (
+                  <div className="plus-sidebar-empty">No tab configs found.</div>
+                )}
+              </div>
+            </div>
           ) : (
             <div className="plus-context-menu-sidebar">
               <div className="plus-sidebar-title">{selectedPlusItem.label}</div>
@@ -460,7 +596,7 @@ export function WorkspaceTopbar({
                 type="button"
                 className="make-default-btn"
                 onClick={handleMakeDefault}
-                disabled={selectedPlusItem.id === defaultPlusItemId}
+                disabled={selectedPlusItem.id === defaultPlusItemId || selectedPlusItem.id === 'worktree-config' || selectedPlusItem.id === 'tab-configs' || selectedPlusItem.id === 'update-tab-config'}
               >
                 {selectedPlusItem.id === defaultPlusItemId ? 'Default' : 'Make default'}
               </button>
@@ -528,23 +664,25 @@ export function WorkspaceTopbar({
       )}
 
       <div className="workspace-topbar-right workspace-topbar-right-compact">
-        <button
-          className={`workspace-topbar-icon-button workspace-topbar-diff-button ${isCodeReviewDrawerOpen ? 'active' : ''}`}
-          type="button"
-          title="Code review"
-          onClick={toggleCodeReviewDrawer}
-        >
-          <span className="workspace-topbar-diff-mark" aria-hidden="true">
-            <Plus size={13} strokeWidth={2.4} />
-            <Minus size={13} strokeWidth={2.4} />
-          </span>
-          {gitDiffSummary?.isRepo ? (
-            <span className="workspace-topbar-diff-stats">
-              <span className="workspace-topbar-diff-additions">+{gitDiffSummary.additions}</span>
-              <span className="workspace-topbar-diff-deletions">-{gitDiffSummary.deletions}</span>
+        {shouldShowGitDiff ? (
+          <button
+            className={`workspace-topbar-icon-button workspace-topbar-diff-button ${isCodeReviewDrawerOpen ? 'active' : ''}`}
+            type="button"
+            title="Code review"
+            onClick={toggleCodeReviewDrawer}
+          >
+            <span className="workspace-topbar-diff-mark" aria-hidden="true">
+              <Plus size={13} strokeWidth={2.4} />
+              <Minus size={13} strokeWidth={2.4} />
             </span>
-          ) : null}
-        </button>
+            {gitDiffSummary?.isRepo ? (
+              <span className="workspace-topbar-diff-stats">
+                <span className="workspace-topbar-diff-additions">+{gitDiffSummary.additions}</span>
+                <span className="workspace-topbar-diff-deletions">-{gitDiffSummary.deletions}</span>
+              </span>
+            ) : null}
+          </button>
+        ) : null}
         <button
           className="workspace-topbar-avatar-button"
           type="button"

@@ -1,22 +1,22 @@
 .code-settings-panel {
-  max-width: 1120px;
-  padding-bottom: 72px;
+  max-width: 1080px;
+  padding-bottom: 56px;
 }
 
 .code-settings-panel .settings-panel-header h1 {
-  margin-bottom: 36px;
-  font-size: 21px;
+  margin-bottom: 24px;
+  font-size: 18px;
 }
 
 .code-settings-group {
-  margin-top: 0;
+  margin-top: 16px;
 }
 
 .code-settings-row {
   align-items: flex-start;
-  gap: 28px;
-  min-height: 82px;
-  padding: 0 0 26px;
+  gap: 20px;
+  min-height: 68px;
+  padding: 6px 0 18px;
 }
 
 .code-settings-row .settings-row-info {
@@ -25,22 +25,22 @@
 }
 
 .code-settings-row .settings-row-title {
-  font-size: 16px;
+  font-size: 14px;
   line-height: 1.25;
   color: var(--text-main);
 }
 
 .code-settings-row .settings-row-description {
   max-width: 940px;
-  margin-top: 10px;
-  font-size: 15px;
-  line-height: 1.25;
+  margin-top: 6px;
+  font-size: 12px;
+  line-height: 1.4;
   color: rgba(255, 255, 255, 0.58);
 }
 
 .code-settings-row .settings-row-action {
   flex: 0 0 auto;
-  min-width: 76px;
+  min-width: 68px;
   display: flex;
   justify-content: flex-end;
 }
@@ -49,28 +49,28 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 24px;
-  margin-top: 24px;
+  gap: 16px;
+  margin-top: 18px;
 }
 
 .code-indexed-folders-header h2 {
   margin: 0;
-  font-size: 21px;
+  font-size: 17px;
   line-height: 1.2;
   letter-spacing: -0.01em;
 }
 
 .code-outline-action {
-  height: 42px;
+  height: 34px;
   display: inline-flex;
   align-items: center;
-  gap: 9px;
-  padding: 0 14px;
+  gap: 8px;
+  padding: 0 12px;
   border: 1px solid var(--border-strong);
   border-radius: 6px;
   background: transparent;
   color: var(--text-main);
-  font-size: 17px;
+  font-size: 12px;
   font-weight: 600;
   cursor: pointer;
   transition: border-color 120ms ease, background 120ms ease;
@@ -103,12 +103,12 @@
 }
 
 .code-index-search {
-  height: 38px;
+  height: 34px;
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin-top: 18px;
-  padding: 0 12px;
+  gap: 8px;
+  margin-top: 14px;
+  padding: 0 10px;
   border: 1px solid var(--border-strong);
   border-radius: 7px;
   background: rgba(255, 255, 255, 0.03);
@@ -123,7 +123,7 @@
   background: transparent;
   color: var(--text-main);
   font: inherit;
-  font-size: 14px;
+  font-size: 13px;
 }
 
 .code-index-search input:disabled {
@@ -134,16 +134,16 @@
   display: flex;
   flex-direction: column;
   gap: 9px;
-  margin-top: 14px;
+  margin-top: 12px;
 }
 
 .code-index-search-title {
   color: rgba(255, 255, 255, 0.56);
-  font-size: 12px;
+  font-size: 11px;
 }
 
 .code-index-search-result {
-  padding: 11px 12px;
+  padding: 9px 10px;
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 7px;
   background: rgba(255, 255, 255, 0.025);
@@ -151,7 +151,7 @@
 
 .code-index-result-path {
   color: var(--text-main);
-  font-size: 13px;
+  font-size: 12px;
   font-family: var(--font-mono, monospace);
 }
 
@@ -159,7 +159,7 @@
 .code-index-result-snippet {
   margin-top: 5px;
   color: rgba(255, 255, 255, 0.52);
-  font-size: 12px;
+  font-size: 11px;
 }
 
 .code-index-result-snippet {
@@ -170,25 +170,25 @@
 }
 
 .code-index-error {
-  margin-top: 12px;
+  margin-top: 10px;
   color: #ff8a66;
-  font-size: 13px;
+  font-size: 12px;
 }
 
 .code-indexed-folder-list {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  margin-top: 24px;
+  gap: 8px;
+  margin-top: 18px;
 }
 
 .code-indexed-folder-item {
-  min-height: 58px;
+  min-height: 52px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 18px;
-  padding: 12px 14px;
+  gap: 14px;
+  padding: 10px 12px;
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 7px;
   background: rgba(255, 255, 255, 0.025);
@@ -201,13 +201,13 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--text-main);
-  font-size: 14px;
+  font-size: 13px;
 }
 
 .code-indexed-folder-meta {
   margin-top: 5px;
   color: rgba(255, 255, 255, 0.5);
-  font-size: 12px;
+  font-size: 11px;
 }
 
 .code-folder-remove {
@@ -215,11 +215,11 @@
   border: 0;
   background: transparent;
   color: rgba(255, 255, 255, 0.58);
-  font-size: 13px;
+  font-size: 12px;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
 }
 
 .code-folder-remove:hover {
@@ -234,20 +234,20 @@
 .code-index-folder-actions {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
 }
 
 .code-editor-panel .settings-panel-header h1 {
-  margin-bottom: 48px;
+  margin-bottom: 28px;
 }
 
 .code-editor-panel .code-settings-row {
-  min-height: 58px;
-  padding-bottom: 22px;
+  min-height: 50px;
+  padding-bottom: 16px;
 }
 
 .code-editor-panel .code-settings-row:has(.settings-row-description) {
-  min-height: 82px;
+  min-height: 68px;
 }
 
 .code-static-select {
@@ -287,15 +287,15 @@
 
 @media (max-width: 900px) {
   .code-settings-panel .settings-panel-header h1 {
-    margin-bottom: 28px;
+    margin-bottom: 20px;
   }
 
   .code-settings-row,
   .code-editor-panel .code-settings-row {
     flex-direction: column;
-    gap: 10px;
+    gap: 8px;
     min-height: 0;
-    padding-bottom: 24px;
+    padding-bottom: 18px;
   }
 
   .code-settings-row .settings-row-action {

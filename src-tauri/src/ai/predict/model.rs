@@ -1,3 +1,5 @@
+use std::collections::{HashMap, HashSet};
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -38,37 +40,105 @@ pub fn predict_from_history(
     cwd: Option<&str>,
     history: &[crate::terminal::ShellHistoryEntry],
 ) -> Option<CommandPrediction> {
-    let normalized_input = input.to_lowercase();
-    let mut same_dir_matches = Vec::new();
-    let mut other_matches = Vec::new();
+    let suggestion = collect_ranked_history_prefix_matches(input, cwd, history, 1)
+        .into_iter()
+        .next()?;
+    let same_dir = history.iter().any(|entry| {
+        entry.value.trim() == suggestion && is_same_working_directory(cwd, entry.pwd.as_deref())
+    });
 
-    for entry in history {
-        if !entry.value.to_lowercase().starts_with(&normalized_input) {
-            continue;
-        }
-        if entry.value.trim().len() <= input.trim().len() {
-            continue;
-        }
+    Some(CommandPrediction {
+        input: input.to_string(),
+        suggestion,
+        confidence: if same_dir { 0.95 } else { 0.85 },
+        kind: PredictionKind::History,
+    })
+}
 
-        let prediction = CommandPrediction {
-            input: input.to_string(),
-            suggestion: entry.value.trim().to_string(),
-            confidence: if is_same_working_directory(cwd, entry.pwd.as_deref()) {
-                0.95
-            } else {
-                0.85
-            },
-            kind: PredictionKind::History,
-        };
-
-        if is_same_working_directory(cwd, entry.pwd.as_deref()) {
-            same_dir_matches.push(prediction);
-        } else {
-            other_matches.push(prediction);
-        }
+pub fn collect_ranked_history_prefix_matches(
+    input: &str,
+    cwd: Option<&str>,
+    history: &[crate::terminal::ShellHistoryEntry],
+    limit: usize,
+) -> Vec<String> {
+    let trimmed_input = input.trim();
+    if trimmed_input.is_empty() || limit == 0 {
+        return Vec::new();
     }
 
-    same_dir_matches.into_iter().chain(other_matches).next()
+    let normalized_input = trimmed_input.to_lowercase();
+    let mut aggregates = HashMap::<String, HistoryPrefixAggregate>::new();
+
+    for entry in history {
+        let candidate = entry.value.trim();
+        if candidate.len() <= trimmed_input.len()
+            || candidate.ends_with('\\')
+            || !is_plausible_history_command_candidate(candidate)
+            || !candidate.to_lowercase().starts_with(&normalized_input)
+        {
+            continue;
+        }
+
+        let parsed_at = chrono::DateTime::parse_from_rfc3339(&entry.executed_at)
+            .map(|value| value.timestamp())
+            .unwrap_or(0);
+        let same_dir = is_same_working_directory(cwd, entry.pwd.as_deref());
+        let aggregate =
+            aggregates
+                .entry(candidate.to_string())
+                .or_insert_with(|| HistoryPrefixAggregate {
+                    value: candidate.to_string(),
+                    count: 0,
+                    same_dir_count: 0,
+                    latest_timestamp: i64::MIN,
+                });
+
+        aggregate.count += 1;
+        if same_dir {
+            aggregate.same_dir_count += 1;
+        }
+        aggregate.latest_timestamp = aggregate.latest_timestamp.max(parsed_at);
+    }
+
+    let mut ranked = aggregates.into_values().collect::<Vec<_>>();
+    ranked.sort_by(|left, right| {
+        right
+            .count
+            .cmp(&left.count)
+            .then_with(|| right.latest_timestamp.cmp(&left.latest_timestamp))
+            .then_with(|| right.same_dir_count.cmp(&left.same_dir_count))
+            .then_with(|| right.value.len().cmp(&left.value.len()))
+            .then_with(|| left.value.cmp(&right.value))
+    });
+
+    ranked
+        .into_iter()
+        .take(limit)
+        .map(|entry| entry.value)
+        .collect()
+}
+
+#[derive(Debug, Clone)]
+struct HistoryPrefixAggregate {
+    value: String,
+    count: usize,
+    same_dir_count: usize,
+    latest_timestamp: i64,
+}
+
+fn is_plausible_history_command_candidate(candidate: &str) -> bool {
+    if candidate.contains('\n') || candidate.len() > 4_000 {
+        return false;
+    }
+
+    let lower = candidate.to_ascii_lowercase();
+    !(lower.starts_with("error:")
+        || lower.starts_with("traceback")
+        || lower.starts_with("typeerror")
+        || lower.starts_with("referenceerror")
+        || lower.starts_with("syntaxerror")
+        || lower.contains(" cannot read properties ")
+        || lower.contains("npm error cannot"))
 }
 
 pub fn get_zero_state_suggestions(cwd: &str) -> Vec<String> {
@@ -102,23 +172,6 @@ pub fn get_zero_state_suggestions(cwd: &str) -> Vec<String> {
     }
 
     suggestions
-}
-
-fn is_command_still_valid(command: &str) -> bool {
-    let parts: Vec<&str> = command.split_whitespace().collect();
-    if parts.is_empty() {
-        return false;
-    }
-
-    // Check if the primary executable exists in PATH or at absolute path
-    let exec = parts[0];
-    if exec.starts_with('/') || exec.starts_with("./") || exec.starts_with("../") {
-        std::path::Path::new(exec).exists()
-    } else {
-        // If it's a simple command name, it was once in history so it was valid.
-        // We'll trust it for now unless we want to do a full PATH lookup here.
-        true
-    }
 }
 
 pub fn predict_from_sequences(
@@ -240,20 +293,52 @@ pub fn predict_from_executables(
     input: &str,
     available_commands: &[String],
 ) -> Option<CommandPrediction> {
-    let normalized_input = input.to_lowercase();
     if input.contains(' ') {
         return None;
     }
 
-    available_commands
-        .iter()
-        .find(|c| c.to_lowercase().starts_with(&normalized_input))
+    collect_executable_prefix_matches(input, available_commands, 1)
+        .into_iter()
+        .next()
         .map(|cmd| CommandPrediction {
             input: input.to_string(),
-            suggestion: cmd.clone(),
+            suggestion: cmd,
             confidence: 0.6,
             kind: PredictionKind::Heuristic,
         })
+}
+
+pub fn collect_executable_prefix_matches(
+    input: &str,
+    available_commands: &[String],
+    limit: usize,
+) -> Vec<String> {
+    let trimmed = input.trim();
+    if trimmed.is_empty() || trimmed.contains(' ') || limit == 0 {
+        return Vec::new();
+    }
+
+    let normalized_input = trimmed.to_lowercase();
+    let mut seen = HashSet::new();
+    let mut matches = Vec::new();
+
+    for command in available_commands.iter().map(|command| command.trim()) {
+        if command.len() <= trimmed.len() || !command.to_lowercase().starts_with(&normalized_input)
+        {
+            continue;
+        }
+
+        if !seen.insert(command.to_lowercase()) {
+            continue;
+        }
+
+        matches.push(command.to_string());
+        if matches.len() >= limit {
+            break;
+        }
+    }
+
+    matches
 }
 
 #[cfg(test)]
@@ -285,5 +370,143 @@ mod tests {
             Some("/user"),
             Some("/tmp/other")
         ));
+    }
+
+    #[test]
+    fn executable_prefix_matches_keep_global_commands_and_skip_exact_noop() {
+        let commands = vec![
+            "python3".to_string(),
+            "python".to_string(),
+            "modal".to_string(),
+            "npm".to_string(),
+        ];
+
+        assert_eq!(
+            collect_executable_prefix_matches("mod", &commands, 10),
+            vec!["modal"]
+        );
+        assert!(collect_executable_prefix_matches("modal", &commands, 10).is_empty());
+        assert_eq!(
+            predict_from_executables("pyth", &commands)
+                .expect("python command should be suggested")
+                .suggestion,
+            "python3"
+        );
+    }
+
+    #[test]
+    fn history_prefix_matches_ignore_error_output_lines() {
+        let history = vec![
+            crate::terminal::ShellHistoryEntry {
+                value: "npm run npm error Cannot read properties of undefined".to_string(),
+                executed_at: "2026-05-24T18:00:00Z".to_string(),
+                source: "zsh".to_string(),
+                pwd: Some("/repo".to_string()),
+            },
+            crate::terminal::ShellHistoryEntry {
+                value: "npm run dev".to_string(),
+                executed_at: "2026-05-24T17:00:00Z".to_string(),
+                source: "zsh".to_string(),
+                pwd: Some("/repo".to_string()),
+            },
+        ];
+
+        let matches =
+            collect_ranked_history_prefix_matches("npm run ", Some("/repo"), &history, 10);
+
+        assert_eq!(matches, vec!["npm run dev"]);
+    }
+
+    #[test]
+    fn ranks_history_prefix_matches_by_full_command_frequency_then_recency() {
+        let history = vec![
+            crate::terminal::ShellHistoryEntry {
+                value: "npm run deploy:frontend".to_string(),
+                executed_at: "2026-05-24T18:00:00Z".to_string(),
+                source: "zsh".to_string(),
+                pwd: Some("/repo".to_string()),
+            },
+            crate::terminal::ShellHistoryEntry {
+                value: "npm run clean".to_string(),
+                executed_at: "2026-05-24T17:00:00Z".to_string(),
+                source: "zsh".to_string(),
+                pwd: Some("/repo".to_string()),
+            },
+            crate::terminal::ShellHistoryEntry {
+                value: "npm run clean".to_string(),
+                executed_at: "2026-05-24T16:00:00Z".to_string(),
+                source: "zsh".to_string(),
+                pwd: Some("/repo".to_string()),
+            },
+            crate::terminal::ShellHistoryEntry {
+                value: "npm run deploy:backend".to_string(),
+                executed_at: "2026-05-23T18:00:00Z".to_string(),
+                source: "zsh".to_string(),
+                pwd: Some("/repo".to_string()),
+            },
+        ];
+
+        let matches = collect_ranked_history_prefix_matches("npm", Some("/repo"), &history, 10);
+
+        assert_eq!(
+            matches,
+            vec![
+                "npm run clean",
+                "npm run deploy:frontend",
+                "npm run deploy:backend"
+            ]
+        );
+    }
+
+    #[test]
+    fn ranks_history_prefix_matches_by_frequency_when_recency_ties() {
+        let history = vec![
+            crate::terminal::ShellHistoryEntry {
+                value: "modal run modal_training.py --bundle-r2-uri s3://latest".to_string(),
+                executed_at: "2026-05-24T18:00:00Z".to_string(),
+                source: "zsh".to_string(),
+                pwd: Some("/repo".to_string()),
+            },
+            crate::terminal::ShellHistoryEntry {
+                value: "modal run models/train.py".to_string(),
+                executed_at: "2026-05-24T18:00:00Z".to_string(),
+                source: "zsh".to_string(),
+                pwd: Some("/repo".to_string()),
+            },
+            crate::terminal::ShellHistoryEntry {
+                value: "modal run models/train.py".to_string(),
+                executed_at: "2026-05-24T17:00:00Z".to_string(),
+                source: "zsh".to_string(),
+                pwd: Some("/repo".to_string()),
+            },
+        ];
+
+        let matches = collect_ranked_history_prefix_matches("modal", Some("/repo"), &history, 10);
+
+        assert_eq!(matches[0], "modal run models/train.py");
+        assert_eq!(matches.len(), 2);
+    }
+
+    #[test]
+    fn ranks_history_prefix_matches_by_path_when_frequency_and_recency_tie() {
+        let history = vec![
+            crate::terminal::ShellHistoryEntry {
+                value: "npm run build:app".to_string(),
+                executed_at: "2026-05-24T18:00:00Z".to_string(),
+                source: "zsh".to_string(),
+                pwd: Some("/repo".to_string()),
+            },
+            crate::terminal::ShellHistoryEntry {
+                value: "npm run build:docs".to_string(),
+                executed_at: "2026-05-24T18:00:00Z".to_string(),
+                source: "zsh".to_string(),
+                pwd: Some("/other".to_string()),
+            },
+        ];
+
+        let matches = collect_ranked_history_prefix_matches("npm", Some("/repo"), &history, 10);
+
+        assert_eq!(matches[0], "npm run build:app");
+        assert_eq!(matches[1], "npm run build:docs");
     }
 }

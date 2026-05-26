@@ -1,10 +1,8 @@
 use std::process::Command;
 
-use super::{CommandScope, ScopeMetadata};
 use super::scripts::completion_catalog;
-use super::utils::{
-    command_exists_in_path, strip_box_prefix, looks_like_path_keyword,
-};
+use super::utils::{command_exists_in_path, looks_like_path_keyword, strip_box_prefix};
+use super::{CommandScope, ScopeMetadata};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HelpSection {

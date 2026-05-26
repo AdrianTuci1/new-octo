@@ -102,6 +102,8 @@ pub async fn agent_start(
         messages: request.messages,
         terminal_blocks: request.terminal_blocks,
         cwd,
+        target_os: std::env::consts::OS.to_string(),
+        target_arch: std::env::consts::ARCH.to_string(),
         model_id: model_id.clone(),
         terminal_model_id: request.terminal_model_id,
     };

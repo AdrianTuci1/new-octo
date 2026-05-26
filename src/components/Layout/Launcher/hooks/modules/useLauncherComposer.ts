@@ -1,7 +1,7 @@
-
 import { useMemo, useEffect } from 'react';
 import * as Hooks from '../../../../../hooks';
 import * as Utils from '../../utils';
+import { applyShellActivatorToPrediction, isImmediateShellCommandCandidate } from '../../../../../lib';
 import type { ShellModeSource } from '../../../../../types';
 
 const FOLLOW_UP_MIN_CONFIDENCE = 0.7;
@@ -9,10 +9,11 @@ const FOLLOW_UP_MIN_CONFIDENCE = 0.7;
 export type ComposerStateParams = {
   store: any;
   runtime: any;
+  refs: any;
 };
 
 export function useLauncherComposer(params: ComposerStateParams) {
-  const { store, runtime } = params;
+  const { store, runtime, refs } = params;
   const {
     workingDirectory,
     gitContext,
@@ -24,6 +25,7 @@ export function useLauncherComposer(params: ComposerStateParams) {
     resolvedConversationId,
     agentTerminal,
     terminal,
+    hasShellActivator,
     queryWithoutActivator,
     agentSettings
   } = runtime;
@@ -36,6 +38,9 @@ export function useLauncherComposer(params: ComposerStateParams) {
     store.terminalAutoDetectEnabled &&
     agentSettings?.input?.autodetectTerminalCommandsInAgent !== false &&
     !isNaturalLanguageDenylisted(queryWithoutActivator, agentSettings?.input?.naturalLanguageDenylist);
+  const immediateShellCandidate = !isTerminalSurface
+    && autodetectEnabled
+    && isImmediateShellCommandCandidate(queryWithoutActivator, availableShellCommands);
   const intelligenceTerminalBlocks = isTerminalSurface ? terminalCommandBlocks : agentTerminalCommandBlocks;
   const terminalSurfaceCwd = terminal.cwd ?? workingDirectory.currentPath;
   const activeMessages = isTerminalSurface
@@ -61,22 +66,67 @@ export function useLauncherComposer(params: ComposerStateParams) {
     lockedMode: store.modeLock,
     autodetectEnabled,
     allowSingleCharacterPrediction: store.allowSingleCharacterCommandPrediction,
-    forceShellMode: isTerminalSurface,
-    enableZeroStatePrediction: isTerminalSurface && nextCommandEnabled,
+    forceShellMode: isTerminalSurface || hasShellActivator,
+    enableZeroStatePrediction: isTerminalSurface,
     surface: isTerminalSurface ? 'terminal' : 'composerBar'
   });
+  const suppressComposerShellAutodetect =
+    !isTerminalSurface &&
+    refs.suppressComposerShellAutodetectRef.current !== null &&
+    refs.suppressComposerShellAutodetectRef.current === chat.query;
 
   const composerState = useMemo(() => {
+    if (hasShellActivator) {
+      return {
+        mode: 'shell' as const,
+        shellSource: 'manual' as const
+      };
+    }
+
+    if (store.modeLock === 'shell') {
+      return {
+        mode: 'shell' as const,
+        shellSource: 'manual' as const
+      };
+    }
+
+    if (store.modeLock === 'chat') {
+      return {
+        mode: 'chat' as const,
+        shellSource: null
+      };
+    }
+
+    if (
+      immediateShellCandidate &&
+      !suppressComposerShellAutodetect
+    ) {
+      return {
+        mode: 'shell' as const,
+        shellSource: 'autodetected' as const
+      };
+    }
+
     const baseComposerState = {
       mode: composerIntelligence.mode,
       shellSource: composerIntelligence.shellSource
     };
 
     if (
+      suppressComposerShellAutodetect &&
+      baseComposerState.mode === 'shell'
+    ) {
+      return {
+        mode: 'chat' as const,
+        shellSource: null
+      };
+    }
+
+    if (
       store.modeLock === null &&
       store.autodetectedShellLatch &&
       baseComposerState.mode === 'chat' &&
-      Utils.isSingleTokenShellCandidate(chat.query)
+      immediateShellCandidate
     ) {
       return {
         mode: 'shell' as const,
@@ -84,7 +134,16 @@ export function useLauncherComposer(params: ComposerStateParams) {
       };
     }
     return baseComposerState;
-  }, [composerIntelligence.mode, composerIntelligence.shellSource, store.modeLock, store.autodetectedShellLatch, chat.query]);
+  }, [
+    composerIntelligence.mode,
+    composerIntelligence.shellSource,
+    store.modeLock,
+    store.autodetectedShellLatch,
+    chat.query,
+    hasShellActivator,
+    suppressComposerShellAutodetect,
+    immediateShellCandidate
+  ]);
 
   const composerMode = composerState.mode;
   const shellSource: ShellModeSource | null = composerState.shellSource;
@@ -106,8 +165,16 @@ export function useLauncherComposer(params: ComposerStateParams) {
   };
 
   const completionState = isTerminalSurface ? terminal.completionState : agentTerminal.completionState;
-  const rawPrediction = composerMode === 'shell' && nextCommandEnabled ? composerIntelligence.prediction : null;
-  const activeShellPrediction = rawPrediction || (completionState?.completions ? getCompletionPrediction(chat.query, completionState.completions) : null);
+  const rawPrediction = composerIntelligence.prediction;
+  const activeShellPrediction = rawPrediction
+    ? {
+        ...rawPrediction,
+        fullCommand: hasShellActivator
+          ? applyShellActivatorToPrediction(chat.query, rawPrediction.fullCommand)
+          : rawPrediction.fullCommand,
+        suggestions: rawPrediction.suggestions
+      }
+    : (completionState?.completions ? getCompletionPrediction(chat.query, completionState.completions) : null);
 
   const latestAssistantFollowUp = useMemo(() => {
     if (isTerminalSurface || !promptSuggestionsEnabled) return null;
@@ -145,6 +212,29 @@ export function useLauncherComposer(params: ComposerStateParams) {
 
   // Sync effects from main hook
   useEffect(() => {
+    if (
+      refs.suppressComposerShellAutodetectRef.current !== null &&
+      refs.suppressComposerShellAutodetectRef.current !== chat.query
+    ) {
+      refs.suppressComposerShellAutodetectRef.current = null;
+    }
+  }, [chat.query, refs.suppressComposerShellAutodetectRef]);
+
+  useEffect(() => {
+    if (suppressComposerShellAutodetect) {
+      if (store.autodetectedShellLatch !== false) {
+        store.setAutodetectedShellLatch(false);
+      }
+      return;
+    }
+
+    if (hasShellActivator) {
+      if (store.autodetectedShellLatch !== false) {
+        store.setAutodetectedShellLatch(false);
+      }
+      return;
+    }
+
     if (!autodetectEnabled || store.modeLock !== null || chat.query.trim().length === 0) {
       if (store.autodetectedShellLatch !== false) {
         store.setAutodetectedShellLatch(false);
@@ -152,19 +242,30 @@ export function useLauncherComposer(params: ComposerStateParams) {
       return;
     }
 
-    if (composerIntelligence.mode === 'shell' && composerIntelligence.shellSource === 'autodetected') {
+    if (
+      immediateShellCandidate ||
+      (composerIntelligence.mode === 'shell' && composerIntelligence.shellSource === 'autodetected')
+    ) {
       if (store.autodetectedShellLatch !== true) {
         store.setAutodetectedShellLatch(true);
       }
       return;
     }
 
-    if (!Utils.isSingleTokenShellCandidate(chat.query)) {
-      if (store.autodetectedShellLatch !== false) {
-        store.setAutodetectedShellLatch(false);
-      }
+    if (store.autodetectedShellLatch !== false) {
+      store.setAutodetectedShellLatch(false);
     }
-  }, [composerIntelligence.mode, composerIntelligence.shellSource, store.modeLock, chat.query, autodetectEnabled, store.autodetectedShellLatch, store.setAutodetectedShellLatch]);
+  }, [
+    composerIntelligence.mode,
+    composerIntelligence.shellSource,
+    store.modeLock,
+    autodetectEnabled,
+    immediateShellCandidate,
+    store.autodetectedShellLatch,
+    store.setAutodetectedShellLatch,
+    hasShellActivator,
+    suppressComposerShellAutodetect
+  ]);
 
   useEffect(() => {
     if (composerMode !== 'shell' || chat.query.trim().length === 0) {
@@ -174,13 +275,13 @@ export function useLauncherComposer(params: ComposerStateParams) {
       return;
     }
 
-    const firstToken = chat.query.trim().split(/\s+/)[0] ?? '';
+    const firstToken = queryWithoutActivator.trim().split(/\s+/)[0] ?? '';
     if (firstToken.length >= 2) {
       if (store.allowSingleCharacterCommandPrediction !== true) {
         store.setAllowSingleCharacterCommandPrediction(true);
       }
     }
-  }, [composerMode, chat.query, store.allowSingleCharacterCommandPrediction, store.setAllowSingleCharacterCommandPrediction]);
+  }, [composerMode, chat.query, queryWithoutActivator, store.allowSingleCharacterCommandPrediction, store.setAllowSingleCharacterCommandPrediction]);
 
   return {
     composerMode,

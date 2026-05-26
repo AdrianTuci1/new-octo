@@ -1,10 +1,10 @@
 mod ansi;
-mod block;
+pub(crate) mod block;
 mod completions;
-mod events;
+pub(crate) mod events;
 mod pty;
-mod requests;
-mod session;
+pub(crate) mod requests;
+pub(crate) mod session;
 mod transport;
 
 pub mod fs;
@@ -16,11 +16,18 @@ use tauri::{AppHandle, State};
 
 // Re-export core types
 pub use block::TerminalBlock;
-pub use manager::TerminalManager;
 pub use completions::{CompletionTracker, ShellCompletion, ShellCompletionFormat, ShellData};
-pub use fs::{FilesystemDirectoryListing, FilesystemEntry, FilesystemPathContext, ListDirectoryEntriesRequest, home_dir};
+pub use fs::{
+    home_dir, FilesystemDirectoryListing, FilesystemEntry, FilesystemPathContext,
+    FilesystemSearchEntry, FilesystemSearchListing, ListDirectoryEntriesRequest,
+    SearchDirectoryEntriesRequest,
+};
 pub use git::GitRepoContext;
-pub use intelligence::{ShellHistoryEntry, TerminalRuntimeContext, sort_history_entries_by_recency};
+pub use intelligence::{
+    sort_history_entries_by_recency, terminal_get_prediction_shell_history, ShellHistoryEntry,
+    TerminalRuntimeContext,
+};
+pub use manager::TerminalManager;
 
 #[tauri::command]
 pub fn terminal_create_session(
@@ -105,7 +112,16 @@ pub fn terminal_list_directory_entries(
 }
 
 #[tauri::command]
-pub fn terminal_get_git_context(request: fs::PathRequest) -> Result<Option<git::GitRepoContext>, String> {
+pub fn terminal_search_directory_entries(
+    request: fs::SearchDirectoryEntriesRequest,
+) -> Result<fs::FilesystemSearchListing, String> {
+    fs::terminal_search_directory_entries(request)
+}
+
+#[tauri::command]
+pub fn terminal_get_git_context(
+    request: fs::PathRequest,
+) -> Result<Option<git::GitRepoContext>, String> {
     git::terminal_get_git_context(request)
 }
 
@@ -133,7 +149,7 @@ pub async fn terminal_get_prediction(
     terminal_manager: State<'_, TerminalManager>,
     memory_manager: State<'_, crate::memory::OctomusMemoryManager>,
     request: intelligence::TerminalPredictionRequest,
-) -> Result<Option<crate::ai::predict::CommandPrediction>, String> {
+) -> Result<Option<intelligence::TerminalGhostPrediction>, String> {
     intelligence::terminal_get_prediction(terminal_manager, memory_manager, request).await
 }
 

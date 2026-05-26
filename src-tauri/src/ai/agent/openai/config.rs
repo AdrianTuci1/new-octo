@@ -1,6 +1,6 @@
+use crate::ai::agent::openai::utils;
 use serde_json::{json, Value};
 use uuid::Uuid;
-use crate::ai::agent::openai::utils;
 
 pub const DEFAULT_BASE_URL: &str = "https://api.openai.com/v1";
 pub const DEFAULT_MODEL_ID: &str = "gpt-4o-mini";

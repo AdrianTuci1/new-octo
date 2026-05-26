@@ -198,11 +198,8 @@ pub fn mcp_upsert_server(request: McpServerUpsertRequest) -> Result<McpServerSum
         }
     } else {
         server.insert("url".to_string(), Value::String(url));
-        let headers = merge_secret_map_with_existing(
-            &request.headers,
-            existing_server.as_ref(),
-            "headers",
-        );
+        let headers =
+            merge_secret_map_with_existing(&request.headers, existing_server.as_ref(), "headers");
         if !headers.is_empty() {
             server.insert("headers".to_string(), json!(headers));
         }

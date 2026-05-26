@@ -1,10 +1,19 @@
-import type { ChatMessage, ExecutionPlanArtifact, PlanExecutionUpdate, WebSearchRequest } from '../../types/chat';
+import type {
+  ChatMessage,
+  CloudAgentLaunchRequest,
+  ExecutionPlanArtifact,
+  PlanExecutionUpdate,
+  WebSearchRequest,
+  WorkspaceExplorationRequest
+} from '../../types/chat';
 import type { CommandApproval, FileChangeApproval, TerminalCommandBlock } from '../../types/terminal';
 
 export type UseChatOptions = {
   onCommandApproval?: (approval: CommandApproval) => void;
   onFileChangeApproval?: (approval: FileChangeApproval) => void;
   onWebSearch?: (request: WebSearchRequest) => void;
+  onWorkspaceExploration?: (request: WorkspaceExplorationRequest) => void;
+  onCloudAgentLaunch?: (request: CloudAgentLaunchRequest) => Promise<unknown> | unknown;
   onNewChat?: () => void;
   onConversationCreated?: (conversationId: string) => void;
   onRequireModelSetup?: () => void;
@@ -29,4 +38,6 @@ export type AssistantMessageRegistration = {
   onCommandApproval?: (approval: CommandApproval) => void;
   onFileChangeApproval?: (approval: FileChangeApproval) => void;
   onWebSearch?: (request: WebSearchRequest) => void;
+  onWorkspaceExploration?: (request: WorkspaceExplorationRequest) => void;
+  onCloudAgentLaunch?: (request: CloudAgentLaunchRequest) => Promise<unknown> | unknown;
 };

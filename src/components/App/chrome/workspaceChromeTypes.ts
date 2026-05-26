@@ -41,3 +41,13 @@ export type WorkspacePaneLayout = {
   activePaneId: string;
   root: WorkspacePaneNode;
 };
+
+export type WorkspaceActivePaneContext = {
+  tabKind: WorkspaceChromeTabKind;
+  paneId: string | null;
+  launcherSessionId: string | null;
+  workingDirectory: string | null;
+  composerSurface: 'agent' | 'terminal' | null;
+  activeConversationId: string | null;
+  canShowGitDiff: boolean;
+};

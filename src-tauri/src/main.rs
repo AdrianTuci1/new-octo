@@ -15,15 +15,14 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use octomus_launcher_prototype::{
-    ai, app_updates, code_index, keybindings, memory, octomus_paths, secure_store,
+    ai, app_updates, cloud_runtime, code_index, keybindings, memory, octomus_paths, secure_store,
     shell_signatures, terminal,
 };
 use serde::Serialize;
 use std::sync::Mutex;
 use tauri::{
-    menu::{Menu, MenuItem, PredefinedMenuItem, Submenu},
-    tray::TrayIconBuilder,
-    AppHandle, Emitter, Manager, PhysicalPosition, Position, Runtime, State, WebviewWindowBuilder,
+    tray::TrayIconBuilder, AppHandle, Emitter, Listener, Manager, PhysicalPosition, Position,
+    Runtime, State, WebviewWindowBuilder,
 };
 
 #[cfg(target_os = "macos")]
@@ -32,26 +31,14 @@ use tauri::ActivationPolicy;
 #[cfg(desktop)]
 use tauri_plugin_global_shortcut::{Code, Modifiers, ShortcutState};
 
+mod menus;
+
 const MAIN_WINDOW_LABEL: &str = "main";
 const SETTINGS_WINDOW_LABEL: &str = "settings";
 const ONBOARDING_WINDOW_LABEL: &str = "onboarding";
-const SHOW_MENU_ID: &str = "show";
-const HIDE_MENU_ID: &str = "hide";
-const NEW_CHAT_MENU_ID: &str = "new-chat";
-const SETTINGS_MENU_ID: &str = "settings";
-const CLOSE_MENU_ID: &str = "close";
-const RECENT_SESSION_1_ID: &str = "recent-session-1";
-const RECENT_SESSION_2_ID: &str = "recent-session-2";
-const RECENT_SESSION_3_ID: &str = "recent-session-3";
-const MORE_SESSION_1_ID: &str = "all-session-1";
-const MORE_SESSION_2_ID: &str = "all-session-2";
-const MORE_SESSION_3_ID: &str = "all-session-3";
-const MORE_SESSION_4_ID: &str = "all-session-4";
-const MORE_SESSION_5_ID: &str = "all-session-5";
 const TOGGLE_SHORTCUT: &str = "alt+space";
 const WINDOW_BOTTOM_MARGIN: i32 = 68;
 const OPEN_CLOUD_PROFILE_DRAWER_EVENT: &str = "octomus:open-cloud-profile-drawer";
-
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct OpenCloudProfileDrawerPayload {
@@ -114,12 +101,16 @@ fn hide_launcher<R: Runtime>(app: &AppHandle<R>) {
 fn hide_settings<R: Runtime>(app: &AppHandle<R>) {
     if let Some(window) = app.get_webview_window(SETTINGS_WINDOW_LABEL) {
         let _ = window.hide();
+        #[cfg(target_os = "macos")]
+        update_activation_policy(app);
     }
 }
 
 fn hide_onboarding<R: Runtime>(app: &AppHandle<R>) {
     if let Some(window) = app.get_webview_window(ONBOARDING_WINDOW_LABEL) {
         let _ = window.hide();
+        #[cfg(target_os = "macos")]
+        update_activation_policy(app);
     }
 }
 
@@ -144,7 +135,17 @@ fn show_settings_window<R: Runtime>(app: &AppHandle<R>) {
     hide_launcher(app);
     hide_onboarding(app);
 
+    #[cfg(target_os = "macos")]
+    {
+        let _ = app.set_activation_policy(ActivationPolicy::Regular);
+        let _ = app.set_dock_visibility(true);
+    }
+
     if let Some(window) = app.get_webview_window(SETTINGS_WINDOW_LABEL) {
+        #[cfg(target_os = "macos")]
+        if let Ok(menu) = menus::build_app_menu(app) {
+            let _ = window.set_menu(menu);
+        }
         let _ = window.unminimize();
         let _ = window.show();
         let _ = window.set_focus();
@@ -165,15 +166,26 @@ fn show_settings_window<R: Runtime>(app: &AppHandle<R>) {
     if let Ok(window) =
         WebviewWindowBuilder::from_config(app, &settings_config).and_then(|builder| builder.build())
     {
+        #[cfg(target_os = "macos")]
+        if let Ok(menu) = menus::build_app_menu(app) {
+            let _ = window.set_menu(menu);
+        }
         let _ = window.unminimize();
         let _ = window.show();
         let _ = window.set_focus();
     }
 }
 
+#[allow(dead_code)]
 fn show_onboarding_window<R: Runtime>(app: &AppHandle<R>) {
     hide_launcher(app);
     hide_settings(app);
+
+    #[cfg(target_os = "macos")]
+    {
+        let _ = app.set_activation_policy(ActivationPolicy::Regular);
+        let _ = app.set_dock_visibility(true);
+    }
 
     if let Some(window) = app.get_webview_window(ONBOARDING_WINDOW_LABEL) {
         let _ = window.destroy();
@@ -193,76 +205,39 @@ fn show_onboarding_window<R: Runtime>(app: &AppHandle<R>) {
     if let Ok(window) = WebviewWindowBuilder::from_config(app, &onboarding_config)
         .and_then(|builder| builder.build())
     {
+        #[cfg(target_os = "macos")]
+        if let Ok(menu) = menus::build_app_menu(app) {
+            let _ = window.set_menu(menu);
+        }
         let _ = window.unminimize();
         let _ = window.show();
         let _ = window.set_focus();
     }
 }
 
-fn show_placeholder_session<R: Runtime>(app: &AppHandle<R>) {
-    show_launcher(app);
+#[cfg(target_os = "macos")]
+fn update_activation_policy<R: Runtime>(app: &AppHandle<R>) {
+    let mut has_visible_regular_window = false;
+    for label in [SETTINGS_WINDOW_LABEL, ONBOARDING_WINDOW_LABEL] {
+        if let Some(window) = app.get_webview_window(label) {
+            if window.is_visible().unwrap_or(false) {
+                has_visible_regular_window = true;
+                break;
+            }
+        }
+    }
+
+    if has_visible_regular_window {
+        let _ = app.set_activation_policy(ActivationPolicy::Regular);
+        let _ = app.set_dock_visibility(true);
+    } else {
+        let _ = app.set_activation_policy(ActivationPolicy::Accessory);
+        let _ = app.set_dock_visibility(false);
+    }
 }
 
-fn build_tray_menu<R: Runtime, M: Manager<R>>(app: &M) -> tauri::Result<Menu<R>> {
-    let recent_session_1 =
-        MenuItem::with_id(app, RECENT_SESSION_1_ID, "Session 01", true, None::<&str>)?;
-    let recent_session_2 =
-        MenuItem::with_id(app, RECENT_SESSION_2_ID, "Session 02", true, None::<&str>)?;
-    let recent_session_3 =
-        MenuItem::with_id(app, RECENT_SESSION_3_ID, "Session 03", true, None::<&str>)?;
-
-    let all_session_1 =
-        MenuItem::with_id(app, MORE_SESSION_1_ID, "Session 04", true, None::<&str>)?;
-    let all_session_2 =
-        MenuItem::with_id(app, MORE_SESSION_2_ID, "Session 05", true, None::<&str>)?;
-    let all_session_3 =
-        MenuItem::with_id(app, MORE_SESSION_3_ID, "Session 06", true, None::<&str>)?;
-    let all_session_4 =
-        MenuItem::with_id(app, MORE_SESSION_4_ID, "Session 07", true, None::<&str>)?;
-    let all_session_5 =
-        MenuItem::with_id(app, MORE_SESSION_5_ID, "Session 08", true, None::<&str>)?;
-
-    let recent_sessions = Submenu::with_items(
-        app,
-        "Recent Sessions",
-        true,
-        &[&recent_session_1, &recent_session_2, &recent_session_3],
-    )?;
-
-    let more_sessions = Submenu::with_items(
-        app,
-        "More",
-        true,
-        &[
-            &all_session_1,
-            &all_session_2,
-            &all_session_3,
-            &all_session_4,
-            &all_session_5,
-        ],
-    )?;
-
-    let new_chat = MenuItem::with_id(app, NEW_CHAT_MENU_ID, "New Chat", true, None::<&str>)?;
-    let settings = MenuItem::with_id(app, SETTINGS_MENU_ID, "Settings", true, None::<&str>)?;
-    let close = MenuItem::with_id(app, CLOSE_MENU_ID, "Close", true, None::<&str>)?;
-    let hide = MenuItem::with_id(app, HIDE_MENU_ID, "Hide Launcher", true, None::<&str>)?;
-    let show = MenuItem::with_id(app, SHOW_MENU_ID, "Show Launcher", true, None::<&str>)?;
-
-    Menu::with_items(
-        app,
-        &[
-            &recent_sessions,
-            &more_sessions,
-            &PredefinedMenuItem::separator(app)?,
-            &new_chat,
-            &settings,
-            &PredefinedMenuItem::separator(app)?,
-            &show,
-            &hide,
-            &PredefinedMenuItem::separator(app)?,
-            &close,
-        ],
-    )
+fn show_placeholder_session<R: Runtime>(app: &AppHandle<R>) {
+    show_launcher(app);
 }
 
 fn main() {
@@ -271,17 +246,76 @@ fn main() {
 
     tauri::Builder::default()
         .manage(app_updates::AppUpdateManager::default())
+        .manage(cloud_runtime::CloudRuntimeManager::default())
         .manage(code_index::CodeIndexManager::default())
         .manage(terminal::TerminalManager::default())
         .manage(ai::AgentHarnessManager::default())
         .manage(ai::predict::composer::ComposerIntelligenceManager::default())
         .manage(memory::OctomusMemoryManager::default())
         .manage(PendingCloudProfileDrawerRequest::default())
+        .on_menu_event(|app, event| {
+            let id = event.id.as_ref();
+            match id {
+                "preferences" => {
+                    show_settings_window(app);
+                }
+                "new-window" => {
+                    show_launcher(app);
+                }
+                "new-terminal-tab"
+                | "new-agent-tab"
+                | "new-file"
+                | "open-repo"
+                | "close-session"
+                | "close-window"
+                | "clear-editor"
+                | "add-next-occurrence"
+                | "add-cursor-above"
+                | "add-cursor-below"
+                | "find-terminal"
+                | "focus-terminal-input"
+                | "open-left-panel"
+                | "cmd-palette"
+                | "nav-palette"
+                | "launch-config-palette"
+                | "toggle-files-palette"
+                | "left-panel-agent"
+                | "left-panel-proj"
+                | "left-panel-search"
+                | "show-history"
+                | "cmd-search"
+                | "workflows"
+                | "toggle-mouse"
+                | "toggle-scroll"
+                | "toggle-focus"
+                | "compact-mode"
+                | "zoom-in"
+                | "zoom-out"
+                | "reset-zoom"
+                | "rename-tab"
+                | "split-pane-right"
+                | "split-pane-left"
+                | "split-pane-down"
+                | "split-pane-up"
+                | "close-tab"
+                | "close-other-tabs"
+                | "close-tabs-right" => {
+                    let _ = app.emit(
+                        "octomus:menu-action",
+                        menus::MenuActionPayload { id: id.to_string() },
+                    );
+                }
+                _ => {}
+            }
+        })
         .invoke_handler(tauri::generate_handler![
             app_updates::app_updates_get_state,
             app_updates::app_updates_check,
             app_updates::app_updates_install,
             app_updates::app_updates_restart,
+            cloud_runtime::cloud_runtime_build_launch_command,
+            cloud_runtime::cloud_runtime_start_run,
+            cloud_runtime::cloud_runtime_cancel_run,
             code_index::code_index_list_projects,
             code_index::code_index_index_project,
             code_index::code_index_remove_project,
@@ -291,6 +325,7 @@ fn main() {
             ai::agent_cancel,
             ai::agent_get_run,
             ai::agent_list_runs,
+            ai::agent_list_skills,
             ai::agent_get_loop_contract,
             ai::agent_configure_openai_compatible,
             ai::agent_clear_openai_compatible,
@@ -313,6 +348,7 @@ fn main() {
             terminal::terminal_get_path_context,
             terminal::terminal_get_runtime_context,
             terminal::terminal_list_directory_entries,
+            terminal::terminal_search_directory_entries,
             terminal::terminal_get_git_context,
             terminal::terminal_get_worktree_diff,
             terminal::terminal_switch_git_branch,
@@ -321,6 +357,7 @@ fn main() {
             terminal::terminal_get_composer_intelligence,
             terminal::terminal_read_file,
             terminal::terminal_write_file,
+            octomus_paths::octomus_list_tab_configs,
             memory::memory_bootstrap,
             memory::memory_put_settings,
             memory::memory_put_workspace_snapshot,
@@ -343,6 +380,38 @@ fn main() {
             open_external_url,
             consume_pending_cloud_profile_drawer_request,
         ])
+        .on_window_event(|window, event| {
+            let label = window.label();
+            if label == SETTINGS_WINDOW_LABEL || label == ONBOARDING_WINDOW_LABEL {
+                match event {
+                    tauri::WindowEvent::CloseRequested { .. } | tauri::WindowEvent::Destroyed => {
+                        #[cfg(target_os = "macos")]
+                        {
+                            let app = window.app_handle();
+                            // Check if there are other visible regular windows, excluding this one.
+                            let mut has_visible_regular_window = false;
+                            for other_label in [SETTINGS_WINDOW_LABEL, ONBOARDING_WINDOW_LABEL] {
+                                if other_label != label {
+                                    if let Some(other_window) = app.get_webview_window(other_label)
+                                    {
+                                        if other_window.is_visible().unwrap_or(false) {
+                                            has_visible_regular_window = true;
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                            if !has_visible_regular_window {
+                                let _ =
+                                    app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+                                let _ = app.set_dock_visibility(false);
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        })
         .setup(|app| {
             app_updates::init(&app.handle())?;
             octomus_paths::OctomusPaths::default()
@@ -354,6 +423,15 @@ fn main() {
             {
                 let _ = app.set_activation_policy(ActivationPolicy::Accessory);
                 let _ = app.set_dock_visibility(false);
+                if let Ok(menu) = menus::build_app_menu(app.handle()) {
+                    let _ = app.set_menu(menu.clone());
+                    if let Some(main_win) = app.get_webview_window(MAIN_WINDOW_LABEL) {
+                        let _ = main_win.set_menu(menu.clone());
+                    }
+                    if let Some(settings_win) = app.get_webview_window(SETTINGS_WINDOW_LABEL) {
+                        let _ = settings_win.set_menu(menu);
+                    }
+                }
             }
 
             if let Some(window) = app.get_webview_window(MAIN_WINDOW_LABEL) {
@@ -365,31 +443,59 @@ fn main() {
 
             #[cfg(desktop)]
             {
-                let tray_menu = build_tray_menu(app)?;
+                let tray_icon = image::load_from_memory(include_bytes!("../icons/tray-icon.png"))
+                    .ok()
+                    .map(|image| {
+                        let rgba = image.to_rgba8().into_raw();
+                        tauri::image::Image::new_owned(rgba, image.width(), image.height())
+                    });
+                let tray_menu = menus::build_tray_menu(app)?;
 
                 let mut tray = TrayIconBuilder::with_id("launcher-tray")
                     .menu(&tray_menu)
                     .show_menu_on_left_click(true)
-                    .tooltip("Octomus Launcher")
-                    .on_menu_event(|app, event| match event.id.as_ref() {
-                        SHOW_MENU_ID => show_launcher(app),
-                        HIDE_MENU_ID => hide_launcher(app),
-                        NEW_CHAT_MENU_ID => show_placeholder_session(app),
-                        SETTINGS_MENU_ID => show_settings_window(app),
-                        CLOSE_MENU_ID => app.exit(0),
-                        RECENT_SESSION_1_ID | RECENT_SESSION_2_ID | RECENT_SESSION_3_ID
-                        | MORE_SESSION_1_ID | MORE_SESSION_2_ID | MORE_SESSION_3_ID
-                        | MORE_SESSION_4_ID | MORE_SESSION_5_ID => show_placeholder_session(app),
-                        _ => {}
+                    .tooltip("Octomus")
+                    .on_menu_event(|app, event| {
+                        let id_str = event.id.as_ref();
+                        match id_str {
+                            menus::SHOW_MENU_ID => show_launcher(app),
+                            menus::HIDE_MENU_ID => hide_launcher(app),
+                            menus::NEW_CHAT_MENU_ID => show_placeholder_session(app),
+                            menus::SETTINGS_MENU_ID => show_settings_window(app),
+                            menus::CLOSE_MENU_ID => app.exit(0),
+                            _ => {
+                                if id_str != "no-recent" && id_str != "no-more" {
+                                    show_settings_window(app);
+                                    let _ = app.emit(
+                                        menus::SELECT_CONVERSATION_EVENT,
+                                        menus::SelectConversationPayload {
+                                            conversation_id: id_str.to_string(),
+                                        },
+                                    );
+                                }
+                            }
+                        }
                     });
 
-                if let Some(icon) = app.default_window_icon() {
-                    tray = tray.icon(icon.clone()).icon_as_template(true);
+                if let Some(icon) = tray_icon {
+                    tray = tray.icon(icon).icon_as_template(true);
                 } else {
                     tray = tray.title("Octomus");
                 }
 
                 let _ = tray.build(app)?;
+
+                if !cfg!(target_os = "macos") {
+                    let app_handle_cu = app.handle().clone();
+                    let _ = app.listen("memory:conversation-updated", move |_event| {
+                        menus::refresh_tray_menu(&app_handle_cu);
+                    });
+
+                    let app_handle_ws = app.handle().clone();
+                    let _ = app.listen("memory:workspace-updated", move |_event| {
+                        menus::refresh_tray_menu(&app_handle_ws);
+                    });
+                }
 
                 app.handle().plugin(
                     tauri_plugin_global_shortcut::Builder::new()
@@ -456,6 +562,8 @@ fn complete_onboarding<R: Runtime>(app: AppHandle<R>) {
         let _ = window.close();
     }
     show_launcher(&app);
+    #[cfg(target_os = "macos")]
+    update_activation_policy(&app);
 }
 
 #[tauri::command]

@@ -124,6 +124,7 @@ export type TerminalBlockOutputEvent = {
 export type TerminalRunCommandResponse = {
   block: TerminalBlock;
   output: string;
+  pending?: boolean;
 };
 
 export type TerminalRuntimeContext = {

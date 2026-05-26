@@ -3,20 +3,23 @@ import remarkGfm from 'remark-gfm';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { Copy, Terminal, Check } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { CodeDiffView } from './CodeDiffView';
-import { ImplementationPlanBlock, ThinkingBlock, WebSearchBlock } from './blocks';
+import { FileArtifactBlock, ImplementationPlanBlock, ThinkingBlock, WebSearchBlock, WorkspaceExplorationBlock } from './blocks';
 import { extractInlineFileChangeApproval, visibleChatMessageBody } from '../../hooks/useChat';
 import type { ChatMessage, ExecutionPlanArtifact } from '../../types/chat';
 import type { CommandApproval } from '../../types/terminal';
 import type { FileDiff } from '../../types/diff';
-import { useEditorStore } from '../../stores/editorStore';
+import { type FileDiffPreviewStatus } from '../../lib/fileDiffs';
 import { ProfileAvatar } from '../App/profile/ProfileAvatar';
-import { useProfileSettings } from '../App/settings/useProfileSettings';
+import type { UserProfileSettings } from '../App/settings/profileSettings';
+import type { OpenEditorFileOptions } from '../../stores/editorStore';
 
 type MessageBubbleProps = {
   message: ChatMessage;
+  profile: UserProfileSettings;
+  openFile: (path: string, name: string, content?: string, options?: OpenEditorFileOptions) => void;
   onRequestCommandApproval?: (approval: CommandApproval) => void;
 };
 
@@ -129,10 +132,8 @@ function extractFileProposalFromMarkdown(body: string) {
   };
 }
 
-export function MessageBubble({ message, onRequestCommandApproval }: MessageBubbleProps) {
+function MessageBubbleComponent({ message, onRequestCommandApproval, profile, openFile }: MessageBubbleProps) {
   const isUser = message.role === 'user';
-  const { profile } = useProfileSettings();
-  const openFile = useEditorStore((state) => state.openFile);
   const rawVisibleBodyWithArtifacts = message.role === 'assistant'
     ? visibleChatMessageBody(message.body)
     : message.body;
@@ -146,6 +147,15 @@ export function MessageBubble({ message, onRequestCommandApproval }: MessageBubb
       ? extractFileProposalFromMarkdown(rawVisibleBodyWithArtifacts)
       : { visibleBody: rawVisibleBodyWithArtifacts, fileDiffs: [] as FileDiff[] }
   ), [message.isStreaming, message.role, rawVisibleBodyWithArtifacts]);
+  const displayFileDiffs = message.fileDiffs?.length
+    ? message.fileDiffs
+    : extractedFileProposal.fileDiffs;
+  const filePreviewStatus: FileDiffPreviewStatus = message.fileChangeStatus
+    ?? (message.toolKind === 'file-change'
+      ? 'accepted'
+      : displayFileDiffs.length > 0
+        ? 'pending'
+        : 'pending');
   const emittedFileProposalIdsRef = useRef(new Set<string>());
   const rawVisibleBody = extractedFileProposal.visibleBody;
   const visibleBody = highlightSlashCommandsInMarkdown(rawVisibleBody);
@@ -184,7 +194,7 @@ export function MessageBubble({ message, onRequestCommandApproval }: MessageBubb
     onRequestCommandApproval
   ]);
 
-  const handleMarkdownLinkClick = async (href?: string | null) => {
+  const handleMarkdownLinkClick = useCallback(async (href?: string | null) => {
     if (!href) return;
 
     const localPath = resolveLocalPathFromHref(href);
@@ -214,9 +224,9 @@ export function MessageBubble({ message, onRequestCommandApproval }: MessageBubb
     } catch (error) {
       console.warn('[chat] failed to open cloud profile drawer from chat link', error);
     }
-  };
+  }, [openFile]);
 
-  const markdownComponents = {
+  const markdownComponents = useMemo(() => ({
     a({ href, children, ...props }: any) {
       if (href && href.startsWith('slash-cmd://')) {
         return (
@@ -240,7 +250,7 @@ export function MessageBubble({ message, onRequestCommandApproval }: MessageBubb
         </a>
       );
     },
-    code({ node, inline, className, children, ...props }: any) {
+    code({ inline, className, children, ...props }: any) {
       const match = /language-(\w+)/.exec(className || '');
       const lang = match ? match[1] : '';
 
@@ -265,7 +275,7 @@ export function MessageBubble({ message, onRequestCommandApproval }: MessageBubb
         </code>
       );
     }
-  };
+  }), [handleMarkdownLinkClick, onRequestCommandApproval]);
 
   return (
     <div className={`message-bubble ${message.role}`}>
@@ -310,6 +320,15 @@ export function MessageBubble({ message, onRequestCommandApproval }: MessageBubb
                   )}
                 </div>
               )
+            : message.toolKind === 'workspace-exploration' && message.workspaceExploration
+              ? (
+                  <div className="tool-output-workspace-exploration">
+                    <WorkspaceExplorationBlock
+                      exploration={message.workspaceExploration}
+                      isStreaming={message.isStreaming}
+                    />
+                  </div>
+                )
             : message.toolKind === 'plan' && message.executionPlan
               ? (
                   <div className="tool-output-plan">
@@ -345,15 +364,25 @@ export function MessageBubble({ message, onRequestCommandApproval }: MessageBubb
           </ReactMarkdown>
         )}
 
-        {message.fileDiffs && message.fileDiffs.length > 0 && (
+        {displayFileDiffs.length > 0 && (
           <div className="message-diffs">
-            <CodeDiffView diffs={message.fileDiffs} status={message.toolKind === 'file-change' ? 'accepted' : 'pending'} />
+            <FileDiffPreviewGroup
+              diffs={displayFileDiffs}
+              status={filePreviewStatus}
+            />
           </div>
         )}
       </div>
     </div>
   );
 }
+
+export const MessageBubble = memo(MessageBubbleComponent, (prev, next) => (
+  prev.message === next.message
+  && prev.profile === next.profile
+  && prev.openFile === next.openFile
+  && prev.onRequestCommandApproval === next.onRequestCommandApproval
+));
 
 function MarkdownBody({
   body,
@@ -396,6 +425,32 @@ function resolveLocalPathFromHref(href: string) {
 function fileNameFromPath(path: string) {
   const normalizedPath = path.endsWith('/') ? path.slice(0, -1) : path;
   return normalizedPath.split('/').pop() || normalizedPath;
+}
+
+function FileDiffPreviewGroup({
+  diffs,
+  status
+}: {
+  diffs: FileDiff[];
+  status: FileDiffPreviewStatus;
+}) {
+  const createDiffs = diffs.filter((diff) => diff.diffType.kind === 'create');
+  const nonCreateDiffs = diffs.filter((diff) => diff.diffType.kind !== 'create');
+
+  return (
+    <>
+      {createDiffs.length > 0 ? (
+        <FileArtifactBlock
+          key={`create:${createDiffs.map((diff) => diff.filePath).join('|')}:${status}`}
+          diffs={createDiffs}
+          status={status}
+        />
+      ) : null}
+      {nonCreateDiffs.length > 0 ? (
+        <CodeDiffView diffs={nonCreateDiffs} status={status} />
+      ) : null}
+    </>
+  );
 }
 
 async function openLocalPath(
@@ -473,7 +528,7 @@ function openExecutionPlanInEditor(
   });
 }
 
-function CodeBlock({
+const CodeBlock = memo(function CodeBlock({
   code,
   language,
   onRequestCommandApproval
@@ -535,4 +590,4 @@ function CodeBlock({
       </div>
     </div>
   );
-}
+});

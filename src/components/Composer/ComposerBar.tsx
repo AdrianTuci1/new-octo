@@ -1,126 +1,45 @@
-import { useState, useEffect, type KeyboardEvent } from 'react';
-import { ArrowRight, Bot, CornerDownLeft, MonitorSmartphone, Plus, Sparkles } from 'lucide-react';
+import { ArrowRight, CornerDownLeft, Paperclip, Plus, Sparkles, X } from 'lucide-react';
+import { ComposerContextMenu } from './ComposerContextMenu';
 import { GitBranchPicker } from './GitBranchPicker';
-import { hasCompleteSlashCommand, SlashCommandHighlight } from './SlashCommandHighlight';
-import { useComposerBar } from './useComposerBar';
+import { SlashCommandHighlight } from './SlashCommandHighlight';
 import { WorkingDirectoryPicker } from './WorkingDirectoryPicker';
-import type { RecommendedComposerAction, ShellPrediction } from '../../lib/composerIntelligence';
-import type { GitRepoContext } from '../../types/git';
-import type { ComposerMode, ShellModeSource } from '../../types/ui';
-import type { FilesystemDirectoryListing } from '../../types/filesystem';
+import { useLauncherContext } from '../Layout/Launcher/LauncherContext';
+import type { ChatAttachment } from '../../types/chat';
+import { useComposerBarController } from './useComposerBarController';
 import './ComposerBar.css';
 
-type ComposerBarProps = {
-  mode: ComposerMode;
-  shellSource: ShellModeSource | null;
-  restrictActions?: boolean;
-  query: string;
-  prediction: ShellPrediction | null;
-  recommendedAction: RecommendedComposerAction | null;
-  gitContext: GitRepoContext | null;
-  gitBranchMenuOpen: boolean;
-  workingDirectory: string | null;
-  workingDirectoryLabel: string;
-  workingDirectoryPickerOpen: boolean;
-  workingDirectoryListing: FilesystemDirectoryListing | null;
-  workingDirectorySearch: string;
-  selectedModelLabel: string;
-  terminalAutoDetectEnabled: boolean;
-  modelSetupRequired?: boolean;
-  onQueryChange: (query: string) => void;
-  onKeyDown: (event: KeyboardEvent<HTMLTextAreaElement>) => void;
-  onRecommendedActionClick: (action: RecommendedComposerAction) => void;
-  onToggleWorkingDirectoryPicker: () => void;
-  onToggleSingleCharacterPrediction: () => void;
-  onCloseWorkingDirectoryPicker: () => void;
-  onWorkingDirectorySearchChange: (query: string) => void;
-  onNavigateToParentDirectory: () => void;
-  onSelectWorkingDirectory: (path: string) => void;
-  onToggleTerminalAutoDetect: () => void;
-  onToggleGitBranchMenu: () => void;
-  onToggleModelTray: () => void;
-  onCloseGitBranchMenu: () => void;
-  onSelectGitBranch: (branch: string) => void;
-  onBackFromModelSetup?: () => void;
-  onOpenModelSettings?: () => void;
-  onHeightChange?: (height: number) => void;
-  placeholder?: string;
-};
-
-export function ComposerBar({
-  mode,
-  shellSource,
-  restrictActions = false,
-  query,
-  prediction,
-  recommendedAction,
-  gitContext,
-  gitBranchMenuOpen,
-  workingDirectory,
-  workingDirectoryLabel,
-  workingDirectoryPickerOpen,
-  workingDirectoryListing,
-  workingDirectorySearch,
-  selectedModelLabel,
-  terminalAutoDetectEnabled,
-  modelSetupRequired = false,
-  onQueryChange,
-  onKeyDown,
-  onRecommendedActionClick,
-  onToggleWorkingDirectoryPicker,
-  onCloseWorkingDirectoryPicker,
-  onWorkingDirectorySearchChange,
-  onNavigateToParentDirectory,
-  onSelectWorkingDirectory,
-  onToggleTerminalAutoDetect,
-  onToggleGitBranchMenu,
-  onToggleModelTray,
-  onCloseGitBranchMenu,
-  onSelectGitBranch,
-  onBackFromModelSetup,
-  onOpenModelSettings,
-  onHeightChange,
-  placeholder
-}: ComposerBarProps) {
-  const { inputRef, shellRef } = useComposerBar(query, onHeightChange, { autoFocus: mode === 'shell' });
-  const [isDismissed, setIsDismissed] = useState(false);
-  const predictionSuffix = prediction?.completionText ?? '';
-  const showShellIndicator = mode === 'shell' && shellSource === 'manual';
-  const showSlashCommandHighlight = hasCompleteSlashCommand(query);
-
-  // Reset dismissal when recommendation changes
-  useEffect(() => {
-    setIsDismissed(false);
-  }, [recommendedAction?.value]);
-
-  const showRecommendation = recommendedAction && query === '' && !isDismissed;
-
-  const handleInternalKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (event.key === 'Backspace' && query === '' && showRecommendation) {
-      setIsDismissed(true);
-      event.preventDefault();
-      return;
-    }
-    onKeyDown(event);
+export function ComposerBar() {
+  const { launcher, composerPlaceholder } = useLauncherContext();
+  const view = launcher.views.composerBar;
+  const controller = useComposerBarController({
+    composerPlaceholder,
+    showInputHintText: launcher.ui.agentSettings?.input?.showInputHintText !== false,
+    view
+  });
+  const contextUsageProgress = Math.max(0, Math.min(1, view.contextUsageProgress ?? 0));
+  const contextRingRadius = 7;
+  const contextRingCircumference = 2 * Math.PI * contextRingRadius;
+  const contextRingStyle = {
+    strokeDasharray: `${contextRingCircumference} ${contextRingCircumference}`,
+    strokeDashoffset: `${contextRingCircumference * (1 - contextUsageProgress)}`
   };
+
   return (
-    <div ref={shellRef} className="composer-shell">
-      <div className={`composer-input-row ${mode === 'shell' ? 'shell-active' : ''}`}>
+    <div ref={controller.shellRef} className="composer-shell">
+      <div className={`composer-input-row ${view.mode === 'shell' ? 'shell-active' : ''}`}>
         <div className="composer-editor-shell">
           <div className="composer-input-wrapper">
-            {showShellIndicator && <span className="composer-shell-indicator">!</span>}
-
-            <div className={`composer-textarea-container ${mode === 'shell' ? 'shell-mode' : ''} ${showShellIndicator ? 'manual-shell-mode' : ''} ${showRecommendation ? 'has-recommendation' : ''}`}>
-              {showRecommendation && (
+            <div className={`composer-textarea-container ${view.mode === 'shell' ? 'shell-mode' : ''} ${controller.showRecommendation ? 'has-recommendation' : ''}`}>
+              {controller.showRecommendation && view.recommendedAction && (
                 <div className="composer-recommendation-chip-wrapper">
                   <button
                     className="composer-recommendation-chip"
-                    onClick={() => onRecommendedActionClick(recommendedAction)}
+                    onClick={() => view.onRecommendedActionClick(view.recommendedAction)}
                     type="button"
-                    title={recommendedAction.description}
+                    title={view.recommendedAction.description}
                   >
                     <Sparkles size={12} className="recommendation-icon" />
-                    <span className="recommendation-label">{recommendedAction.value}</span>
+                    <span className="recommendation-label">{view.recommendedAction.value}</span>
                     <span className="recommendation-accept-group" aria-hidden="true">
                       <span className="recommendation-accept-key">↑</span>
                       <span className="recommendation-accept-key">
@@ -131,11 +50,11 @@ export function ComposerBar({
                 </div>
               )}
 
-              {predictionSuffix && (
+              {controller.predictionSuffix && (
                 <div className="composer-suggestion-overlay" aria-hidden="true">
-                  <span className="composer-suggestion-prefix">{query}</span>
-                  <span className="composer-suggestion-text">{predictionSuffix}</span>
-                  <span className="composer-suggestion-accept-group" title={prediction?.hint}>
+                  <span className="composer-suggestion-prefix">{view.query}</span>
+                  <span className="composer-suggestion-text">{controller.predictionSuffix}</span>
+                  <span className="composer-suggestion-accept-group" title={view.prediction?.hint}>
                     <span className="composer-suggestion-accept-main">
                       <ArrowRight size={11} />
                     </span>
@@ -146,25 +65,32 @@ export function ComposerBar({
                 </div>
               )}
 
-              <SlashCommandHighlight query={query} />
+              <SlashCommandHighlight query={view.query} />
+              <ComposerContextMenu {...controller.contextMenu} />
 
               <textarea
-                ref={inputRef}
-                className={`chat-input ${showRecommendation ? 'has-recommendation' : ''} ${showSlashCommandHighlight ? 'has-slash-command-highlight' : ''}`}
-                value={query}
-                disabled={modelSetupRequired}
-                onChange={(event) => onQueryChange(event.target.value)}
-                onKeyDown={handleInternalKeyDown}
-                rows={showRecommendation ? 1 : 2}
-                placeholder={
-                  mode === 'shell'
-                    ? 'Run a terminal command'
-                  : placeholder ?? 'Octomus anything, or use / for tools'
-                }
+                ref={controller.inputRef}
+                className={`chat-input ${controller.showRecommendation ? 'has-recommendation' : ''} ${controller.showSlashCommandHighlight ? 'has-slash-command-highlight' : ''} ${controller.showContextMentionHighlight ? 'has-context-highlight' : ''}`.trim()}
+                value={view.query}
+                disabled={view.modelSetupRequired}
+                onChange={(event) => controller.handleQueryChange(event.target.value)}
+                onKeyDown={controller.handleInternalKeyDown}
+                rows={controller.showRecommendation ? 1 : 2}
+                placeholder={view.mode === 'shell' ? 'Run a terminal command' : controller.placeholder ?? 'Octomus anything, or use / for tools'}
+              />
+
+              <input
+                ref={controller.fileInputRef}
+                className="composer-file-input"
+                type="file"
+                multiple
+                onChange={controller.handleFileInputChange}
+                aria-hidden="true"
+                tabIndex={-1}
               />
             </div>
 
-            {modelSetupRequired && (
+            {view.modelSetupRequired && (
               <div className="composer-model-setup-card" role="status" aria-live="polite">
                 <div className="composer-model-setup-copy">
                   <span className="composer-model-setup-eyebrow">Model onboarding</span>
@@ -174,14 +100,14 @@ export function ComposerBar({
                 <div className="composer-model-setup-actions">
                   <button
                     className="composer-model-setup-back"
-                    onClick={onBackFromModelSetup ?? onOpenModelSettings}
+                    onClick={view.onBackFromModelSetup ?? view.onOpenModelSettings}
                     type="button"
                   >
                     Back
                   </button>
                   <button
                     className="composer-model-setup-primary"
-                    onClick={onOpenModelSettings}
+                    onClick={view.onOpenModelSettings}
                     type="button"
                   >
                     Open model settings
@@ -193,35 +119,62 @@ export function ComposerBar({
         </div>
       </div>
 
-      {!restrictActions && (
+      {view.attachedFiles.length > 0 && (
+        <div className="composer-attachments" aria-label="Attached files">
+          <div className="composer-attachments-header">
+            <span>{view.attachedFiles.length} attached file{view.attachedFiles.length === 1 ? '' : 's'}</span>
+            <button className="composer-attachments-clear" type="button" onClick={view.onClearAttachments}>
+              Clear all
+            </button>
+          </div>
+          <div className="composer-attachments-list">
+            {view.attachedFiles.map((attachment: ChatAttachment) => (
+              <div key={attachment.id} className="composer-attachment-chip" title={attachment.mimeType ?? attachment.kind}>
+                <Paperclip size={11} />
+                <span className="composer-attachment-name">{attachment.name}</span>
+                <button
+                  className="composer-attachment-remove"
+                  type="button"
+                  onClick={() => view.onRemoveAttachedFile(attachment.id)}
+                  aria-label={`Remove ${attachment.name}`}
+                >
+                  <X size={10} />
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {!view.restrictActions && (
         <div className="input-actions composer-actions">
           <div className="action-group left-actions">
             <WorkingDirectoryPicker
-              buttonLabel={workingDirectoryLabel}
-              currentPath={workingDirectory}
-              isOpen={workingDirectoryPickerOpen}
+              buttonLabel={view.workingDirectoryLabel}
+              currentPath={view.workingDirectory}
+              isOpen={view.workingDirectoryPickerOpen}
               isCompact={true}
-              listing={workingDirectoryListing}
-              onClose={onCloseWorkingDirectoryPicker}
-              onNavigateToParent={onNavigateToParentDirectory}
-              onSearchQueryChange={onWorkingDirectorySearchChange}
-              onSelectDirectory={onSelectWorkingDirectory}
-              onToggle={onToggleWorkingDirectoryPicker}
-              searchQuery={workingDirectorySearch}
+              listing={view.workingDirectoryListing}
+              onClose={view.onCloseWorkingDirectoryPicker}
+              onNavigateToParent={view.onNavigateToParentDirectory}
+              onSearchQueryChange={view.onWorkingDirectorySearchChange}
+              onSelectDirectory={view.onSelectWorkingDirectory}
+              onToggle={view.onToggleWorkingDirectoryPicker}
+              searchQuery={view.workingDirectorySearch}
             />
-            {gitContext && (
+            {view.gitContext && (
               <GitBranchPicker
-                branches={gitContext.branches}
-                currentBranch={gitContext.currentBranch}
-                isOpen={gitBranchMenuOpen}
-                onClose={onCloseGitBranchMenu}
-                onSelectBranch={onSelectGitBranch}
-                onToggle={onToggleGitBranchMenu}
+                branches={view.gitContext.branches}
+                currentBranch={view.gitContext.currentBranch}
+                isOpen={view.gitBranchMenuOpen}
+                onClose={view.onCloseGitBranchMenu}
+                onSelectBranch={view.onSelectGitBranch}
+                onToggle={view.onToggleGitBranchMenu}
               />
             )}
             <button
-              className={`toolbar-chip auto-detect-chip ${terminalAutoDetectEnabled ? 'active' : ''}`}
-              onClick={onToggleTerminalAutoDetect}
+              className={`toolbar-chip auto-detect-chip ${view.terminalAutoDetectEnabled ? 'active' : ''}`}
+              onClick={view.onToggleTerminalAutoDetect}
               type="button"
               title="Auto detect terminal commands"
             >
@@ -230,14 +183,31 @@ export function ComposerBar({
           </div>
 
           <div className="action-group right-actions">
-            <button className="toolbar-chip model-chip" onClick={onToggleModelTray} type="button" title="Model">
-              <span>{selectedModelLabel}</span>
+            <span
+              className="composer-context-indicator-chip"
+              aria-label={view.contextUsageTitle ?? 'Context usage'}
+            >
+              <span className="composer-context-indicator-shell" aria-hidden="true">
+                <svg className={`composer-context-ring ${view.contextIndicatorTone ?? 'agent'}`} viewBox="0 0 20 20">
+                  <circle className="composer-context-ring-track" cx="10" cy="10" r={contextRingRadius} />
+                  <circle className="composer-context-ring-progress" cx="10" cy="10" r={contextRingRadius} style={contextRingStyle} />
+                </svg>
+              </span>
+              <span className="composer-context-indicator-tooltip" role="tooltip">
+                {view.contextUsageTitle ?? 'Context usage'}
+              </span>
+            </span>
+            <button className="toolbar-chip model-chip" onClick={view.onToggleModelTray} type="button" title={view.contextIndicatorTitle ?? 'Model'}>
+              <span>{view.selectedModelLabel}</span>
             </button>
-            <button className="toolbar-chip remote-chip" type="button" title="Remote control">
-              <MonitorSmartphone size={12} />
-              <span>Remote</span>
-            </button>
-            <button className="icon-button attach-button" type="button" title="Attach file">
+            <button
+              className={`icon-button attach-button ${controller.canAttachFiles ? '' : 'disabled'}`.trim()}
+              disabled={!controller.canAttachFiles}
+              type="button"
+              title={controller.attachTooltip}
+              aria-disabled={!controller.canAttachFiles}
+              onClick={controller.handleAttachButtonClick}
+            >
               <Plus size={12} />
             </button>
           </div>

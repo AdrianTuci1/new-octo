@@ -57,64 +57,62 @@ warp/app/src/
 
 ---
 
-## Octomus Target Architecture
+## Octomus Current Architecture
 
 ```
-octomus/launcher-rs-react/
+launcher-rs-react/
+├── Cargo.toml                    # Cargo workspace: desktop, CLI, cloud protocol
+├── octomus-cli/                  # Headless Octomus runtime entrypoint
+├── octomus-cloud-protocol/       # Shared cloud runtime protocol types
 ├── src-tauri/
 │   ├── Cargo.toml
+│   ├── tauri.conf.json           # productName: Octomus
+│   ├── resources/skills/         # Bundled Octomus skills
 │   ├── src/
-│   │   ├── main.rs               # Tauri entry + commands
-│   │   ├── terminal/             # Terminal engine
-│   │   │   ├── mod.rs            # Module entry
-│   │   │   ├── model.rs          # TerminalState
-│   │   │   ├── pty.rs            # PTY management (portable-pty)
-│   │   │   ├── ansi.rs           # ANSI parsing (vte crate)
-│   │   │   ├── grid.rs           # Cell grid
-│   │   │   ├── block.rs          # Block system
-│   │   │   ├── session.rs        # Session lifecycle
-│   │   │   ├── size.rs           # Dimensions
-│   │   │   └── history.rs        # Command history
-│   │   ├── ai/                   # AI engine
-│   │   │   ├── mod.rs
-│   │   │   ├── config.rs         # AgentConfig
-│   │   │   ├── driver.rs         # AgentDriver (simplified)
-│   │   │   ├── harness.rs        # AgentBackend trait
-│   │   │   ├── task.rs           # Task + TaskState FSM
-│   │   │   ├── runner.rs         # Background task runner
-│   │   │   ├── conversation.rs   # Conversation model
-│   │   │   └── providers/
-│   │   │       ├── openai.rs
-│   │   │       ├── anthropic.rs
-│   │   │       └── gemini.rs
-│   │   ├── editor/               # Code editor backend
-│   │   │   ├── mod.rs
-│   │   │   ├── buffer.rs         # Text buffer
-│   │   │   └── lsp.rs            # Language Server Protocol
-│   │   └── spotlight/            # Spotlight launcher logic
-│   │       ├── mod.rs
-│   │       ├── commands.rs       # Built-in commands
-│   │       └── fuzzy.rs          # Fuzzy matching
-│   └── tauri.conf.json
+│   │   ├── main.rs               # Tauri entry, windows, tray, menus, command registry
+│   │   ├── lib.rs                # Backend module exports
+│   │   ├── octomus_paths.rs      # ~/.octomus layout and bundled skill discovery
+│   │   ├── ai/                   # Agent loop, OpenAI-compatible harness, MCP, diff, prediction
+│   │   ├── terminal/             # PTY/session manager, blocks, FS, git, completions
+│   │   ├── memory/               # Local-first persistence and sync queue
+│   │   ├── menus/                # Native app/menu/tray definitions
+│   │   ├── shell_signatures/     # Shell command signature lookup and parsing
+│   │   ├── cloud_runtime.rs      # Remote/cloud runtime launch orchestration
+│   │   ├── code_index.rs         # Project indexing and search
+│   │   ├── keybindings.rs        # Backend shortcut catalog and menu dispatch
+│   │   ├── secure_store.rs       # Secret storage bridge
+│   │   └── app_updates/          # Update state and install commands
 │
 ├── src/                          # React frontend
-│   ├── App.tsx                   # Main app
+│   ├── App.tsx                   # Top-level app composition
 │   ├── main.tsx                  # Entry
-│   ├── styles.css
+│   ├── styles.css                # Design tokens and global styles
 │   ├── components/
-│   │   ├── Spotlight.tsx         # Spotlight input overlay
-│   │   ├── Terminal.tsx          # Terminal renderer (xterm.js)
-│   │   ├── BlockView.tsx         # Block-based output
-│   │   ├── Transcript.tsx        # AI chat transcript
-│   │   ├── CodeEditor.tsx        # Monaco editor wrapper
-│   │   └── StatusBar.tsx         # Bottom bar (task status, etc.)
+│   │   ├── App/                  # App shell, workspace chrome, settings, drawers
+│   │   ├── Chat/                 # Transcript, message bubbles, tool/result blocks
+│   │   ├── Composer/             # Prompt/terminal composer, context menu, model setup
+│   │   ├── Editor/               # Monaco editor workspace and diff UI
+│   │   ├── Layout/Launcher/      # Main Octomus surface and orchestration hooks
+│   │   ├── Onboarding/           # First-run setup UI
+│   │   └── Tray/                 # Tray panels for history, commands, models, help
 │   ├── hooks/
-│   │   ├── useTerminal.ts        # Terminal state hook
-│   │   ├── useTaskEvents.ts      # AI task events hook
-│   │   └── useSpotlight.ts       # Spotlight visibility hook
+│   │   ├── useChat/              # Chat lifecycle, bridge, tool-call dispatch
+│   │   ├── useWorkingDirectory.ts
+│   │   ├── useTerminalRuntimeContext.ts
+│   │   ├── useComposerIntelligence.ts
+│   │   ├── useGitContext.ts
+│   │   └── useLauncherAppState.ts
+│   ├── stores/                   # Zustand stores: chat, editor, launcher, memory, UI
+│   ├── lib/                      # Frontend service adapters and helpers
 │   └── types/
-│       └── index.ts              # Shared TypeScript types
+│       ├── chat.ts
+│       ├── terminal.ts
+│       ├── memory.ts
+│       ├── filesystem.ts
+│       └── index.ts
 │
+├── scripts/                      # Dev and release scripts
+├── assets/                       # Logos and UI/MCP/file-type SVG assets
 ├── package.json
 ├── vite.config.ts
 └── tsconfig.json
@@ -124,128 +122,72 @@ octomus/launcher-rs-react/
 
 ## Key Design Decisions
 
-### 1. Terminal: xterm.js vs Custom
+### 1. Terminal: Rust PTY + React Blocks
 
-**Decision: Use xterm.js** for the terminal renderer in React, backed by Rust PTY.
+Octomus keeps terminal process ownership in Rust and presents terminal output through React components. The backend owns PTY/session lifecycle, runtime context, command history, filesystem helpers, git context, and command prediction.
 
-| Approach | Pro | Con |
-|----------|-----|-----|
-| xterm.js | Mature, fast, proven | Less control over rendering |
-| Custom renderer | Full control (like Warp) | 2+ years of work |
-| Alacritty-like | GPU-accelerated | Can't embed in webview |
-
-**Flow:**
 ```
-React (xterm.js) ←→ Tauri Events ←→ Rust (portable-pty)
-     render            IPC             PTY read/write
+React Composer/Chat Blocks ←→ Tauri commands/events ←→ Rust terminal manager ←→ PTY
 ```
 
 ### 2. Block System: Interceptor Pattern
 
-Like Warp, detect command boundaries via shell hooks:
-
-```bash
-# In user's shell RC file:
-precmd() { printf '\e]7777;precmd\a' }
-preexec() { printf '\e]7777;preexec;%s\a' "$1" }
-```
-
-Rust ANSI parser intercepts these → creates Block boundaries.
-
-### 3. AI: API-Direct (No CLI Harness)
-
-Unlike Warp (which wraps CLI tools like Claude Code), Octomus calls LLM APIs directly:
+Command boundaries are represented as terminal blocks. The current backend pieces live under `src-tauri/src/terminal/`:
 
 ```
-Warp:     AgentDriver → HarnessRunner → Claude CLI → Anthropic API
-Octomus:  AgentDriver → AgentBackend → reqwest → Anthropic API (direct)
+ansi.rs, block.rs, events.rs, manager.rs, pty.rs, requests.rs, session.rs
 ```
 
-### 4. Spotlight: Dual Mode
+The frontend renders summaries/details in `src/components/Chat/blocks/TerminalBlock*.tsx` and orchestrates terminal composer state through `src/components/Composer/`.
+
+### 3. AI: Octomus Agent Harness
+
+The Octomus agent runtime is implemented in `src-tauri/src/ai/agent/` with an OpenAI-compatible provider, scripted planning helpers, lifecycle contracts, tool actions, continuation handling, and run management.
 
 ```
-┌───────────────────────────────────────┐
-│  ⌘K / ⌘Space  →  Spotlight Opens     │
-│                                       │
-│  Mode 1: Terminal Command             │
-│  $ git status                         │
-│  (Executed in PTY, output in block)   │
-│                                       │
-│  Mode 2: AI Query                     │
-│  > Fix the login bug in auth.rs       │
-│  (Sent to LLM, response in transcript)│
-│                                       │
-│  Mode 3: Quick Action                 │
-│  :open settings                       │
-│  (Built-in command, no LLM)           │
-└───────────────────────────────────────┘
+React useChat bridge → ai::agent_start / agent_continue → AgentHarnessManager → agent loop → events + memory persistence
 ```
+
+MCP support is in `src-tauri/src/ai/mcp/`; web search, diff application, command prediction, and composer intelligence are separate AI submodules.
+
+### 4. Local-First Filesystem
+
+```
+~/.octomus/
+├── .mcp.json
+├── ai-provider.json
+├── keybindings.yaml
+├── settings.toml
+├── skills/
+└── tab_configs/
+    ├── startup_config.toml
+    └── my_tab_config.toml
+```
+
+The root can be overridden with `OCTOMUS_HOME`. Bundled skills are discovered from `OCTOMUS_BUNDLED_SKILLS_DIR`, `src-tauri/resources/skills/`, or packaged `resources/skills/`.
 
 ---
 
-## Recommended Crates
+## Current Rust Workspace
 
 ```toml
-[dependencies]
-# Core
-tauri = { version = "2.0.0", features = [] }
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-tokio = { version = "1", features = ["full"] }
-uuid = { version = "1", features = ["v4", "serde"] }
-chrono = { version = "0.4", features = ["serde"] }
-
-# Terminal
-portable-pty = "0.8"            # Cross-platform PTY
-vte = "0.13"                    # ANSI parser (Alacritty's)
-
-# AI
-reqwest = { version = "0.12", features = ["json", "stream"] }
-async-stream = "0.3"            # Stream utilities
-futures = "0.3"
-
-# Storage
-rusqlite = { version = "0.31", features = ["bundled"] }
-
-# Logging
-log = "0.4"
-env_logger = "0.11"
+[workspace]
+members = ["src-tauri", "octomus-cli", "octomus-cloud-protocol"]
+resolver = "2"
 ```
+
+The packaged app name is `Octomus` (`src-tauri/tauri.conf.json`), while the Rust desktop crate and binary are still named `octomus_launcher_prototype` for compatibility with the current prototype bundle.
 
 ---
 
-## Implementation Phases
+## Implementation Status Map
 
-### Phase 1: Terminal Foundation
-- [ ] PTY spawn + read/write in Rust
-- [ ] ANSI parsing with `vte`
-- [ ] xterm.js integration in React
-- [ ] Basic I/O: type → PTY → output → xterm.js
-- [ ] Window management (spotlight overlay)
-
-### Phase 2: Block System
-- [ ] Shell hook injection (precmd/preexec)
-- [ ] Block detection in ANSI parser
-- [ ] Block rendering in React
-- [ ] Command history (SQLite)
-- [ ] Block selection/copy
-
-### Phase 3: AI Integration
-- [ ] AgentBackend trait + OpenAI provider
-- [ ] Spotlight dual-mode (terminal vs AI)
-- [ ] Streaming responses
-- [ ] Markdown rendering for AI responses
-- [ ] Code block extraction + "Run" action
-
-### Phase 4: Code Editor
-- [ ] Monaco editor integration
-- [ ] File open/save via Tauri FS
-- [ ] LSP client in Rust
-- [ ] AI-assisted editing (inline suggestions)
-
-### Phase 5: Advanced
-- [ ] MCP server support
-- [ ] Task runner (background agents)
-- [ ] Conversation persistence (SQLite)
-- [ ] Scheduled tasks
-- [ ] Multi-tab / multi-pane
+| Area | Current files |
+|------|---------------|
+| Terminal/session runtime | `src-tauri/src/terminal/*`, `src/hooks/useTerminalRuntimeContext.ts`, `src/hooks/useTerminalCommandBlocks.ts` |
+| AI agent loop | `src-tauri/src/ai/agent/*`, `src/hooks/useChat/*`, `src/components/Chat/*` |
+| MCP | `src-tauri/src/ai/mcp/*`, `src/components/App/settings/sections/MCPServersSection.tsx` |
+| Local memory | `src-tauri/src/memory/*`, `src/lib/octomusMemory.ts`, `src/stores/memoryStore.ts` |
+| Settings and menus | `src-tauri/src/menus/*`, `src-tauri/src/keybindings.rs`, `src/components/App/settings/*` |
+| Editor/workspace chrome | `src/components/Editor/*`, `src/components/App/chrome/*`, `src/stores/editorStore.ts` |
+| Cloud/runtime | `src-tauri/src/cloud_runtime.rs`, `src-tauri/src/terminal/transport/*`, `octomus-cli/`, `octomus-cloud-protocol/` |

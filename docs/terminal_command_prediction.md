@@ -81,7 +81,7 @@ Includes environment details:
 - **Shell**: zsh/bash/fish version.
 - **Environment Variables**: Key variables (like `PATH`, `EDITOR`) that influence command choices.
 
-## 6. Implementation Roadmap for Launcher
+## 6. Implementation Roadmap for Octomus
 
 To adapt this to your service, follow these steps:
 

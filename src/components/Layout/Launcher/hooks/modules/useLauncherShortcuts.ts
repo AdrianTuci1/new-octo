@@ -4,14 +4,19 @@
  */
 import { listen } from '@tauri-apps/api/event';
 import { useEffect, type KeyboardEvent } from 'react';
-import { COMMAND_ITEMS, filterCommandItems } from '../../../../../lib';
+import {
+  COMMAND_ITEMS,
+  consumeShellModeActivator,
+  filterCommandItems,
+  isImmediateShellCommandCandidate
+} from '../../../../../lib';
 import * as Hooks from '../../../../../hooks';
 import type { BackendShortcutCommandEvent } from '../../../../../types/keybindings';
 import * as Utils from '../../utils';
 import type { LauncherProps } from '../types';
 
 export function useLauncherShortcuts({
-  active, store, tray, props, runtime, history, ui, handlers, refs, actions
+  active, store, tray, props, runtime, history, ui, handlers, refs, actions, composer
 }: {
   active: boolean;
   store: any;
@@ -23,6 +28,7 @@ export function useLauncherShortcuts({
   handlers: any;
   refs: any;
   actions: any;
+  composer: any;
 }) {
   const { chat, terminal, agentTerminal, workingDirectory, modelSelection, requestCommandApproval, setResolvedPendingApproval } = runtime;
   const { historyEntries } = history;
@@ -30,6 +36,43 @@ export function useLauncherShortcuts({
   const { clearTerminalSurface, openAppWindow, launchAgentComposer } = actions;
   const { variant = 'panel' } = props;
   const visibleCommandItems = filterCommandItems(COMMAND_ITEMS, chat.query);
+  const removeShellActivator = (query: string) => consumeShellModeActivator(query).value;
+  const autodetectEnabled = store.terminalAutoDetectEnabled
+    && runtime.agentSettings?.enabled !== false
+    && runtime.agentSettings?.input?.autodetectTerminalCommandsInAgent !== false;
+  const shouldTreatComposerQueryAsShell = store.composerSurface === 'terminal'
+    || store.modeLock === 'shell'
+    || runtime.hasShellActivator
+    || ui.composerMode === 'shell'
+    || store.autodetectedShellLatch
+    || (autodetectEnabled && isImmediateShellCommandCandidate(runtime.queryWithoutActivator, runtime.availableShellCommands));
+
+  const toggleShellModeOverride = () => {
+    const current = chat.query;
+    const consumed = consumeShellModeActivator(current);
+
+    if (consumed.consumed) {
+      chat.setQuery(consumed.value);
+      store.setModeLock(null);
+      store.setAutodetectedShellLatch(false);
+      return;
+    }
+
+    if (store.modeLock === 'shell') {
+      store.setModeLock('chat');
+      store.setAutodetectedShellLatch(false);
+      return;
+    }
+
+    if (store.modeLock === 'chat') {
+      store.setModeLock('shell');
+      store.setAutodetectedShellLatch(false);
+      return;
+    }
+
+    store.setModeLock(ui.composerMode === 'shell' || store.autodetectedShellLatch ? 'chat' : 'shell');
+    store.setAutodetectedShellLatch(false);
+  };
 
   // 1. Internal Keyboard Logic (Advanced Keyboard Shortcuts)
   const { handleKeyDown } = Hooks.useKeyboardShortcuts({
@@ -42,30 +85,40 @@ export function useLauncherShortcuts({
     onCommandApproval: requestCommandApproval,
     onNewChat: () => {
       setResolvedPendingApproval(null);
+      refs.suppressComposerShellAutodetectRef.current = null;
       store.setModeLock(null);
       store.setComposerSurface('agent');
       clearTerminalSurface();
     },
-    onTerminalCommand: (cmd) => Utils.runCommandInSurface(
-      cmd,
-      store.composerSurface,
-      terminal,
-      agentTerminal,
-      clearTerminalSurface,
-      'user'
-    ),
-    isShellMode: store.composerSurface === 'terminal' || store.modeLock === 'shell' || ui.composerMode === 'shell',
+    onTerminalCommand: (cmd) => {
+      const result = Utils.runCommandInSurface(
+        cmd,
+        'agent',
+        terminal,
+        agentTerminal,
+        clearTerminalSurface,
+        'user'
+      );
+      store.setModeLock(null);
+      store.setAutodetectedShellLatch(false);
+      return result;
+    },
+    isShellMode: shouldTreatComposerQueryAsShell,
     isManualShellMode: store.composerSurface !== 'terminal' && store.modeLock === 'shell',
     hasPrediction: Boolean(ui.activeShellPrediction?.completionText),
     onAcceptPrediction: () => {
-      const suffix = ui.activeShellPrediction?.completionText ?? '';
-      if (suffix) {
-        chat.setQuery(chat.query + suffix);
+      const fullCommand = ui.activeShellPrediction?.fullCommand ?? '';
+      if (fullCommand) {
+        chat.setQuery(fullCommand);
       }
     }, 
-    onCyclePrediction: () => {},
-    onExitShellMode: () => store.setModeLock(chat.query.trim().length > 0 ? 'chat' : null),
-    onToggleShellMode: () => store.setModeLock(store.modeLock === 'shell' ? 'chat' : 'shell'),
+    onCyclePrediction: composer.composerIntelligence.cyclePrediction,
+    onExitShellMode: () => {
+      chat.setQuery(removeShellActivator(chat.query));
+      store.setModeLock(null);
+      store.setAutodetectedShellLatch(false);
+    },
+    onToggleShellMode: toggleShellModeOverride,
     onCloseTray: tray.closeTray,
     onToggleHelpTray: tray.openHelp,
     onToggleConversationsTray: tray.openConversations
@@ -73,7 +126,7 @@ export function useLauncherShortcuts({
 
   // 2. Global Event Listeners
   useEffect(() => {
-    if (!active || variant !== 'panel' || !openAppWindow) return;
+    if (!active || variant === 'workspace' || !openAppWindow) return;
     const handleOpenAppShortcut = (event: globalThis.KeyboardEvent) => {
       if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== 'x') return;
       event.preventDefault();
@@ -85,7 +138,7 @@ export function useLauncherShortcuts({
   }, [active, openAppWindow, variant]);
 
   useEffect(() => {
-    if (!active || variant !== 'panel' || !openAppWindow || !(window as any).__TAURI_INTERNALS__) {
+    if (!active || variant === 'workspace' || !openAppWindow || !(window as any).__TAURI_INTERNALS__) {
       return;
     }
 
@@ -155,31 +208,6 @@ export function useLauncherShortcuts({
       }
     }
 
-    if (store.composerSurface === 'terminal') {
-      if (event.key === 'Enter' && !event.shiftKey) {
-        event.preventDefault();
-        const command = chat.query.trim();
-        if (!command) return;
-        if (command.startsWith('/')) {
-          launchAgentComposer(command, true);
-          return;
-        }
-        if (command === 'clear') {
-          clearTerminalSurface();
-          chat.setQuery('');
-          return;
-        }
-        void Utils.runCommandInSurface(command, 'terminal', terminal, agentTerminal, clearTerminalSurface, 'user').then(() => chat.setQuery(''));
-        return;
-      }
-      
-      if (event.key === 'ArrowRight' || event.key === 'Tab' || event.key === 'ArrowDown') {
-        handleKeyDown(event);
-        if (event.defaultPrevented) return;
-      }
-      return;
-    }
-
     // Tray Navigation
     if (tray.isTrayOpen && (tray.activeTrayMode === 'history' || tray.activeTrayMode === 'models')) {
       const items = tray.activeTrayMode === 'history' ? historyEntries : visibleModels;
@@ -212,10 +240,42 @@ export function useLauncherShortcuts({
       }
     }
 
-    if (event.key === 'ArrowUp' && !event.shiftKey && chat.query.trim().length === 0 && !tray.isTrayOpen) {
-      event.preventDefault();
-      store.setSelectedHistoryIndex(0);
-      tray.toggleTray('history');
+    if (event.key === 'ArrowUp' && !event.shiftKey && !tray.isTrayOpen) {
+      const shouldOpenShellHistory = shouldTreatComposerQueryAsShell
+        && (Boolean(ui.activeShellPrediction?.completionText) || removeShellActivator(chat.query).trim().length > 0);
+      const shouldOpenAllHistory = store.composerSurface !== 'terminal' && chat.query.trim().length === 0;
+
+      if (shouldOpenShellHistory || shouldOpenAllHistory) {
+        event.preventDefault();
+        store.setSelectedHistoryIndex(0);
+        store.setHistoryTab(shouldOpenShellHistory ? 'commands' : 'all');
+        tray.toggleTray('history');
+        return;
+      }
+    }
+
+    if (store.composerSurface === 'terminal') {
+      if (event.key === 'Enter' && !event.shiftKey) {
+        event.preventDefault();
+        const command = consumeShellModeActivator(chat.query).value.trim();
+        if (!command) return;
+        if (command.startsWith('/')) {
+          launchAgentComposer(command, true);
+          return;
+        }
+        if (command === 'clear') {
+          clearTerminalSurface();
+          chat.setQuery('');
+          return;
+        }
+        void Utils.runCommandInSurface(command, 'terminal', terminal, agentTerminal, clearTerminalSurface, 'user').then(() => chat.setQuery(''));
+        return;
+      }
+
+      if (event.key === 'ArrowRight' || event.key === 'Tab' || event.key === 'ArrowDown') {
+        handleKeyDown(event);
+        if (event.defaultPrevented) return;
+      }
       return;
     }
 

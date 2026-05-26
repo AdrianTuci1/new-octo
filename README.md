@@ -35,6 +35,7 @@ An autonomous AI-native launcher shell built with Tauri, Rust, and React. Octomu
 - `npm run tauri -- dev`: Raw Tauri development command.
 - `npm run release:cli`: Build and archive the `octomus-cli` runtime.
 - `npm run release:desktop`: Build desktop bundles for the current host OS.
+- `npm run release:aws`: Build Linux and Windows release bundles in AWS CodeBuild, then download them locally.
 - `npm run release:dmg`: Build the macOS `.dmg` installer.
 - `npm run release:exe`: Build the Windows `.exe` installer.
 - See [scripts/README.md](scripts/README.md) for the packaging script map.
@@ -50,6 +51,7 @@ An autonomous AI-native launcher shell built with Tauri, Rust, and React. Octomu
 - `.exe` and `.msi` bundles must be produced on Windows.
 - Linux hosts default to `.AppImage` and `.deb` bundles when using `npm run release:desktop`.
 - macOS `.dmg` bundling may require Finder Automation permission for the calling terminal app.
+- `npm run release:aws` expects `AWS_REGION` to be set or configured in your AWS profile. If you set `R2_ENDPOINT_URL` and `R2_BUCKET`, the downloaded artifacts are also synced to R2.
 
 ---
 

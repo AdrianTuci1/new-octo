@@ -5,15 +5,15 @@ use std::{
     sync::OnceLock,
 };
 
-use crate::terminal::home_dir;
-use super::{CommandScope, ScopeMetadata};
-use super::protocols::CompletionProtocol;
-pub use super::parser::shell_split_words;
-use super::utils::{
-    expand_completion_pattern, is_plausible_completion_command_name, strip_completion_token,
-    strip_box_prefix,
-};
 use super::help::{parse_entry_line, register_option_templates};
+pub use super::parser::shell_split_words;
+use super::protocols::CompletionProtocol;
+use super::utils::{
+    expand_completion_pattern, is_plausible_completion_command_name, strip_box_prefix,
+    strip_completion_token,
+};
+use super::{CommandScope, ScopeMetadata};
+use crate::terminal::home_dir;
 
 #[derive(Debug, Default)]
 pub struct CompletionCatalog {

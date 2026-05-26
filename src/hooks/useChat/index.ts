@@ -11,13 +11,17 @@ export function useChat(options: UseChatOptions = {}) {
   const onCommandApprovalRef = useRef(options.onCommandApproval);
   const onFileChangeApprovalRef = useRef(options.onFileChangeApproval);
   const onWebSearchRef = useRef(options.onWebSearch);
+  const onWorkspaceExplorationRef = useRef(options.onWorkspaceExploration);
+  const onCloudAgentLaunchRef = useRef(options.onCloudAgentLaunch);
   
   const actions = useChatActions({
     options,
     state,
     onCommandApprovalRef,
     onFileChangeApprovalRef,
-    onWebSearchRef
+    onWebSearchRef,
+    onWorkspaceExplorationRef,
+    onCloudAgentLaunchRef
   });
 
   useChatEffects({
@@ -26,16 +30,35 @@ export function useChat(options: UseChatOptions = {}) {
     actions,
     onCommandApprovalRef,
     onFileChangeApprovalRef,
-    onWebSearchRef
+    onWebSearchRef,
+    onWorkspaceExplorationRef,
+    onCloudAgentLaunchRef
   });
 
   return useMemo(() => ({
     query: state.query,
     setQuery: state.setQuery,
     messages: state.messages,
+    attachments: state.attachments,
+    addAttachments: state.addAttachments,
+    removeAttachment: state.removeAttachment,
+    clearAttachments: state.clearAttachments,
     submitQuery: actions.submitQuery,
     submitToolResult: actions.submitToolResult,
+    attachFiles: actions.attachFiles,
     clearMessages: state.clearMessages,
     saveCurrentConversation: actions.saveCurrentConversation
-  }), [state.clearMessages, state.messages, state.query, actions.saveCurrentConversation, actions.submitQuery, actions.submitToolResult]);
+  }), [
+    actions.attachFiles,
+    actions.saveCurrentConversation,
+    actions.submitQuery,
+    actions.submitToolResult,
+    state.addAttachments,
+    state.attachments,
+    state.clearAttachments,
+    state.clearMessages,
+    state.messages,
+    state.query,
+    state.removeAttachment
+  ]);
 }

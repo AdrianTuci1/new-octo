@@ -48,6 +48,7 @@ type BackendResponse = {
 type BackendGhostPrediction = {
   input: string;
   suggestion: string;
+  suggestions?: string[];
   confidence: number;
   kind: string;
 };
@@ -58,6 +59,12 @@ const DEFAULT_RESPONSE: BackendResponse = {
   prediction: null,
   recommendedAction: null
 };
+
+const MAX_INTELLIGENCE_MESSAGES = 8;
+const MAX_INTELLIGENCE_MESSAGE_BODY_CHARS = 1_500;
+const MAX_INTELLIGENCE_TERMINAL_BLOCKS = 5;
+const MAX_INTELLIGENCE_TERMINAL_OUTPUT_HEAD_CHARS = 1_200;
+const MAX_INTELLIGENCE_TERMINAL_OUTPUT_TAIL_CHARS = 1_200;
 
 export function useComposerIntelligence(options: ComposerIntelligenceOptions) {
   const {
@@ -84,6 +91,17 @@ export function useComposerIntelligence(options: ComposerIntelligenceOptions) {
   } : DEFAULT_RESPONSE);
   const [selectedPredictionIndex, setSelectedPredictionIndex] = useState(0);
   const generationRef = useRef(0);
+  const trimmedQuery = query.trim();
+
+  useEffect(() => {
+    generationRef.current += 1;
+    setSelectedPredictionIndex(0);
+    setResponse(forceShellMode ? {
+      ...DEFAULT_RESPONSE,
+      mode: 'shell',
+      shellSource: 'manual'
+    } : DEFAULT_RESPONSE);
+  }, [contextKey, forceShellMode, surface]);
 
   const activePredictionSuggestion = useMemo(() => {
     const suggestions = response.prediction?.suggestions ?? [];
@@ -99,18 +117,49 @@ export function useComposerIntelligence(options: ComposerIntelligenceOptions) {
       return null;
     }
 
+    if (surface === 'composerBar' && trimmedQuery.length === 0) {
+      return null;
+    }
+
+    if (!activePredictionSuggestion.startsWith(query) || activePredictionSuggestion.length <= query.length) {
+      return null;
+    }
+
     return {
       fullCommand: activePredictionSuggestion,
       completionText: activePredictionSuggestion.slice(query.length),
+      suggestions: response.prediction?.suggestions ?? [activePredictionSuggestion],
       hint: (response.prediction?.suggestions?.length ?? 0) > 1
         ? 'Tab, Right Arrow, or Down Arrow to accept'
         : 'Tab or Right Arrow to accept'
     };
-  }, [activePredictionSuggestion, query.length, response.prediction?.suggestions?.length]);
+  }, [activePredictionSuggestion, query, trimmedQuery.length, response.prediction?.suggestions, surface]);
 
   useEffect(() => {
     setSelectedPredictionIndex(0);
   }, [contextKey, cwd, terminalBlocks.length]);
+
+  const compactMessages = useMemo(() => {
+    return messages.slice(-MAX_INTELLIGENCE_MESSAGES).map((message) => ({
+      role: message.role,
+      body: compactText(message.body, MAX_INTELLIGENCE_MESSAGE_BODY_CHARS)
+    }));
+  }, [messages]);
+
+  const compactTerminalBlocks = useMemo(() => {
+    return terminalBlocks.slice(-MAX_INTELLIGENCE_TERMINAL_BLOCKS).map((block) => ({
+      command: block.command,
+      output: compactTerminalOutput(block.output),
+      exitCode: block.exitCode ?? null,
+      status: block.status
+    }));
+  }, [terminalBlocks]);
+  const shouldRequestComposerGhostPrediction = useMemo(() => (
+    surface === 'composerBar'
+      && trimmedQuery.length > 0
+      && !query.trimStart().startsWith('/')
+      && (forceShellMode || lockedMode === 'shell' || autodetectEnabled)
+  ), [autodetectEnabled, forceShellMode, lockedMode, query, surface, trimmedQuery.length]);
 
   useEffect(() => {
     const generation = generationRef.current + 1;
@@ -137,7 +186,7 @@ export function useComposerIntelligence(options: ComposerIntelligenceOptions) {
               prediction: nextPrediction
                 ? {
                     suggestion: nextPrediction.suggestion,
-                    suggestions: [nextPrediction.suggestion],
+                    suggestions: normalizeGhostSuggestions(nextPrediction),
                     kind: nextPrediction.kind
                   }
                 : null,
@@ -160,38 +209,53 @@ export function useComposerIntelligence(options: ComposerIntelligenceOptions) {
         return;
       }
 
-      void invoke<BackendResponse>('terminal_get_composer_intelligence', {
-        request: {
-          contextKey,
-          query,
-          cwd,
-          gitBranch,
-          availableCommands,
-          historyEntries,
-          terminalBlocks: terminalBlocks.map((block) => ({
-            command: block.command,
-            output: block.output,
-            exitCode: block.exitCode ?? null,
-            status: block.status
-          })),
-          messages: messages.map((message) => ({
-            role: message.role,
-            body: message.body
-          })),
-          lockedMode,
-          autodetectEnabled,
-          allowSingleCharacterPrediction,
-          forceShellMode,
-          enableZeroStatePrediction,
-          surface
-        }
-      })
-        .then((nextResponse) => {
+      const composerIntelligenceRequest = {
+        contextKey,
+        query,
+        cwd,
+        gitBranch,
+        availableCommands,
+        historyEntries,
+        terminalBlocks: compactTerminalBlocks,
+        messages: compactMessages,
+        lockedMode,
+        autodetectEnabled,
+        allowSingleCharacterPrediction,
+        forceShellMode,
+        enableZeroStatePrediction,
+        surface
+      };
+
+      const composerIntelligencePromise = invoke<BackendResponse>('terminal_get_composer_intelligence', {
+        request: composerIntelligenceRequest
+      });
+      const composerGhostPromise = shouldRequestComposerGhostPrediction
+        ? invoke<BackendGhostPrediction | null>('terminal_get_prediction', {
+            request: {
+              sessionId,
+              input: query,
+              cwd,
+              availableCommands
+            }
+          }).catch(() => null)
+        : Promise.resolve(null);
+
+      void Promise.all([composerIntelligencePromise, composerGhostPromise])
+        .then(([nextResponse, nextGhostPrediction]) => {
           if (generationRef.current !== generation) {
             return;
           }
 
-          setResponse(nextResponse);
+          setResponse({
+            ...nextResponse,
+            prediction: nextGhostPrediction
+              ? {
+                  suggestion: nextGhostPrediction.suggestion,
+                  suggestions: normalizeGhostSuggestions(nextGhostPrediction),
+                  kind: nextGhostPrediction.kind
+                }
+              : nextResponse.prediction
+          });
           setSelectedPredictionIndex(0);
         })
         .catch(() => {
@@ -202,10 +266,10 @@ export function useComposerIntelligence(options: ComposerIntelligenceOptions) {
           setResponse((current) => ({
             ...current,
             prediction: null,
-            recommendedAction: query.trim().length === 0 ? current.recommendedAction : null
+            recommendedAction: trimmedQuery.length === 0 ? current.recommendedAction : null
           }));
         });
-    }, query.trim().length === 0 ? 50 : 90);
+    }, trimmedQuery.length === 0 ? 50 : 90);
 
     return () => {
       window.clearTimeout(timer);
@@ -221,10 +285,13 @@ export function useComposerIntelligence(options: ComposerIntelligenceOptions) {
     forceShellMode,
     historyEntries,
     lockedMode,
-    messages,
+    compactMessages,
     query,
+    trimmedQuery.length,
+    sessionId,
     surface,
-    terminalBlocks
+    shouldRequestComposerGhostPrediction,
+    compactTerminalBlocks
   ]);
 
   useEffect(() => {
@@ -248,4 +315,46 @@ export function useComposerIntelligence(options: ComposerIntelligenceOptions) {
       setSelectedPredictionIndex((currentIndex) => (currentIndex + 1) % count);
     }
   };
+}
+
+function normalizeGhostSuggestions(prediction: BackendGhostPrediction) {
+  const seen = new Set<string>();
+  const suggestions = [prediction.suggestion, ...(prediction.suggestions ?? [])]
+    .map((suggestion) => suggestion.trim())
+    .filter((suggestion) => {
+      if (!suggestion || seen.has(suggestion)) {
+        return false;
+      }
+
+      seen.add(suggestion);
+      return true;
+    });
+
+  return suggestions.length > 0 ? suggestions : [prediction.suggestion];
+}
+
+function compactText(value: string, maxChars: number) {
+  const trimmed = value.trim();
+  if (trimmed.length <= maxChars) {
+    return trimmed;
+  }
+
+  return `${trimmed.slice(0, maxChars).trimEnd()}\n…`;
+}
+
+function compactTerminalOutput(output?: string | null) {
+  const normalized = (output ?? '').trim();
+  if (
+    normalized.length <=
+    MAX_INTELLIGENCE_TERMINAL_OUTPUT_HEAD_CHARS + MAX_INTELLIGENCE_TERMINAL_OUTPUT_TAIL_CHARS
+  ) {
+    return normalized;
+  }
+
+  const head = normalized.slice(0, MAX_INTELLIGENCE_TERMINAL_OUTPUT_HEAD_CHARS).trimEnd();
+  const tail = normalized
+    .slice(Math.max(0, normalized.length - MAX_INTELLIGENCE_TERMINAL_OUTPUT_TAIL_CHARS))
+    .trimStart();
+
+  return `${head}\n…\n${tail}`;
 }

@@ -98,7 +98,7 @@ export function TrayFooter(props: TrayFooterProps) {
     <div className="tray-switcher">
       {activeMode === 'help' && (
         <div className="tray-switch-item">
-          <div className="mode-button active">?</div>
+          <button className="mode-button active" onClick={onToggleHelp} type="button">?</button>
           <span className="tray-switch-label">to hide help</span>
         </div>
       )}

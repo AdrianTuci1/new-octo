@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Octomus Launcher Prototype",
+  "productName": "Octomus",
   "version": "0.1.0",
   "identifier": "com.octomus.launcher.prototype",
   "mainBinaryName": "octomus_launcher_prototype",
@@ -9,6 +9,9 @@
     "beforeBuildCommand": "npm run build",
     "devUrl": "http://127.0.0.1:1420",
     "frontendDist": "../dist"
+  },
+  "bundle": {
+    "icon": ["icons/icon.icns", "icons/icon.png"]
   },
   "plugins": {
     "updater": {
@@ -21,7 +24,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "Octomus Launcher Prototype",
+        "title": "Octomus",
         "width": 608,
         "height": 560,
         "resizable": true,

@@ -26,6 +26,11 @@
   position: relative;
   gap: 8px;
   white-space: nowrap;
+  min-width: 0;
+}
+
+.file-tree-node-container {
+  width: 100%;
 }
 
 .file-tree-node:hover {
@@ -43,6 +48,12 @@
   min-width: 32px;
 }
 
+.chevron-spacer {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+}
+
 .chevron-icon {
   display: flex;
   align-items: center;
@@ -51,12 +62,60 @@
   color: #6b7280;
 }
 
+.main-icon {
+  width: 14px;
+  height: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+}
+
+.file-type-icon {
+  width: 14px;
+  height: 14px;
+  display: block;
+  object-fit: contain;
+  flex: 0 0 auto;
+}
+
 .node-name {
   flex: 1;
+  display: flex;
+  align-items: center;
+  min-width: 0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   color: #d1d5db;
+  gap: 4px;
+}
+
+.node-name.diff-added,
+.file-tree-node.diff-added .node-folder-name,
+.file-tree-node.diff-added .node-file-name {
+  color: #8dff5f;
+}
+
+.node-name.diff-modified,
+.file-tree-node.diff-modified .node-folder-name,
+.file-tree-node.diff-modified .node-file-name {
+  color: #ffb347;
+}
+
+.node-folder-name,
+.node-file-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-tree-node.diff-added .main-icon,
+.file-tree-node.diff-added .chevron-icon,
+.file-tree-node.diff-modified .main-icon,
+.file-tree-node.diff-modified .chevron-icon {
+  color: inherit;
 }
 
 .file-tree-children {
@@ -116,6 +175,13 @@
 .file-icon.default { color: #9ca3af; }
 
 .file-explorer-loading {
+  padding: 20px;
+  text-align: center;
+  color: #6b7280;
+  font-size: 12px;
+}
+
+.file-explorer-empty {
   padding: 20px;
   text-align: center;
   color: #6b7280;

@@ -1,11 +1,11 @@
 ---
 name: update-tab-config
-description: Update existing Warp tab config TOML files from natural-language edit requests. Use when the user wants to modify a tab config that already exists or when editing a tab config file already open in Warp.
+description: Update existing Octomus tab config TOML files from natural-language edit requests. Use when the user wants to modify a tab config that already exists or when editing a tab config file already open in Octomus.
 ---
 
 # update-tab-config
 
-Update an existing Warp tab config in place.
+Update an existing Octomus tab config in place.
 
 ## Required context
 
@@ -19,7 +19,8 @@ Update an existing Warp tab config in place.
 
 1. Read the existing tab config file before making changes.
 2. Understand the requested edit.
-3. If important details are missing or ambiguous, use the `ask_user_question` tool before editing. Do not guess about layout changes, command changes, parameters, or `on_close` behavior.
-4. Make sure you are editing the tab config that belongs to the user's current Warp build/channel rather than assuming a single hardcoded base directory, then update it so it remains valid according to the `tab-configs` schema.
-5. Preserve the user's existing structure and naming where possible unless the requested change requires restructuring.
-6. Briefly explain what changed.
+3. If the request already contains the needed change, edit immediately instead of asking extra questions.
+4. If a truly essential detail is missing or ambiguous, ask one short follow-up question before editing. Do not guess about layout changes, command changes, parameters, or close-time behavior.
+5. Make sure you are editing the tab config that belongs to the user's current Octomus build/channel rather than assuming a single hardcoded base directory, then update it so it remains valid according to the `tab-configs` schema.
+6. Preserve the user's existing structure and naming where possible unless the requested change requires restructuring.
+7. Keep the response brief and practical.

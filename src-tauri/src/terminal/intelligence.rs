@@ -1,4 +1,5 @@
 use std::{
+    collections::BTreeSet,
     fs,
     path::{Path, PathBuf},
 };
@@ -9,6 +10,8 @@ use tauri::State;
 
 use super::fs::{home_dir, resolve_request_path, PathRequest};
 use super::manager::TerminalManager;
+
+const MAX_TERMINAL_GHOST_SUGGESTIONS: usize = 24;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -23,6 +26,8 @@ pub struct ShellHistoryEntry {
 #[serde(rename_all = "camelCase")]
 pub struct TerminalRuntimeContext {
     pub node_version: Option<String>,
+    pub target_os: String,
+    pub target_arch: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -32,6 +37,16 @@ pub struct TerminalPredictionRequest {
     pub input: String,
     pub cwd: Option<String>,
     pub available_commands: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TerminalGhostPrediction {
+    pub input: String,
+    pub suggestion: String,
+    pub confidence: f32,
+    pub kind: crate::ai::predict::model::PredictionKind,
+    pub suggestions: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -49,6 +64,8 @@ pub fn terminal_get_runtime_context(
 
     Ok(TerminalRuntimeContext {
         node_version: read_command_version("node", &cwd),
+        target_os: std::env::consts::OS.to_string(),
+        target_arch: std::env::consts::ARCH.to_string(),
     })
 }
 
@@ -56,7 +73,7 @@ pub async fn terminal_get_prediction(
     terminal_manager: State<'_, TerminalManager>,
     memory_manager: State<'_, crate::memory::OctomusMemoryManager>,
     request: TerminalPredictionRequest,
-) -> Result<Option<crate::ai::predict::CommandPrediction>, String> {
+) -> Result<Option<TerminalGhostPrediction>, String> {
     build_terminal_ghost_prediction(terminal_manager.inner(), memory_manager.inner(), request).await
 }
 
@@ -75,6 +92,23 @@ pub async fn terminal_get_composer_intelligence(
 
 pub fn terminal_get_recent_history() -> Result<Vec<ShellHistoryEntry>, String> {
     let cutoff = Utc::now() - Duration::days(180);
+    let mut entries = load_global_shell_history(cutoff);
+
+    // Keep enough ordered history to preserve command sequences for prediction
+    // while still bounding the payload size sent to the frontend.
+    if entries.len() > 5_000 {
+        entries.truncate(5_000);
+    }
+
+    Ok(entries)
+}
+
+pub fn terminal_get_prediction_shell_history() -> Vec<ShellHistoryEntry> {
+    let cutoff = Utc.timestamp_opt(0, 0).single().unwrap_or_else(Utc::now);
+    load_global_shell_history(cutoff)
+}
+
+fn load_global_shell_history(cutoff: DateTime<Utc>) -> Vec<ShellHistoryEntry> {
     let mut raw_entries = Vec::new();
 
     raw_entries.extend(read_zsh_history(cutoff));
@@ -82,7 +116,7 @@ pub fn terminal_get_recent_history() -> Result<Vec<ShellHistoryEntry>, String> {
     raw_entries.extend(read_fish_history(cutoff));
     sort_history_entries_by_recency(&mut raw_entries);
 
-    let mut entries = raw_entries
+    raw_entries
         .into_iter()
         .filter_map(|entry| {
             let normalized_value = entry.value.trim().to_string();
@@ -97,38 +131,26 @@ pub fn terminal_get_recent_history() -> Result<Vec<ShellHistoryEntry>, String> {
                 pwd: entry.pwd,
             })
         })
-        .collect::<Vec<_>>();
-
-    // Sort by most recent
-    entries.sort_by(|a, b| b.executed_at.cmp(&a.executed_at));
-
-    // Keep enough ordered history to preserve command sequences for prediction
-    // while still bounding the payload size sent to the frontend.
-    if entries.len() > 400 {
-        entries.truncate(400);
-    }
-
-    Ok(entries)
+        .collect()
 }
 
 async fn build_terminal_ghost_prediction(
     terminal_manager: &TerminalManager,
     memory_manager: &crate::memory::OctomusMemoryManager,
     request: TerminalPredictionRequest,
-) -> Result<Option<crate::ai::predict::CommandPrediction>, String> {
+) -> Result<Option<TerminalGhostPrediction>, String> {
     let TerminalPredictionRequest {
         session_id,
         input,
         cwd,
         available_commands,
     } = request;
+    let available_commands = merge_available_commands(available_commands);
     let query = input;
-    let cutoff = Utc::now() - Duration::days(180);
+    let cutoff = Utc.timestamp_opt(0, 0).single().unwrap_or_else(Utc::now);
     let mut history_entries = Vec::<ShellHistoryEntry>::new();
 
-    history_entries.extend(read_zsh_history(cutoff));
-    history_entries.extend(read_bash_history(cutoff));
-    history_entries.extend(read_fish_history(cutoff));
+    history_entries.extend(terminal_get_prediction_shell_history());
     history_entries.extend(load_application_history(memory_manager, cutoff));
     history_entries.extend(load_session_history(
         terminal_manager,
@@ -146,22 +168,74 @@ async fn build_terminal_ghost_prediction(
         .find(|block| block.status == "finished")
         .map(|block| block.command.as_str());
 
-    Ok(predict_terminal_ghost_from_history_with_commands(
+    let prediction = predict_terminal_ghost_from_history_with_commands(
         &query,
         cwd.as_deref(),
         last_command,
         &history_entries,
         &available_commands,
-    ))
+    );
+
+    Ok(prediction.map(|prediction| {
+        let history_suggestions = collect_terminal_ghost_suggestions(
+            &query,
+            cwd.as_deref(),
+            &history_entries,
+            &available_commands,
+            &prediction.suggestion,
+        );
+        TerminalGhostPrediction::from_prediction(prediction, history_suggestions)
+    }))
 }
 
+fn merge_available_commands(available_commands: Vec<String>) -> Vec<String> {
+    let mut commands = available_commands
+        .into_iter()
+        .map(|command| command.trim().to_string())
+        .filter(|command| !command.is_empty())
+        .collect::<BTreeSet<_>>();
+
+    commands.extend(super::fs::discover_shell_command_names());
+    commands.into_iter().collect()
+}
+
+#[cfg(test)]
 fn predict_terminal_ghost_from_history(
     input: &str,
     cwd: Option<&str>,
     last_command: Option<&str>,
     history_entries: &[ShellHistoryEntry],
 ) -> Option<crate::ai::predict::CommandPrediction> {
-    predict_terminal_ghost_from_history_with_commands(input, cwd, last_command, history_entries, &[])
+    predict_terminal_ghost_from_history_with_commands(
+        input,
+        cwd,
+        last_command,
+        history_entries,
+        &[],
+    )
+}
+
+#[cfg(test)]
+fn predict_terminal_ghost_response_from_history(
+    input: &str,
+    cwd: Option<&str>,
+    last_command: Option<&str>,
+    history_entries: &[ShellHistoryEntry],
+) -> Option<TerminalGhostPrediction> {
+    let prediction =
+        predict_terminal_ghost_from_history(input, cwd, last_command, history_entries)?;
+    let suggestions = collect_terminal_ghost_suggestions(
+        input,
+        cwd,
+        history_entries,
+        &[],
+        &prediction.suggestion,
+    );
+
+    Some(TerminalGhostPrediction::from_prediction(
+        prediction,
+        suggestions,
+    ))
 }
 
 fn predict_terminal_ghost_from_history_with_commands(
@@ -181,6 +255,67 @@ fn predict_terminal_ghost_from_history_with_commands(
     .predict()
 }
 
+fn collect_terminal_ghost_suggestions(
+    input: &str,
+    cwd: Option<&str>,
+    history_entries: &[ShellHistoryEntry],
+    available_commands: &[String],
+    primary_suggestion: &str,
+) -> Vec<String> {
+    let ranked_history = crate::ai::predict::model::collect_ranked_history_prefix_matches(
+        input,
+        cwd,
+        history_entries,
+        MAX_TERMINAL_GHOST_SUGGESTIONS,
+    );
+    let mut suggestions = Vec::new();
+    push_unique_suggestion(&mut suggestions, primary_suggestion);
+    for suggestion in ranked_history {
+        push_unique_suggestion(&mut suggestions, &suggestion);
+    }
+    for suggestion in crate::ai::predict::model::collect_executable_prefix_matches(
+        input,
+        available_commands,
+        MAX_TERMINAL_GHOST_SUGGESTIONS,
+    ) {
+        push_unique_suggestion(&mut suggestions, &suggestion);
+    }
+    suggestions
+}
+
+fn push_unique_suggestion(suggestions: &mut Vec<String>, value: &str) {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return;
+    }
+
+    if suggestions.iter().any(|existing| existing == trimmed) {
+        return;
+    }
+
+    suggestions.push(trimmed.to_string());
+}
+
+impl TerminalGhostPrediction {
+    fn from_prediction(
+        prediction: crate::ai::predict::CommandPrediction,
+        mut suggestions: Vec<String>,
+    ) -> Self {
+        if suggestions.is_empty() {
+            suggestions.push(prediction.suggestion.clone());
+        }
+
+        Self {
+            input: prediction.input,
+            suggestion: prediction.suggestion,
+            confidence: prediction.confidence,
+            kind: prediction.kind,
+            suggestions,
+        }
+    }
+}
+
+#[cfg(test)]
 fn predict_terminal_path_completion(
     input: &str,
     cwd: Option<&str>,
@@ -322,7 +457,8 @@ fn read_zsh_history(cutoff: DateTime<Utc>) -> Vec<ShellHistoryEntry> {
         return Vec::new();
     };
 
-    let count = contents.lines().count();
+    let logical_lines = collect_history_logical_lines(&contents);
+    let count = logical_lines.len();
     println!(
         "[History] Reading Zsh history: {} lines from {:?}",
         count, path
@@ -332,12 +468,14 @@ fn read_zsh_history(cutoff: DateTime<Utc>) -> Vec<ShellHistoryEntry> {
     let mut previous_working_dir: Option<PathBuf> = None;
     let mut entries = Vec::new();
 
-    for line in contents.lines() {
+    for (index, line) in logical_lines.iter().enumerate() {
         let trimmed_line = line.trim();
         if trimmed_line.is_empty() {
             continue;
         }
 
+        let fallback_timestamp =
+            Utc::now() - Duration::seconds((count.saturating_sub(index)) as i64);
         let (executed_at, value) = if trimmed_line.starts_with(": ") {
             // Extended format: : 1234567890:0;command
             if let Some(rest) = trimmed_line.strip_prefix(": ") {
@@ -350,17 +488,17 @@ fn read_zsh_history(cutoff: DateTime<Utc>) -> Vec<ShellHistoryEntry> {
                             .unwrap_or_else(Utc::now);
                         (time, command.trim())
                     } else {
-                        (Utc::now(), command_part.trim())
+                        (fallback_timestamp, command_part.trim())
                     }
                 } else {
-                    (Utc::now(), rest.trim())
+                    (fallback_timestamp, rest.trim())
                 }
             } else {
-                (Utc::now(), trimmed_line)
+                (fallback_timestamp, trimmed_line)
             }
         } else {
             // Simple format: command
-            (Utc::now(), trimmed_line)
+            (fallback_timestamp, trimmed_line)
         };
 
         if executed_at < cutoff {
@@ -389,6 +527,43 @@ fn read_zsh_history(cutoff: DateTime<Utc>) -> Vec<ShellHistoryEntry> {
     }
 
     entries
+}
+
+fn collect_history_logical_lines(contents: &str) -> Vec<String> {
+    let mut logical_lines = Vec::new();
+    let mut pending = String::new();
+
+    for raw_line in contents.lines() {
+        let trimmed_end = raw_line.trim_end();
+        if trimmed_end.trim().is_empty() {
+            continue;
+        }
+
+        let has_continuation = trimmed_end.ends_with('\\');
+        let segment = trimmed_end.trim_end_matches('\\').trim();
+        if segment.is_empty() {
+            continue;
+        }
+
+        if pending.is_empty() {
+            pending.push_str(segment);
+        } else {
+            pending.push(' ');
+            pending.push_str(segment);
+        }
+
+        if has_continuation {
+            continue;
+        }
+
+        logical_lines.push(std::mem::take(&mut pending));
+    }
+
+    if !pending.is_empty() {
+        logical_lines.push(pending);
+    }
+
+    logical_lines
 }
 
 fn read_bash_history(cutoff: DateTime<Utc>) -> Vec<ShellHistoryEntry> {
@@ -719,6 +894,64 @@ mod tests {
     }
 
     #[test]
+    fn terminal_ghost_response_includes_ranked_full_history_suggestions_for_bare_npm() {
+        let history = vec![
+            ShellHistoryEntry {
+                value: "npm run deploy:frontend".to_string(),
+                executed_at: "2026-05-24T18:00:00Z".to_string(),
+                source: "zsh".to_string(),
+                pwd: Some("/repo".to_string()),
+            },
+            ShellHistoryEntry {
+                value: "npm run deploy:backend".to_string(),
+                executed_at: "2026-05-24T17:00:00Z".to_string(),
+                source: "zsh".to_string(),
+                pwd: Some("/repo".to_string()),
+            },
+            ShellHistoryEntry {
+                value: "npm run clean".to_string(),
+                executed_at: "2026-05-23T18:00:00Z".to_string(),
+                source: "zsh".to_string(),
+                pwd: Some("/repo".to_string()),
+            },
+            ShellHistoryEntry {
+                value: "npm run clean".to_string(),
+                executed_at: "2026-05-23T17:00:00Z".to_string(),
+                source: "zsh".to_string(),
+                pwd: Some("/repo".to_string()),
+            },
+        ];
+
+        let prediction =
+            predict_terminal_ghost_response_from_history("npm", Some("/repo"), None, &history)
+                .expect("terminal ghost should expose history suggestions");
+
+        assert_eq!(prediction.suggestion, "npm run clean");
+        assert_eq!(
+            prediction.suggestions,
+            vec![
+                "npm run clean",
+                "npm run deploy:frontend",
+                "npm run deploy:backend"
+            ]
+        );
+    }
+
+    #[test]
+    fn terminal_ghost_suggestions_include_available_global_commands() {
+        let suggestions = collect_terminal_ghost_suggestions(
+            "mod",
+            Some("/repo"),
+            &[],
+            &["modal".to_string(), "modular-cli".to_string()],
+            "modal",
+        );
+
+        assert_eq!(suggestions[0], "modal");
+        assert!(suggestions.contains(&"modular-cli".to_string()));
+    }
+
+    #[test]
     fn terminal_ghost_completes_modal_run_with_real_path_entries() {
         let temp_root =
             std::env::temp_dir().join(format!("octomus-ghost-path-{}", uuid::Uuid::new_v4()));
@@ -789,10 +1022,59 @@ mod tests {
             None,
             &history,
         )
-        .expect("signature completion should exist");
+        .expect("history completion should exist");
 
-        assert!(prediction.suggestion.starts_with("modal run"));
-        assert_ne!(prediction.suggestion, "modal run");
+        assert_eq!(prediction.suggestion, "modal run train --epochs 10");
+        assert_eq!(
+            prediction.kind,
+            crate::ai::predict::model::PredictionKind::History
+        );
+    }
+
+    #[test]
+    fn terminal_ghost_prefers_full_history_over_partial_path_completion_when_token_is_started() {
+        let temp_root = std::env::temp_dir().join(format!(
+            "octomus-ghost-history-priority-{}",
+            uuid::Uuid::new_v4()
+        ));
+        std::fs::create_dir_all(&temp_root).expect("temp directory should be created");
+
+        let script_path = temp_root.join("modal_training.py");
+        std::fs::write(&script_path, "print('hello')").expect("script should be written");
+
+        let cwd = temp_root.to_string_lossy().to_string();
+        let history = vec![ShellHistoryEntry {
+            value: "modal run modal_training.py --bundle-r2-uri s3://statsparrot-data/system/r2-system/training/sentinel/generated/latest".to_string(),
+            executed_at: "2026-05-24T10:00:00Z".to_string(),
+            source: "zsh".to_string(),
+            pwd: Some(cwd.clone()),
+        }];
+
+        let prediction =
+            predict_terminal_ghost_from_history("modal run modal_t", Some(&cwd), None, &history)
+                .expect("history completion should win once the file token has started");
+
+        assert_eq!(
+            prediction.suggestion,
+            "modal run modal_training.py --bundle-r2-uri s3://statsparrot-data/system/r2-system/training/sentinel/generated/latest"
+        );
+
+        let _ = std::fs::remove_file(&script_path);
+        let _ = std::fs::remove_dir_all(&temp_root);
+    }
+
+    #[test]
+    fn zsh_history_collapses_multiline_commands_into_single_entry() {
+        let contents = "python3 -m modal run modal_training.py \\\\\n  --executor gpu-a10g \\\\\n  --epochs 50\nnpm run dev\n";
+
+        let lines = collect_history_logical_lines(contents);
+
+        assert_eq!(lines.len(), 2);
+        assert_eq!(
+            lines[0],
+            "python3 -m modal run modal_training.py --executor gpu-a10g --epochs 50"
+        );
+        assert_eq!(lines[1], "npm run dev");
     }
 
     #[test]
@@ -808,12 +1090,9 @@ mod tests {
         if let Ok(mut state) = registry.state.lock() {
             state.scopes.insert(scope.clone(), metadata.clone());
         }
-        registry
-            .command_registry
-            .register_signature(crate::shell_signatures::registry::CommandSignature {
-                scope,
-                metadata,
-            });
+        registry.command_registry.register_signature(
+            crate::shell_signatures::registry::CommandSignature { scope, metadata },
+        );
 
         let prediction = predict_terminal_ghost_from_history("python3 -", Some("/tmp"), None, &[])
             .expect("python3 signature completion should exist");

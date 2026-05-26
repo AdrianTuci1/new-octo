@@ -1,7 +1,6 @@
 # Sesiuni, Background Execution & Cloud vs Local Agents
 
-> Reverse-engineered din Warp: `terminal/model/session.rs` (65K), `ai/agent_sdk/` (63K),
-> `ai/agent_sdk/driver/harness/` (17K), `crates/ai/src/agent/action/mod.rs` (30K).
+
 > Adaptat pentru Octomus: Tauri v2 + Rust + React.
 
 ---

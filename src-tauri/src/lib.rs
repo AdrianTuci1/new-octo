@@ -2,7 +2,7 @@
 
 pub mod ai;
 pub mod app_updates;
-pub mod cli;
+pub mod cloud_runtime;
 pub mod code_index;
 pub mod keybindings;
 pub mod memory;
