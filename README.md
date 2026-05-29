@@ -51,7 +51,9 @@ An autonomous AI-native launcher shell built with Tauri, Rust, and React. Octomu
 - `.exe` and `.msi` bundles must be produced on Windows.
 - Linux hosts default to `.AppImage` and `.deb` bundles when using `npm run release:desktop`.
 - macOS `.dmg` bundling may require Finder Automation permission for the calling terminal app.
-- `npm run release:aws` expects `AWS_REGION` to be set or configured in your AWS profile. If you set `R2_ENDPOINT_URL` and `R2_BUCKET`, the downloaded artifacts are also synced to R2.
+- `npm run release:aws` expects `AWS_REGION` to be set or configured in your AWS profile.
+- `scripts/release-aws.sh` loads release settings from `release.env` by default, falls back to `.env` only if `release.env` is missing, and still lets explicit shell environment variables override both.
+- To keep only R2 copies of AWS builds, set `R2_ENDPOINT_URL`, `R2_BUCKET`, `R2_ACCESS_KEY_ID`, and `R2_SECRET_ACCESS_KEY`. The script will still use a temporary S3 bucket during CodeBuild because AWS CodeBuild sources/artifacts are S3-backed, then delete that bucket during cleanup.
 
 ---
 

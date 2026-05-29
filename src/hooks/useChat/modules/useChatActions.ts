@@ -9,7 +9,8 @@ import type {
   ExecutionPlanWorkstream,
   PlanExecutionUpdate,
   WorkspaceExplorationArtifact,
-  WorkspaceExplorationSegment
+  WorkspaceExplorationSegment,
+  WorkspaceFileReadArtifact
 } from '../../../types/chat';
 import { useMemoryStore } from '../../../stores/memoryStore';
 import { artifactsFromMessages, chatHistoryFromMessages, titleFromConversationContent, statusFromConversationContent } from '../helpers';
@@ -126,6 +127,7 @@ type UseChatActionsProps = {
   onFileChangeApprovalRef: React.MutableRefObject<UseChatOptions['onFileChangeApproval']>;
   onWebSearchRef: React.MutableRefObject<UseChatOptions['onWebSearch']>;
   onWorkspaceExplorationRef: React.MutableRefObject<UseChatOptions['onWorkspaceExploration']>;
+  onWorkspaceFileReadRef: React.MutableRefObject<UseChatOptions['onWorkspaceFileRead']>;
   onCloudAgentLaunchRef: React.MutableRefObject<UseChatOptions['onCloudAgentLaunch']>;
 };
 
@@ -180,6 +182,7 @@ export function useChatActions({
   onFileChangeApprovalRef,
   onWebSearchRef,
   onWorkspaceExplorationRef,
+  onWorkspaceFileReadRef,
   onCloudAgentLaunchRef
 }: UseChatActionsProps) {
   const toolResultContinuationRef = useRef<Record<string, {
@@ -316,6 +319,7 @@ export function useChatActions({
       onFileChangeApproval: (approval) => onFileChangeApprovalRef.current?.(approval),
       onWebSearch: (request) => onWebSearchRef.current?.(request),
       onWorkspaceExploration: (request) => onWorkspaceExplorationRef.current?.(request),
+      onWorkspaceFileRead: (request) => onWorkspaceFileReadRef.current?.(request),
       onCloudAgentLaunch: (request) => onCloudAgentLaunchRef.current?.(request)
     });
 
@@ -357,6 +361,7 @@ export function useChatActions({
     onFileChangeApprovalRef,
     onWebSearchRef,
     onWorkspaceExplorationRef,
+    onWorkspaceFileReadRef,
     onCloudAgentLaunchRef,
     options.cwd,
     options.modelId,
@@ -518,6 +523,7 @@ export function useChatActions({
       onFileChangeApproval: (approval) => onFileChangeApprovalRef.current?.(approval),
       onWebSearch: (request) => onWebSearchRef.current?.(request),
       onWorkspaceExploration: (request) => onWorkspaceExplorationRef.current?.(request),
+      onWorkspaceFileRead: (request) => onWorkspaceFileReadRef.current?.(request),
       onCloudAgentLaunch: (request) => onCloudAgentLaunchRef.current?.(request)
     });
 
@@ -571,7 +577,7 @@ export function useChatActions({
   const submitToolResult = async (
     toolCallId: string,
     result: string,
-    kind: 'command' | 'web-search' | 'file-change' | 'workspace-exploration' = 'command',
+    kind: 'command' | 'web-search' | 'file-change' | 'workspace-exploration' | 'file-read' = 'command',
     label?: string,
     webSearchResults?: Array<{ title: string; url: string; snippet?: string }>,
     toolResultOptions?: {
@@ -581,6 +587,7 @@ export function useChatActions({
       fileChangeStatus?: FileDiffPreviewStatus;
       localAssistantSummary?: string;
       workspaceExploration?: WorkspaceExplorationArtifact;
+      workspaceFileRead?: WorkspaceFileReadArtifact;
     }
   ) => {
     const ts = Date.now();
@@ -588,6 +595,32 @@ export function useChatActions({
     const runId = state.activeRunIdRef.current;
 
     if (!conversationId || !runId) return;
+
+    if (kind === 'file-read' && toolResultOptions?.workspaceFileRead) {
+      const latestExplorationMessage = [...state.messagesRef.current]
+        .reverse()
+        .find((message) => (
+          message.role === 'tool'
+          && message.toolKind === 'workspace-exploration'
+          && message.workspaceExploration
+        ));
+
+      if (latestExplorationMessage?.workspaceExploration) {
+        state.updateMessage(latestExplorationMessage.id, (message) => {
+          if (!message.workspaceExploration) {
+            return message;
+          }
+
+          return {
+            ...message,
+            workspaceExploration: mergeWorkspaceFileReadIntoExploration(
+              message.workspaceExploration,
+              toolResultOptions.workspaceFileRead as WorkspaceFileReadArtifact
+            )
+          };
+        });
+      }
+    }
 
     const existingToolMessage = state.messagesRef.current.find((message) => (
       message.role === 'tool' && message.toolCallId === toolCallId
@@ -603,11 +636,16 @@ export function useChatActions({
             ? 'File Changes'
             : kind === 'workspace-exploration'
               ? 'Workspace Exploration'
+            : kind === 'file-read'
+              ? 'Read File'
             : 'Tool Output',
         body: result,
         toolKind: kind,
         fileDiffs: toolResultOptions?.fileDiffs ?? message.fileDiffs,
         fileChangeStatus: toolResultOptions?.fileChangeStatus ?? message.fileChangeStatus,
+        workspaceFileRead: kind === 'file-read'
+          ? (toolResultOptions?.workspaceFileRead ?? message.workspaceFileRead)
+          : message.workspaceFileRead,
         ...(kind === 'web-search' ? {
           webSearchStatus: toolResultOptions?.webSearchStatus ?? (webSearchResults ? 'success' : 'searching'),
           webSearchQuery: label,
@@ -629,6 +667,8 @@ export function useChatActions({
             ? 'File Changes'
             : kind === 'workspace-exploration'
               ? 'Workspace Exploration'
+            : kind === 'file-read'
+              ? 'Read File'
             : 'Tool Output',
         body: result,
         conversationId,
@@ -636,6 +676,7 @@ export function useChatActions({
         toolKind: kind,
         fileDiffs: toolResultOptions?.fileDiffs,
         fileChangeStatus: toolResultOptions?.fileChangeStatus,
+        workspaceFileRead: kind === 'file-read' ? toolResultOptions?.workspaceFileRead : undefined,
         ...(kind === 'web-search' ? {
           webSearchStatus: toolResultOptions?.webSearchStatus ?? (webSearchResults ? 'success' : 'searching'),
           webSearchQuery: label,
@@ -750,17 +791,72 @@ function mergeWorkspaceExplorationArtifacts(
   const mergedSegments: WorkspaceExplorationSegment[] = [...currentSegments, ...incomingSegments];
 
   const mergedSearches = mergedSegments.length > 0
-    ? mergedSegments.flatMap((segment) => segment.searches)
+    ? mergedSegments.flatMap((segment) => segment.searches ?? [])
     : [...(current.searches ?? []), ...(incoming.searches ?? [])];
   const mergedFiles = mergedSegments.length > 0
-    ? mergedSegments.flatMap((segment) => segment.files)
+    ? mergedSegments.flatMap((segment) => segment.files ?? [])
     : [...(current.files ?? []), ...(incoming.files ?? [])];
+  const mergedDirectories = mergedSegments.length > 0
+    ? mergedSegments.flatMap((segment) => segment.directories ?? [])
+    : [...(current.directories ?? []), ...(incoming.directories ?? [])];
 
   return {
     query: incoming.query || current.query,
+    mode: incoming.mode || current.mode,
+    path: incoming.path || current.path,
     summary: incoming.summary?.trim() || current.summary,
     segments: mergedSegments,
     searches: mergedSearches,
-    files: mergedFiles
+    files: mergedFiles,
+    directories: mergedDirectories
   };
+}
+
+function mergeWorkspaceFileReadIntoExploration(
+  current: WorkspaceExplorationArtifact,
+  fileRead: WorkspaceFileReadArtifact
+): WorkspaceExplorationArtifact {
+  const existingSegments = current.segments ?? [];
+  const alreadyPresent = existingSegments.some((segment) => (
+    (segment.entries ?? []).some((entry) => entry.kind === 'read' && entry.path === fileRead.path)
+  ));
+
+  if (alreadyPresent) {
+    return current;
+  }
+
+  const createdAt = new Date().toISOString();
+  const nextSegment: WorkspaceExplorationSegment = {
+    id: `workspace-exploration-read-${createdAt}`,
+    createdAt,
+    summary: undefined,
+    entries: [{
+      id: `workspace-exploration-read-entry-${createdAt}`,
+      kind: 'read',
+      text: `Read ${fileNameFromWorkspacePath(fileRead.displayPath || fileRead.path)}`,
+      detail: fileRead.displayPath,
+      path: fileRead.path,
+      createdAt
+    }],
+    searches: [],
+    files: [{
+      path: fileRead.path,
+      source: 'filesystem',
+      snippet: undefined
+    }],
+    directories: []
+  };
+
+  return mergeWorkspaceExplorationArtifacts(current, {
+    ...current,
+    segments: [nextSegment],
+    searches: [],
+    files: nextSegment.files,
+    directories: []
+  }) ?? current;
+}
+
+function fileNameFromWorkspacePath(path: string) {
+  const normalized = path.endsWith('/') ? path.slice(0, -1) : path;
+  return normalized.split('/').pop() || normalized;
 }

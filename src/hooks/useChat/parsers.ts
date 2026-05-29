@@ -23,6 +23,7 @@ export function stripHarnessProtocolArtifacts(value: string) {
     .replace(/<\|(?:message|end|channel)\|>/gi, ' ')
     .replace(/<\s*channel\|\s*>/gi, ' ')
     .replace(/<tool_call\|>/gi, ' ')
+    .replace(/^\s*(?:thought|analysis|reasoning|final|assistant|answer)\s*$/gim, ' ')
     .replace(/[ \t]{2,}/g, ' ')
     .replace(/\n{3,}/g, '\n\n')
     .trim();

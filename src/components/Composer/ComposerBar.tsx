@@ -1,19 +1,28 @@
+import { memo } from 'react';
 import { ArrowRight, CornerDownLeft, Paperclip, Plus, Sparkles, X } from 'lucide-react';
 import { ComposerContextMenu } from './ComposerContextMenu';
 import { GitBranchPicker } from './GitBranchPicker';
 import { SlashCommandHighlight } from './SlashCommandHighlight';
 import { WorkingDirectoryPicker } from './WorkingDirectoryPicker';
-import { useLauncherContext } from '../Layout/Launcher/LauncherContext';
+import type { LauncherViewModel } from '../Layout/Launcher/hooks';
 import type { ChatAttachment } from '../../types/chat';
 import { useComposerBarController } from './useComposerBarController';
 import './ComposerBar.css';
 
-export function ComposerBar() {
-  const { launcher, composerPlaceholder } = useLauncherContext();
-  const view = launcher.views.composerBar;
+type ComposerBarProps = {
+  composerPlaceholder: string;
+  showInputHintText: boolean;
+  view: LauncherViewModel['views']['composerBar'];
+};
+
+export const ComposerBar = memo(function ComposerBar({
+  composerPlaceholder,
+  showInputHintText,
+  view
+}: ComposerBarProps) {
   const controller = useComposerBarController({
     composerPlaceholder,
-    showInputHintText: launcher.ui.agentSettings?.input?.showInputHintText !== false,
+    showInputHintText,
     view
   });
   const contextUsageProgress = Math.max(0, Math.min(1, view.contextUsageProgress ?? 0));
@@ -215,4 +224,4 @@ export function ComposerBar() {
       )}
     </div>
   );
-}
+});

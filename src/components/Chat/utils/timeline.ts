@@ -103,6 +103,9 @@ export function buildTimelineItems(
       if (m.role === 'tool' && m.toolKind === 'command') {
         return !parseTerminalCommandToolMessage(m);
       }
+      if (m.role === 'tool' && m.toolKind === 'file-read') {
+        return false;
+      }
       if (m.role === 'assistant') {
         const visibleBody = visibleChatMessageBody(m.body);
         const isStreamingHint = m.isStreaming && !visibleBody.trim();
@@ -287,14 +290,18 @@ function mergeWorkspaceExplorationArtifacts(
   const currentSegments = current.segments ?? [];
   const incomingSegments = incoming.segments ?? [];
   const mergedSegments = [...currentSegments, ...incomingSegments];
-  const mergedSearches = mergedSegments.flatMap((segment) => segment.searches);
-  const mergedFiles = mergedSegments.flatMap((segment) => segment.files);
+  const mergedSearches = mergedSegments.flatMap((segment) => segment.searches ?? []);
+  const mergedFiles = mergedSegments.flatMap((segment) => segment.files ?? []);
+  const mergedDirectories = mergedSegments.flatMap((segment) => segment.directories ?? []);
 
   return {
     query: incoming.query || current.query,
+    mode: incoming.mode || current.mode,
+    path: incoming.path || current.path,
     summary: incoming.summary?.trim() || current.summary,
     segments: mergedSegments,
     searches: mergedSearches,
-    files: mergedFiles
+    files: mergedFiles,
+    directories: mergedDirectories
   };
 }

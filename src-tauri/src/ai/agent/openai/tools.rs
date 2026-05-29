@@ -23,20 +23,69 @@ pub(super) fn build_tool_definitions() -> Value {
             "type": "function",
             "function": {
                 "name": "explore_workspace",
-                "description": "Inspect the local workspace recursively for files, symbols, functions, or variables. Use this for codebase discovery and read-only search instead of asking for a terminal command approval. Pass concise identifier-like search terms, not the entire user sentence.",
+                "description": "Inspect the local workspace for files, directories, symbols, functions, or variables. Use `mode=list` to list files and subdirectories inside a specific path, and use `mode=search` to search recursively from a path or from the authoritative cwd when no path is provided. Prefer this for local codebase discovery instead of a web search or terminal approval.",
                 "parameters": {
                     "type": "object",
                     "properties": {
+                        "mode": {
+                            "type": "string",
+                            "enum": ["list", "search"],
+                            "description": "Use `list` to list entries in a directory. Use `search` to search recursively for matching paths or indexed code results."
+                        },
+                        "path": {
+                            "type": "string",
+                            "description": "Optional cwd-relative or absolute directory path to inspect. For `list`, this is the directory to list. For `search`, this is the directory root to search inside. Omit it when the user explicitly means the current directory."
+                        },
                         "query": {
                             "type": "string",
-                            "description": "Short search text, symbol name, file name, or code concept to explore. Prefer focused keywords like `Launcher`, `useLauncher`, or `chat bridge`."
+                            "description": "For `search`, pass a short search text, symbol name, file name, or code concept. For `list`, this can be omitted or used as a lightweight filter inside the chosen directory."
                         },
                         "maxResults": {
                             "type": "number",
-                            "description": "Optional upper bound for returned files, from 1 to 20."
+                            "description": "Optional upper bound for returned entries, from 1 to 50."
+                        },
+                        "includeFiles": {
+                            "type": "boolean",
+                            "description": "Whether file results should be included."
+                        },
+                        "includeDirectories": {
+                            "type": "boolean",
+                            "description": "Whether directory results should be included."
+                        },
+                        "recursive": {
+                            "type": "boolean",
+                            "description": "Whether recursive search should be used. Defaults to true for `search` and false for `list`."
+                        }
+                    }
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "read_workspace_file",
+                "description": "Read the contents of a specific local workspace file when the path is known. Prefer this over terminal commands like cat, sed, or head when the user wants to inspect a file. Relative paths are resolved from the authoritative cwd.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "path": {
+                            "type": "string",
+                            "description": "Workspace-relative or absolute path to the file that should be read."
+                        },
+                        "startLine": {
+                            "type": "number",
+                            "description": "Optional 1-based first line to include."
+                        },
+                        "endLine": {
+                            "type": "number",
+                            "description": "Optional 1-based last line to include."
+                        },
+                        "maxChars": {
+                            "type": "number",
+                            "description": "Optional upper bound for returned text, from 200 to 24000 characters."
                         }
                     },
-                    "required": ["query"]
+                    "required": ["path"]
                 }
             }
         },
@@ -469,4 +518,50 @@ pub(super) fn build_tool_definitions() -> Value {
             }
         }
     ])
+}
+
+pub(super) fn filter_tool_definitions(tools: Value, allowed_tool_names: &[&str]) -> Value {
+    let Some(tool_array) = tools.as_array() else {
+        return tools;
+    };
+
+    let allowed_names = allowed_tool_names.iter().copied().collect::<Vec<_>>();
+    Value::Array(
+        tool_array
+            .iter()
+            .filter(|tool| {
+                tool.get("function")
+                    .and_then(|value| value.get("name"))
+                    .and_then(Value::as_str)
+                    .map(|name| allowed_names.contains(&name))
+                    .unwrap_or(false)
+            })
+            .cloned()
+            .collect(),
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{build_tool_definitions, filter_tool_definitions};
+
+    #[test]
+    fn filters_tools_by_name() {
+        let filtered = filter_tool_definitions(
+            build_tool_definitions(),
+            &["lookup_web", "propose_terminal_command"],
+        );
+        let names = filtered
+            .as_array()
+            .expect("tools should remain an array")
+            .iter()
+            .filter_map(|tool| {
+                tool.get("function")
+                    .and_then(|value| value.get("name"))
+                    .and_then(|value| value.as_str())
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(names, vec!["lookup_web", "propose_terminal_command"]);
+    }
 }

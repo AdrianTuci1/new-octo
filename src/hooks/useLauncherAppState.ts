@@ -47,6 +47,33 @@ function normalizeTerminalSession(
   };
 }
 
+function areTerminalSessionsEquivalent(
+  left: TerminalSessionState | null,
+  right: TerminalSessionState | null
+): boolean {
+  if (left === right) {
+    return true;
+  }
+
+  if (!left || !right) {
+    return left === right;
+  }
+
+  return left.activeConversationId === right.activeConversationId
+    && left.composerSurface === right.composerSurface
+    && left.workingDirectory === right.workingDirectory
+    && left.terminalSessionId === right.terminalSessionId
+    && left.agentTerminalSessionId === right.agentTerminalSessionId
+    && left.terminalTarget === right.terminalTarget
+    && left.agentTerminalTarget === right.agentTerminalTarget
+    && left.pendingApproval === right.pendingApproval
+    && left.terminalBlockMetaById === right.terminalBlockMetaById
+    && left.agentTerminalBlockMetaById === right.agentTerminalBlockMetaById
+    && left.terminalBlocks === right.terminalBlocks
+    && left.agentTerminalBlocks === right.agentTerminalBlocks
+    && left.syntheticBlocks === right.syntheticBlocks;
+}
+
 function buildWorkspaceForLauncher(
   workspace: MemoryWorkspaceSnapshot | null
 ): MemoryWorkspaceSnapshot {
@@ -216,6 +243,7 @@ export function useLauncherAppState(): UseLauncherAppStateResult {
   );
   const canSpotlightControlWorkspace = panelMode === 'launcher' && isLinkedToWorkspace && isLauncherWindowVisible;
   const [launcherSessionOverride, setLauncherSessionOverride] = useState<TerminalSessionState | null>(null);
+  const lastHydratedLauncherTabIdRef = useRef<string | null>(null);
 
   const effectiveLauncherSession = useMemo(() => {
     if (launcherSessionOverride) {
@@ -227,6 +255,7 @@ export function useLauncherAppState(): UseLauncherAppStateResult {
 
   useEffect(() => {
     if (!launcherTabId) {
+      lastHydratedLauncherTabIdRef.current = null;
       setLauncherSessionOverride(null);
       return;
     }
@@ -234,13 +263,22 @@ export function useLauncherAppState(): UseLauncherAppStateResult {
     const nextSession = launcherSession ? normalizeTerminalSession(launcherSession) : null;
 
     setLauncherSessionOverride((current) => {
-      if (JSON.stringify(current) === JSON.stringify(nextSession)) {
+      if (lastHydratedLauncherTabIdRef.current !== launcherTabId) {
+        lastHydratedLauncherTabIdRef.current = launcherTabId;
+        return nextSession;
+      }
+
+      if (canSpotlightControlWorkspace && current) {
+        return current;
+      }
+
+      if (areTerminalSessionsEquivalent(current, nextSession)) {
         return current;
       }
 
       return nextSession;
     });
-  }, [launcherSession, launcherTabId]);
+  }, [canSpotlightControlWorkspace, launcherSession, launcherTabId]);
 
   const flushLauncherSessionSave = useCallback(async () => {
     const pendingSave = pendingLauncherSessionSaveRef.current;

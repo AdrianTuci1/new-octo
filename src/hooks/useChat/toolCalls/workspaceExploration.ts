@@ -10,7 +10,23 @@ function normalizeWorkspaceExplorationRequest(args: any): WorkspaceExplorationRe
         ? args.search.trim()
         : '';
 
-  if (!query) {
+  const path = typeof args?.path === 'string'
+    ? args.path.trim()
+    : typeof args?.directory === 'string'
+      ? args.directory.trim()
+      : typeof args?.targetPath === 'string'
+        ? args.targetPath.trim()
+        : typeof args?.basePath === 'string'
+          ? args.basePath.trim()
+          : '';
+
+  const mode = args?.mode === 'list' || args?.action === 'list'
+    ? 'list'
+    : args?.mode === 'search' || args?.action === 'search'
+      ? 'search'
+      : (!query && path ? 'list' : 'search');
+
+  if (!query && !path) {
     return undefined;
   }
 
@@ -21,13 +37,34 @@ function normalizeWorkspaceExplorationRequest(args: any): WorkspaceExplorationRe
       : undefined;
 
   const maxResults = typeof rawMaxResults === 'number' && Number.isFinite(rawMaxResults)
-    ? Math.max(1, Math.min(20, Math.floor(rawMaxResults)))
+    ? Math.max(1, Math.min(50, Math.floor(rawMaxResults)))
     : undefined;
+
+  const includeFiles = typeof args?.includeFiles === 'boolean'
+    ? args.includeFiles
+    : typeof args?.files === 'boolean'
+      ? args.files
+      : true;
+
+  const includeDirectories = typeof args?.includeDirectories === 'boolean'
+    ? args.includeDirectories
+    : typeof args?.directories === 'boolean'
+      ? args.directories
+      : mode === 'list';
+
+  const recursive = typeof args?.recursive === 'boolean'
+    ? args.recursive
+    : mode === 'search';
 
   return {
     toolCallId: '',
-    query,
-    maxResults
+    mode,
+    query: query || undefined,
+    path: path || undefined,
+    maxResults,
+    includeFiles,
+    includeDirectories,
+    recursive
   };
 }
 

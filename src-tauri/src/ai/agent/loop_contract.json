@@ -33,6 +33,7 @@
     "plan_execution",
     "propose_terminal_command",
     "propose_file_change",
+    "read_workspace_file",
     "explore_workspace",
     "propose_mcp_server",
     "suggest_follow_up"
@@ -203,6 +204,7 @@
         "plan_execution",
         "propose_terminal_command",
         "propose_file_change",
+        "read_workspace_file",
         "explore_workspace",
         "propose_mcp_server",
         "suggest_follow_up"
@@ -234,6 +236,13 @@
           "type": "emit_tool_call",
           "tool": "propose_file_change",
           "description": "Use for file creation or edits instead of heredocs or raw file dumps."
+        },
+        {
+          "id": "read-workspace-file",
+          "actor": "model",
+          "type": "emit_tool_call",
+          "tool": "read_workspace_file",
+          "description": "Use for reading the contents of a specific local file when the path is known or strongly implied."
         },
         {
           "id": "explore-workspace",
@@ -336,6 +345,7 @@
         "lookup_web",
         "propose_terminal_command",
         "propose_file_change",
+        "read_workspace_file",
         "propose_mcp_server"
       ],
       "allowedDecisions": [
@@ -405,6 +415,7 @@
         "lookup_web",
         "propose_terminal_command",
         "propose_file_change",
+        "read_workspace_file",
         "propose_mcp_server",
         "suggest_follow_up"
       ],

@@ -60,7 +60,7 @@ struct GhostConversationTerminalBlock {
 pub fn terminal_get_runtime_context(
     request: PathRequest,
 ) -> Result<TerminalRuntimeContext, String> {
-    let cwd = resolve_request_path(request.path)?;
+    let cwd = resolve_request_path(request.path, request.cwd)?;
 
     Ok(TerminalRuntimeContext {
         node_version: read_command_version("node", &cwd),

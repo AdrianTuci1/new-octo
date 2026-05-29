@@ -139,7 +139,7 @@ function usePathContextSync({
             paneId,
             {
               ...session,
-              workingDirectory: session.workingDirectory ?? context.currentDir ?? context.homeDir
+              workingDirectory: session.workingDirectory ?? context.homeDir ?? context.currentDir
             } satisfies TerminalSessionState
           ])
         ));

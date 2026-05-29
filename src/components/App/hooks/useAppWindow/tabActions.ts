@@ -19,7 +19,11 @@ import {
 type UseAppWindowTabActionsParams = {
   activePaneId: string | null;
   activeSectionId: string;
-  createTerminalTab: (options?: { label?: string; terminalSession?: TerminalSessionState }) => WorkspaceChromeTab;
+  createTerminalTab: (options?: {
+    label?: string;
+    terminalSession?: TerminalSessionState;
+    workingDirectory?: string | null;
+  }) => WorkspaceChromeTab;
   defaultWorkingDirectory: string | null;
   displayTabs: WorkspaceChromeTab[];
   expandedGroupIds: string[];

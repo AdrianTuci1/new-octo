@@ -18,6 +18,7 @@ type UseChatEffectsProps = {
   onFileChangeApprovalRef: React.MutableRefObject<UseChatOptions['onFileChangeApproval']>;
   onWebSearchRef: React.MutableRefObject<UseChatOptions['onWebSearch']>;
   onWorkspaceExplorationRef: React.MutableRefObject<UseChatOptions['onWorkspaceExploration']>;
+  onWorkspaceFileReadRef: React.MutableRefObject<UseChatOptions['onWorkspaceFileRead']>;
   onCloudAgentLaunchRef: React.MutableRefObject<UseChatOptions['onCloudAgentLaunch']>;
 };
 
@@ -29,6 +30,7 @@ export function useChatEffects({
   onFileChangeApprovalRef,
   onWebSearchRef,
   onWorkspaceExplorationRef,
+  onWorkspaceFileReadRef,
   onCloudAgentLaunchRef
 }: UseChatEffectsProps) {
   const conversationRecord = useMemoryStore((s: any) => options.conversationId ? s.conversationRecords[options.conversationId] : undefined);
@@ -62,6 +64,10 @@ export function useChatEffects({
   }, [options.onWorkspaceExploration, onWorkspaceExplorationRef]);
 
   useEffect(() => {
+    onWorkspaceFileReadRef.current = options.onWorkspaceFileRead;
+  }, [options.onWorkspaceFileRead, onWorkspaceFileReadRef]);
+
+  useEffect(() => {
     onCloudAgentLaunchRef.current = options.onCloudAgentLaunch;
   }, [options.onCloudAgentLaunch, onCloudAgentLaunchRef]);
 
@@ -84,10 +90,11 @@ export function useChatEffects({
         onFileChangeApproval: (approval) => onFileChangeApprovalRef.current?.(approval),
         onWebSearch: (request) => onWebSearchRef.current?.(request),
         onWorkspaceExploration: (request) => onWorkspaceExplorationRef.current?.(request),
+        onWorkspaceFileRead: (request) => onWorkspaceFileReadRef.current?.(request),
         onCloudAgentLaunch: (request) => onCloudAgentLaunchRef.current?.(request)
       });
     }
-  }, [actions, state.appendToMessage, state.messages, state.updateMessage, state.upsertReasoningMessage, onCommandApprovalRef, onFileChangeApprovalRef, onWebSearchRef, onWorkspaceExplorationRef, onCloudAgentLaunchRef, state.instanceIdRef]);
+  }, [actions, state.appendToMessage, state.messages, state.updateMessage, state.upsertReasoningMessage, onCommandApprovalRef, onFileChangeApprovalRef, onWebSearchRef, onWorkspaceExplorationRef, onWorkspaceFileReadRef, onCloudAgentLaunchRef, state.instanceIdRef]);
 
   useEffect(() => {
     const owner = state.instanceIdRef.current;

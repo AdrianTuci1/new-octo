@@ -6,6 +6,7 @@ pub mod decision;
 mod harness;
 pub mod loop_contract;
 pub(crate) mod openai;
+pub(crate) mod runtime;
 mod scripted;
 pub mod types;
 

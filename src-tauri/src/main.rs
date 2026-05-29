@@ -29,14 +29,14 @@ use tauri::{
 use tauri::ActivationPolicy;
 
 #[cfg(desktop)]
-use tauri_plugin_global_shortcut::{Code, Modifiers, ShortcutState};
+use tauri_plugin_global_shortcut::ShortcutState;
 
 mod menus;
 
 const MAIN_WINDOW_LABEL: &str = "main";
 const SETTINGS_WINDOW_LABEL: &str = "settings";
 const ONBOARDING_WINDOW_LABEL: &str = "onboarding";
-const TOGGLE_SHORTCUT: &str = "alt+space";
+const TOGGLE_SHORTCUT: &str = keybindings::DEFAULT_LAUNCHER_SHORTCUT;
 const WINDOW_BOTTOM_MARGIN: i32 = 68;
 const OPEN_CLOUD_PROFILE_DRAWER_EVENT: &str = "octomus:open-cloud-profile-drawer";
 #[derive(Clone, Serialize)]
@@ -500,10 +500,8 @@ fn main() {
                 app.handle().plugin(
                     tauri_plugin_global_shortcut::Builder::new()
                         .with_shortcuts([TOGGLE_SHORTCUT])?
-                        .with_handler(|app, shortcut, event| {
-                            if event.state == ShortcutState::Pressed
-                                && shortcut.matches(Modifiers::ALT, Code::Space)
-                            {
+                        .with_handler(|app, _shortcut, event| {
+                            if event.state == ShortcutState::Pressed {
                                 toggle_launcher(app);
                             }
                         })

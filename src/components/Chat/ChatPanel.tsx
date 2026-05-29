@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { ArrowDown, ArrowUp, X } from 'lucide-react';
 import { ChatEmptyState, ChatTopbar } from './layout';
 import { useChatPanelController } from './hooks/useChatPanelController';
@@ -8,12 +9,15 @@ import { MultiAgentBlock } from './blocks/MultiAgentBlock';
 import { CommandApprovalComposer } from '../Composer';
 import { ProfileAvatar } from '../App/profile/ProfileAvatar';
 import { useProfileSettings } from '../App/settings/useProfileSettings';
-import { useLauncherContext } from '../Layout/Launcher/LauncherContext';
+import type { LauncherViewModel } from '../Layout/Launcher/hooks';
 import { useEditorStore } from '../../stores/editorStore';
 import './ChatPanel.css';
-export function ChatPanel() {
-  const { launcher } = useLauncherContext();
-  const view = launcher.views.chatPanel;
+
+type ChatPanelProps = {
+  view: LauncherViewModel['views']['chatPanel'];
+};
+
+export const ChatPanel = memo(function ChatPanel({ view }: ChatPanelProps) {
   const controller = useChatPanelController(view);
   const { profile } = useProfileSettings();
   const openFile = useEditorStore((state) => state.openFile);
@@ -197,4 +201,4 @@ export function ChatPanel() {
       )}
     </div>
   );
-}
+});

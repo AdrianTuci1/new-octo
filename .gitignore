@@ -5,3 +5,4 @@ target
 .env
 artifacts
 .codegraphy/
+release.env

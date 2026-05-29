@@ -33,18 +33,24 @@ async function openWorkspaceFile(path: string) {
 function buildFallbackSegment(exploration: WorkspaceExplorationArtifact): WorkspaceExplorationSegment | null {
   const entries: WorkspaceExplorationEntry[] = [];
   const createdAt = new Date().toISOString();
+  const searches = exploration.searches ?? [];
+  const files = exploration.files ?? [];
 
-  exploration.searches.forEach((search, index) => {
+  searches.forEach((search, index) => {
     entries.push({
       id: `workspace-exploration-search-${index}`,
       kind: 'search',
-      text: `Searched for ${search.query}`,
-      detail: `in ${search.source === 'code-index' ? 'code index' : 'workspace files'} (${search.resultCount} match${search.resultCount === 1 ? '' : 'es'})`,
+      text: search.mode === 'list'
+        ? `Listed ${search.path || '.'}`
+        : `Searched for ${search.query}`,
+      detail: search.mode === 'list'
+        ? `${search.resultCount} entr${search.resultCount === 1 ? 'y' : 'ies'}`
+        : `in ${search.source === 'code-index' ? 'code index' : 'workspace files'} (${search.resultCount} match${search.resultCount === 1 ? '' : 'es'})`,
       createdAt
     });
   });
 
-  exploration.files.forEach((file, index) => {
+  files.forEach((file, index) => {
     entries.push({
       id: `workspace-exploration-file-${index}`,
       kind: 'read',
@@ -64,18 +70,19 @@ function buildFallbackSegment(exploration: WorkspaceExplorationArtifact): Worksp
     createdAt: new Date().toISOString(),
     summary: exploration.summary?.trim() || undefined,
     entries,
-    searches: exploration.searches,
-    files: exploration.files
+    searches,
+    files,
+    directories: []
   };
 }
 
 function formatSearchSummary(exploration: WorkspaceExplorationArtifact) {
   const fileCount = exploration.segments?.length > 0
-    ? exploration.segments.reduce((total, segment) => total + segment.files.length, 0)
-    : exploration.files.length;
+    ? exploration.segments.reduce((total, segment) => total + (segment.files?.length ?? 0), 0)
+    : exploration.files?.length ?? 0;
   const searchCount = exploration.segments?.length > 0
-    ? exploration.segments.reduce((total, segment) => total + segment.searches.length, 0)
-    : exploration.searches.length;
+    ? exploration.segments.reduce((total, segment) => total + (segment.searches?.length ?? 0), 0)
+    : exploration.searches?.length ?? 0;
 
   if (fileCount === 0 && searchCount === 0 && exploration.summary?.trim()) {
     return exploration.summary.trim();
@@ -86,7 +93,10 @@ function formatSearchSummary(exploration: WorkspaceExplorationArtifact) {
 
 function getSegments(exploration: WorkspaceExplorationArtifact) {
   if (exploration.segments?.length > 0) {
-    return exploration.segments;
+    return exploration.segments.map((segment) => ({
+      ...segment,
+      entries: (segment.entries ?? []).filter((entry) => entry.kind === 'search' || entry.kind === 'read')
+    })).filter((segment) => segment.entries.length > 0 || segment.summary?.trim());
   }
 
   const fallback = buildFallbackSegment(exploration);
@@ -172,7 +182,7 @@ export function WorkspaceExplorationBlock({ exploration, isStreaming = false }: 
               key={segment.id}
               className={`workspace-exploration-segment ${segmentIndex > 0 ? 'workspace-exploration-segment-spaced' : ''}`}
             >
-              {segment.entries.map((entry) => (
+              {(segment.entries ?? []).map((entry) => (
                 <WorkspaceExplorationEntryRow key={entry.id} entry={entry} />
               ))}
             </div>

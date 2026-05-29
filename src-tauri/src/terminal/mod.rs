@@ -105,17 +105,21 @@ pub fn terminal_get_runtime_context(
 }
 
 #[tauri::command]
-pub fn terminal_list_directory_entries(
+pub async fn terminal_list_directory_entries(
     request: fs::ListDirectoryEntriesRequest,
 ) -> Result<fs::FilesystemDirectoryListing, String> {
-    fs::terminal_list_directory_entries(request)
+    tauri::async_runtime::spawn_blocking(move || fs::terminal_list_directory_entries(request))
+        .await
+        .map_err(|error| format!("failed to join directory listing task: {error}"))?
 }
 
 #[tauri::command]
-pub fn terminal_search_directory_entries(
+pub async fn terminal_search_directory_entries(
     request: fs::SearchDirectoryEntriesRequest,
 ) -> Result<fs::FilesystemSearchListing, String> {
-    fs::terminal_search_directory_entries(request)
+    tauri::async_runtime::spawn_blocking(move || fs::terminal_search_directory_entries(request))
+        .await
+        .map_err(|error| format!("failed to join directory search task: {error}"))?
 }
 
 #[tauri::command]
@@ -163,11 +167,15 @@ pub async fn terminal_get_composer_intelligence(
 }
 
 #[tauri::command]
-pub fn terminal_read_file(request: fs::PathRequest) -> Result<String, String> {
-    fs::terminal_read_file(request)
+pub async fn terminal_read_file(request: fs::PathRequest) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || fs::terminal_read_file(request))
+        .await
+        .map_err(|error| format!("failed to join file read task: {error}"))?
 }
 
 #[tauri::command]
-pub fn terminal_write_file(request: fs::WriteFileRequest) -> Result<(), String> {
-    fs::terminal_write_file(request)
+pub async fn terminal_write_file(request: fs::WriteFileRequest) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || fs::terminal_write_file(request))
+        .await
+        .map_err(|error| format!("failed to join file write task: {error}"))?
 }

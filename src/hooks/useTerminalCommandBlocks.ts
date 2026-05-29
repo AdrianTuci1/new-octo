@@ -99,6 +99,7 @@ export function useTerminalCommandBlocks(options: UseTerminalCommandBlocksOption
   const pendingOutputRef = useRef<Record<string, string>>({});
   const outputBufferRef = useRef<Record<string, string>>({});
   const outputFlushFrameRef = useRef<number | null>(null);
+  const pendingBlockReconcileTimeoutsRef = useRef<Record<string, number>>({});
   const blockOptionsRef = useRef<Record<string, RunCommandOptions>>({});
   const [blocks, setBlocks] = useState<TerminalCommandBlock[]>([]);
   const [expandedBlockIds, setExpandedBlockIds] = useState<string[]>([]);
@@ -242,6 +243,28 @@ export function useTerminalCommandBlocks(options: UseTerminalCommandBlocksOption
     setCompletionState(null);
   }, [applySharedMeta, commitTimeline]);
 
+  const reconcileBlocksFromSession = useCallback((nextBlocks: TerminalBlock[]) => {
+    const normalizedBlocks = nextBlocks.map((block) => applySharedMeta({
+      ...mergeBlock(block, '', sharedBlockMetaRef.current[block.id]),
+      presentation: blockOptionsRef.current[block.id]?.source ? 'command' : undefined
+    }));
+    const runningBlocks = normalizedBlocks.filter((block) => block.status === 'running');
+    activeBlockIdRef.current = runningBlocks[runningBlocks.length - 1]?.id ?? null;
+    blocksRef.current = normalizedBlocks;
+    pendingCommandOutputRef.current = '';
+    pendingOutputRef.current = {};
+    outputBufferRef.current = {};
+    if (outputFlushFrameRef.current !== null) {
+      window.cancelAnimationFrame(outputFlushFrameRef.current);
+      outputFlushFrameRef.current = null;
+    }
+    blockOptionsRef.current = Object.fromEntries(
+      normalizedBlocks.map((block) => [block.id, { source: block.source }])
+    );
+    commitTimeline(normalizedBlocks);
+    setError(null);
+  }, [applySharedMeta, commitTimeline]);
+
   const resetCompletionState = useCallback(() => {
     setCompletionState(null);
   }, []);
@@ -326,6 +349,13 @@ export function useTerminalCommandBlocks(options: UseTerminalCommandBlocksOption
     } else if (activeBlockIdRef.current === nextBlock.id) {
       activeBlockIdRef.current = null;
     }
+    if (nextBlock.status === 'finished') {
+      const timeoutId = pendingBlockReconcileTimeoutsRef.current[nextBlock.id];
+      if (timeoutId !== undefined) {
+        window.clearTimeout(timeoutId);
+        delete pendingBlockReconcileTimeoutsRef.current[nextBlock.id];
+      }
+    }
 
     const nextCommandBlocks = existing
       ? currentCommandBlocks.map((currentBlock) => (
@@ -334,6 +364,50 @@ export function useTerminalCommandBlocks(options: UseTerminalCommandBlocksOption
       : [...currentCommandBlocks, nextBlock].slice(-80);
     commitTimeline(nextCommandBlocks);
   }, [applySharedMeta, commitTimeline]);
+
+  const schedulePendingBlockReconcile = useCallback((sessionId: string, blockId: string, attempt = 0) => {
+    const existingTimeoutId = pendingBlockReconcileTimeoutsRef.current[blockId];
+    if (existingTimeoutId !== undefined) {
+      window.clearTimeout(existingTimeoutId);
+    }
+
+    const delayMs = attempt < 2 ? 250 : 1000;
+    pendingBlockReconcileTimeoutsRef.current[blockId] = window.setTimeout(() => {
+      void invoke<TerminalBlock[]>('terminal_get_blocks', {
+        request: {
+          sessionId
+        }
+      }).then((latestBlocks) => {
+        const activeSession = sessionRef.current;
+        if (!activeSession || activeSession.id !== sessionId) {
+          delete pendingBlockReconcileTimeoutsRef.current[blockId];
+          return;
+        }
+
+        const latestBlock = latestBlocks.find((block) => block.id === blockId);
+        if (latestBlock?.finishedAt) {
+          delete pendingBlockReconcileTimeoutsRef.current[blockId];
+          reconcileBlocksFromSession(latestBlocks);
+          return;
+        }
+
+        const localBlock = commandBlocksRef.current.find((block) => block.id === blockId);
+        if (localBlock?.status === 'running' && attempt < 5) {
+          schedulePendingBlockReconcile(sessionId, blockId, attempt + 1);
+          return;
+        }
+
+        delete pendingBlockReconcileTimeoutsRef.current[blockId];
+      }).catch(() => {
+        if (attempt < 5) {
+          schedulePendingBlockReconcile(sessionId, blockId, attempt + 1);
+          return;
+        }
+
+        delete pendingBlockReconcileTimeoutsRef.current[blockId];
+      });
+    }, delayMs);
+  }, [reconcileBlocksFromSession]);
 
   const appendOutput = useCallback((blockId: string, data: string) => {
     if (!data) return;
@@ -632,6 +706,10 @@ export function useTerminalCommandBlocks(options: UseTerminalCommandBlocksOption
         window.cancelAnimationFrame(outputFlushFrameRef.current);
         outputFlushFrameRef.current = null;
       }
+      Object.values(pendingBlockReconcileTimeoutsRef.current).forEach((timeoutId) => {
+        window.clearTimeout(timeoutId);
+      });
+      pendingBlockReconcileTimeoutsRef.current = {};
     };
   }, [appendOutput, persistSession, resetCompletionState, upsertBlock, upsertCompletionState]);
 
@@ -671,6 +749,10 @@ export function useTerminalCommandBlocks(options: UseTerminalCommandBlocksOption
     pendingCommandOutputRef.current = '';
     pendingOutputRef.current = {};
     outputBufferRef.current = {};
+    Object.values(pendingBlockReconcileTimeoutsRef.current).forEach((timeoutId) => {
+      window.clearTimeout(timeoutId);
+    });
+    pendingBlockReconcileTimeoutsRef.current = {};
     if (outputFlushFrameRef.current !== null) {
       window.cancelAnimationFrame(outputFlushFrameRef.current);
       outputFlushFrameRef.current = null;
@@ -712,6 +794,9 @@ export function useTerminalCommandBlocks(options: UseTerminalCommandBlocksOption
         activeBlockIdRef.current = response.block.finishedAt ? null : response.block.id;
         commandInFlightRef.current = false;
         upsertBlock(response.block);
+        if (response.pending && !response.block.finishedAt) {
+          schedulePendingBlockReconcile(session.id, response.block.id);
+        }
         return response;
       } catch (reason) {
         commandInFlightRef.current = false;
@@ -720,7 +805,7 @@ export function useTerminalCommandBlocks(options: UseTerminalCommandBlocksOption
         return null;
       }
     },
-    [appendOutput, ensureSession, upsertBlock, upsertBlockMeta]
+    [appendOutput, ensureSession, schedulePendingBlockReconcile, upsertBlock, upsertBlockMeta]
   );
 
   const clearBlocks = useCallback(() => {

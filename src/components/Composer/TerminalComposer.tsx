@@ -1,15 +1,18 @@
+import { memo } from 'react';
 import { ArrowRight, Command, CornerDownLeft, Sparkles, SquareTerminal } from 'lucide-react';
 import { GitBranchPicker } from './GitBranchPicker';
 import { SlashCommandHighlight } from './SlashCommandHighlight';
 import { WorkingDirectoryPicker } from './WorkingDirectoryPicker';
-import { useLauncherContext } from '../Layout/Launcher/LauncherContext';
+import type { LauncherViewModel } from '../Layout/Launcher/hooks';
 import type { TerminalShellCompletion } from '../../types/terminal';
 import { useTerminalComposerController } from './useTerminalComposerController';
 import './TerminalComposer.css';
 
-export function TerminalComposer() {
-  const { launcher } = useLauncherContext();
-  const view = launcher.views.terminalComposer;
+type TerminalComposerProps = {
+  view: LauncherViewModel['views']['terminalComposer'];
+};
+
+export const TerminalComposer = memo(function TerminalComposer({ view }: TerminalComposerProps) {
   const controller = useTerminalComposerController(view);
 
   return (
@@ -162,4 +165,4 @@ export function TerminalComposer() {
       </div>
     </div>
   );
-}
+});
