@@ -1,10 +1,14 @@
+import { memo } from 'react';
 import './ModelSetupOverlay.css';
 import { Command } from 'lucide-react';
-import { useLauncherContext } from '../Layout/Launcher/LauncherContext';
+import type { LauncherViewModel } from '../Layout/Launcher/hooks';
 
-export function ModelSetupOverlay() {
-  const { launcher } = useLauncherContext();
-  const { onBack, onOpenModelSettings } = launcher.views.modelSetupOverlay;
+type ModelSetupOverlayProps = {
+  view: LauncherViewModel['views']['modelSetupOverlay'];
+};
+
+export const ModelSetupOverlay = memo(function ModelSetupOverlay({ view }: ModelSetupOverlayProps) {
+  const { onBack, onOpenModelSettings } = view;
 
   return (
     <section className="composer-setup-overlay" aria-label="Model setup required">
@@ -41,4 +45,4 @@ export function ModelSetupOverlay() {
       </div>
     </section>
   );
-}
+});

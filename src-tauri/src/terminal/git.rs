@@ -55,14 +55,14 @@ pub struct GitWorktreeDiff {
 }
 
 pub fn terminal_get_git_context(request: PathRequest) -> Result<Option<GitRepoContext>, String> {
-    let cwd = resolve_request_path(request.path)?;
+    let cwd = resolve_request_path(request.path, request.cwd)?;
     git_repo_context(&cwd)
 }
 
 pub fn terminal_get_worktree_diff(
     request: GitWorktreeDiffRequest,
 ) -> Result<GitWorktreeDiff, String> {
-    let cwd = resolve_request_path(request.path)?;
+    let cwd = resolve_request_path(request.path, None)?;
     let Some(context) = git_repo_context(&cwd)? else {
         return Ok(GitWorktreeDiff {
             is_repo: false,
@@ -119,7 +119,7 @@ pub fn terminal_get_worktree_diff(
 pub fn terminal_switch_git_branch(
     request: GitBranchSwitchRequest,
 ) -> Result<Option<GitRepoContext>, String> {
-    let cwd = resolve_request_path(request.path)?;
+    let cwd = resolve_request_path(request.path, None)?;
     let branch = request.branch.trim();
     if branch.is_empty() {
         return Err("git branch cannot be empty".to_string());

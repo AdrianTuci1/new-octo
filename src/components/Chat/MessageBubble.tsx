@@ -6,7 +6,13 @@ import { Copy, Terminal, Check } from 'lucide-react';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { CodeDiffView } from './CodeDiffView';
-import { FileArtifactBlock, ImplementationPlanBlock, ThinkingBlock, WebSearchBlock, WorkspaceExplorationBlock } from './blocks';
+import {
+  FileArtifactBlock,
+  ImplementationPlanBlock,
+  ThinkingBlock,
+  WebSearchBlock,
+  WorkspaceExplorationBlock
+} from './blocks';
 import { extractInlineFileChangeApproval, visibleChatMessageBody } from '../../hooks/useChat';
 import type { ChatMessage, ExecutionPlanArtifact } from '../../types/chat';
 import type { CommandApproval } from '../../types/terminal';
@@ -42,8 +48,32 @@ function highlightSlashCommandsInMarkdown(text: string): string {
   }).join('');
 }
 
+function annotateLocalPathsInMarkdown(text: string): string {
+  const parts = text.split(/(`{1,3}[\s\S]*?`{1,3})/g);
+
+  return parts.map((part, index) => {
+    if (index % 2 === 1) {
+      return part;
+    }
+
+    return part.replace(
+      /(^|[\s(])((?:~\/[^\s`)<>,;]+|\.{1,2}\/[^\s`)<>,;]+|\/[^\s/`)<>,;]+\/[^\s`)<>,;]*))/g,
+      (match, prefix, candidate) => {
+        const normalizedCandidate = candidate.replace(/[.,;:!?]+$/, '');
+        const trailing = candidate.slice(normalizedCandidate.length);
+        if (!looksLikeLocalPath(normalizedCandidate)) {
+          return match;
+        }
+
+        return `${prefix}\`${normalizedCandidate}\`${trailing}`;
+      }
+    );
+  }).join('');
+}
+
 const SHELL_LANGUAGES = new Set(['bash', 'console', 'fish', 'ps1', 'powershell', 'sh', 'shell', 'terminal', 'zsh']);
 const FILE_PATH_PATTERN = /(?:^|[\s"'`=:/])((?:\.{1,2}\/|\/)?(?:[\w.-]+\/)+[\w.-]+\.[A-Za-z0-9]{1,12}|[\w.-]+\.[A-Za-z0-9]{1,12})(?=$|[\s"'`),;])/;
+const LOCAL_PATH_INLINE_PATTERN = /^(?:\/(?:[^/\0]+\/)*[^/\0]*|\.\.?(?:\/[^/\0]+)*\/?|~\/(?:[^/\0]+\/?)*|[A-Za-z]:[\\/](?:[^\\/\0]+[\\/])*[^\\/\0]*)$/;
 
 function cleanPossibleFilePath(value: string) {
   return value
@@ -132,6 +162,21 @@ function extractFileProposalFromMarkdown(body: string) {
   };
 }
 
+function looksLikeLocalPath(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.includes('\n')) {
+    return false;
+  }
+
+  return LOCAL_PATH_INLINE_PATTERN.test(trimmed);
+}
+
+function normalizeLocalInlinePath(value: string) {
+  return value.trim().replace(/\/+$/, (match, offset, source) => {
+    return source.length > 1 ? '' : match;
+  });
+}
+
 function MessageBubbleComponent({ message, onRequestCommandApproval, profile, openFile }: MessageBubbleProps) {
   const isUser = message.role === 'user';
   const rawVisibleBodyWithArtifacts = message.role === 'assistant'
@@ -158,7 +203,7 @@ function MessageBubbleComponent({ message, onRequestCommandApproval, profile, op
         : 'pending');
   const emittedFileProposalIdsRef = useRef(new Set<string>());
   const rawVisibleBody = extractedFileProposal.visibleBody;
-  const visibleBody = highlightSlashCommandsInMarkdown(rawVisibleBody);
+  const visibleBody = highlightSlashCommandsInMarkdown(annotateLocalPathsInMarkdown(rawVisibleBody));
   const showStreamingHint = message.role === 'assistant'
     && message.isStreaming
     && !visibleBody.trim()
@@ -251,6 +296,7 @@ function MessageBubbleComponent({ message, onRequestCommandApproval, profile, op
       );
     },
     code({ inline, className, children, ...props }: any) {
+      const codeValue = String(children || '').trim();
       const match = /language-(\w+)/.exec(className || '');
       const lang = match ? match[1] : '';
 
@@ -264,7 +310,23 @@ function MessageBubbleComponent({ message, onRequestCommandApproval, profile, op
         );
       }
 
-      const isSlash = String(children || '').trim().startsWith('/');
+      if (inline && looksLikeLocalPath(codeValue)) {
+        const localPath = normalizeLocalInlinePath(codeValue);
+        return (
+          <button
+            type="button"
+            className="chat-action-link chat-local-path-chip"
+            onClick={(event) => {
+              event.preventDefault();
+              void openLocalPath(localPath, openFile);
+            }}
+          >
+            <code {...props}>{children}</code>
+          </button>
+        );
+      }
+
+      const isSlash = codeValue.startsWith('/');
       const combinedClassName = isSlash
         ? `${className || ''} is-slash-command`.trim()
         : className;

@@ -1,6 +1,7 @@
 export * from './useChat';
 export * from './useComposerIntelligence';
 export * from './useCommandHistory';
+export * from './useDebouncedValue';
 export * from './useGitContext';
 export * from './useKeyboardShortcuts';
 export * from './useModelSelection';

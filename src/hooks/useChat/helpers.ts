@@ -108,6 +108,7 @@ export function sameMessages(left: ChatMessage[], right: ChatMessage[]) {
       && candidate.webSearchQuery === message.webSearchQuery
       && JSON.stringify(candidate.webSearchResults ?? []) === JSON.stringify(message.webSearchResults ?? [])
       && JSON.stringify(candidate.workspaceExploration ?? null) === JSON.stringify(message.workspaceExploration ?? null)
+      && JSON.stringify(candidate.workspaceFileRead ?? null) === JSON.stringify(message.workspaceFileRead ?? null)
       && JSON.stringify(candidate.executionPlan ?? null) === JSON.stringify(message.executionPlan ?? null)
       && JSON.stringify(candidate.followUpSuggestion ?? null) === JSON.stringify(message.followUpSuggestion ?? null)
       && JSON.stringify(candidate.usage ?? null) === JSON.stringify(message.usage ?? null);

@@ -4,7 +4,8 @@ import type {
   ExecutionPlanArtifact,
   PlanExecutionUpdate,
   WebSearchRequest,
-  WorkspaceExplorationRequest
+  WorkspaceExplorationRequest,
+  WorkspaceFileReadRequest
 } from '../../types/chat';
 import type { CommandApproval, FileChangeApproval, TerminalCommandBlock } from '../../types/terminal';
 
@@ -13,6 +14,7 @@ export type UseChatOptions = {
   onFileChangeApproval?: (approval: FileChangeApproval) => void;
   onWebSearch?: (request: WebSearchRequest) => void;
   onWorkspaceExploration?: (request: WorkspaceExplorationRequest) => void;
+  onWorkspaceFileRead?: (request: WorkspaceFileReadRequest) => void;
   onCloudAgentLaunch?: (request: CloudAgentLaunchRequest) => Promise<unknown> | unknown;
   onNewChat?: () => void;
   onConversationCreated?: (conversationId: string) => void;
@@ -39,5 +41,6 @@ export type AssistantMessageRegistration = {
   onFileChangeApproval?: (approval: FileChangeApproval) => void;
   onWebSearch?: (request: WebSearchRequest) => void;
   onWorkspaceExploration?: (request: WorkspaceExplorationRequest) => void;
+  onWorkspaceFileRead?: (request: WorkspaceFileReadRequest) => void;
   onCloudAgentLaunch?: (request: CloudAgentLaunchRequest) => Promise<unknown> | unknown;
 };

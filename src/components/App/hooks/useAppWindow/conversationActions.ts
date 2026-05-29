@@ -5,7 +5,11 @@ import * as Utils from '../../utils';
 import type { TerminalSessionState } from '../../utils';
 
 type UseAppWindowConversationActionsParams = {
-  createTerminalTab: (options?: { label?: string; terminalSession?: TerminalSessionState }) => WorkspaceChromeTab;
+  createTerminalTab: (options?: {
+    label?: string;
+    terminalSession?: TerminalSessionState;
+    workingDirectory?: string | null;
+  }) => WorkspaceChromeTab;
   defaultWorkingDirectory: string | null;
   deleteConversation: ReturnType<typeof useMemoryStore.getState>['deleteConversation'];
   getLauncherSessionForPane: (paneId: string | null) => TerminalSessionState | null;

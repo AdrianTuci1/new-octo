@@ -22,11 +22,12 @@ export type ChatMessage = {
   thinkingDurationSeconds?: number;
   hasNativeThinking?: boolean;
   parentMessageId?: string;
-  toolKind?: 'command' | 'web-search' | 'plan' | 'file-change' | 'workspace-exploration';
+  toolKind?: 'command' | 'web-search' | 'plan' | 'file-change' | 'workspace-exploration' | 'file-read';
   webSearchStatus?: 'searching' | 'success' | 'error';
   webSearchQuery?: string;
   webSearchResults?: WebSearchResult[];
   workspaceExploration?: WorkspaceExplorationArtifact;
+  workspaceFileRead?: WorkspaceFileReadArtifact;
   executionPlan?: ExecutionPlanArtifact;
   followUpSuggestion?: {
     label: string;
@@ -100,9 +101,11 @@ export type CloudAgentLaunchRequest = {
 };
 
 export type WorkspaceExplorationSearch = {
+  mode: 'list' | 'search';
   source: 'code-index' | 'filesystem';
   query: string;
   resultCount: number;
+  path?: string;
 };
 
 export type WorkspaceExplorationFile = {
@@ -111,9 +114,14 @@ export type WorkspaceExplorationFile = {
   snippet?: string;
 };
 
+export type WorkspaceExplorationDirectory = {
+  path: string;
+  source: 'filesystem';
+};
+
 export type WorkspaceExplorationEntry = {
   id: string;
-  kind: 'search' | 'read' | 'note';
+  kind: 'search' | 'read' | 'directory' | 'note';
   text: string;
   detail?: string;
   path?: string;
@@ -127,20 +135,46 @@ export type WorkspaceExplorationSegment = {
   entries: WorkspaceExplorationEntry[];
   searches: WorkspaceExplorationSearch[];
   files: WorkspaceExplorationFile[];
+  directories: WorkspaceExplorationDirectory[];
 };
 
 export type WorkspaceExplorationArtifact = {
-  query: string;
+  query?: string;
+  mode?: 'list' | 'search';
+  path?: string;
   summary?: string;
   segments: WorkspaceExplorationSegment[];
   searches: WorkspaceExplorationSearch[];
   files: WorkspaceExplorationFile[];
+  directories: WorkspaceExplorationDirectory[];
+};
+
+export type WorkspaceFileReadArtifact = {
+  path: string;
+  displayPath: string;
+  content: string;
+  startLine?: number;
+  endLine?: number;
+  truncated?: boolean;
 };
 
 export type WorkspaceExplorationRequest = {
   toolCallId: string;
-  query: string;
+  mode?: 'list' | 'search';
+  query?: string;
+  path?: string;
   maxResults?: number;
+  includeFiles?: boolean;
+  includeDirectories?: boolean;
+  recursive?: boolean;
+};
+
+export type WorkspaceFileReadRequest = {
+  toolCallId: string;
+  path: string;
+  startLine?: number;
+  endLine?: number;
+  maxChars?: number;
 };
 
 export type AgentReasoningEvent = {

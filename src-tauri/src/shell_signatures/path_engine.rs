@@ -53,6 +53,7 @@ pub fn predict_path_completion(
 
     let listing = terminal_list_directory_entries(ListDirectoryEntriesRequest {
         path: Some(directory_path),
+        cwd: Some(cwd.to_string()),
         query: Some(partial_name.clone()),
         directories_only: Some(directories_only),
     })

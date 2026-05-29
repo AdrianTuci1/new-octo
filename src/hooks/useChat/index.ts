@@ -12,6 +12,7 @@ export function useChat(options: UseChatOptions = {}) {
   const onFileChangeApprovalRef = useRef(options.onFileChangeApproval);
   const onWebSearchRef = useRef(options.onWebSearch);
   const onWorkspaceExplorationRef = useRef(options.onWorkspaceExploration);
+  const onWorkspaceFileReadRef = useRef(options.onWorkspaceFileRead);
   const onCloudAgentLaunchRef = useRef(options.onCloudAgentLaunch);
   
   const actions = useChatActions({
@@ -21,6 +22,7 @@ export function useChat(options: UseChatOptions = {}) {
     onFileChangeApprovalRef,
     onWebSearchRef,
     onWorkspaceExplorationRef,
+    onWorkspaceFileReadRef,
     onCloudAgentLaunchRef
   });
 
@@ -32,6 +34,7 @@ export function useChat(options: UseChatOptions = {}) {
     onFileChangeApprovalRef,
     onWebSearchRef,
     onWorkspaceExplorationRef,
+    onWorkspaceFileReadRef,
     onCloudAgentLaunchRef
   });
 

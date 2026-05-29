@@ -143,11 +143,9 @@ function CommandApprovalComposerContent({
 
           <div className="command-approval-actions">
             <button type="button" className="command-approval-text-btn" onClick={() => onReject?.(editedApproval)}>
-              <X size={12} />
               Reject
             </button>
             <button type="button" className="command-approval-text-btn" onClick={handleFileChangeEditOrSave}>
-              {isEditingFileChanges ? <Save size={12} /> : <PencilLine size={12} />}
               {isEditingFileChanges ? 'Save' : 'Edit'}
               <span className="keycap">⌘</span>
               <span className="keycap">E</span>

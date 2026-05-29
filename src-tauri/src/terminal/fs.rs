@@ -61,6 +61,7 @@ pub struct WriteFileRequest {
 #[serde(rename_all = "camelCase")]
 pub struct ListDirectoryEntriesRequest {
     pub path: Option<String>,
+    pub cwd: Option<String>,
     pub query: Option<String>,
     pub directories_only: Option<bool>,
 }
@@ -69,6 +70,7 @@ pub struct ListDirectoryEntriesRequest {
 #[serde(rename_all = "camelCase")]
 pub struct SearchDirectoryEntriesRequest {
     pub path: Option<String>,
+    pub cwd: Option<String>,
     pub query: String,
 }
 
@@ -76,6 +78,7 @@ pub struct SearchDirectoryEntriesRequest {
 #[serde(rename_all = "camelCase")]
 pub struct PathRequest {
     pub path: Option<String>,
+    pub cwd: Option<String>,
 }
 
 pub fn terminal_list_commands() -> Result<Vec<String>, String> {
@@ -262,20 +265,48 @@ pub fn terminal_get_path_context() -> Result<FilesystemPathContext, String> {
     })
 }
 
+fn normalize_workspace_match_text(value: &str) -> String {
+    value
+        .to_lowercase()
+        .chars()
+        .map(|character| match character {
+            '_' | '-' | '.' | '/' | '\\' => ' ',
+            other => other,
+        })
+        .collect::<String>()
+}
+
+fn matches_workspace_query(candidate: &str, query: &str) -> bool {
+    let normalized_query = query.trim().to_lowercase();
+    if normalized_query.is_empty() {
+        return true;
+    }
+
+    let candidate_lower = candidate.to_lowercase();
+    if candidate_lower.contains(&normalized_query) {
+        return true;
+    }
+
+    let normalized_candidate = normalize_workspace_match_text(candidate);
+    let normalized_query_text = normalize_workspace_match_text(&normalized_query);
+    if normalized_candidate.contains(&normalized_query_text) {
+        return true;
+    }
+
+    let query_tokens = normalized_query_text
+        .split_whitespace()
+        .filter(|token| token.len() >= 2)
+        .collect::<Vec<_>>();
+    !query_tokens.is_empty()
+        && query_tokens
+            .iter()
+            .all(|token| normalized_candidate.contains(token))
+}
+
 pub fn terminal_list_directory_entries(
     request: ListDirectoryEntriesRequest,
 ) -> Result<FilesystemDirectoryListing, String> {
-    let target_path = request
-        .path
-        .filter(|value| !value.trim().is_empty())
-        .map(PathBuf::from)
-        .unwrap_or(
-            env::current_dir()
-                .map_err(|error| format!("failed to read current directory: {error}"))?,
-        );
-    let normalized_path = target_path
-        .canonicalize()
-        .map_err(|error| format!("failed to open '{}': {error}", target_path.display()))?;
+    let normalized_path = resolve_request_path(request.path, request.cwd)?;
     let directories_only = request.directories_only.unwrap_or(true);
     let normalized_query = request.query.unwrap_or_default().trim().to_lowercase();
     let allow_hidden = normalized_query.starts_with('.');
@@ -303,11 +334,9 @@ pub fn terminal_list_directory_entries(
             continue;
         }
 
-        let name_matches = name.to_lowercase().contains(&normalized_query);
-        let path_matches = entry_path
-            .to_string_lossy()
-            .to_lowercase()
-            .contains(&normalized_query);
+        let path_key = entry_path.to_string_lossy().to_string();
+        let name_matches = matches_workspace_query(&name, &normalized_query);
+        let path_matches = matches_workspace_query(&path_key, &normalized_query);
 
         if !normalized_query.is_empty() && !name_matches && !path_matches {
             continue;
@@ -315,7 +344,7 @@ pub fn terminal_list_directory_entries(
 
         entries.push(FilesystemEntry {
             name,
-            path: entry_path.to_string_lossy().to_string(),
+            path: path_key,
             is_directory,
         });
     }
@@ -335,18 +364,10 @@ pub fn terminal_search_directory_entries(
     request: SearchDirectoryEntriesRequest,
 ) -> Result<FilesystemSearchListing, String> {
     const MAX_SEARCH_RESULTS: usize = 64;
+    const MAX_SEARCH_VISITED: usize = 8_000;
+    const MAX_SEARCH_DURATION: Duration = Duration::from_millis(400);
 
-    let target_path = request
-        .path
-        .filter(|value| !value.trim().is_empty())
-        .map(PathBuf::from)
-        .unwrap_or(
-            env::current_dir()
-                .map_err(|error| format!("failed to read current directory: {error}"))?,
-        );
-    let normalized_path = target_path
-        .canonicalize()
-        .map_err(|error| format!("failed to open '{}': {error}", target_path.display()))?;
+    let normalized_path = resolve_request_path(request.path, request.cwd)?;
     let normalized_query = request.query.trim().to_lowercase();
 
     if normalized_query.is_empty() {
@@ -358,6 +379,8 @@ pub fn terminal_search_directory_entries(
 
     let allow_hidden = normalized_query.starts_with('.');
     let mut entries = Vec::new();
+    let started_at = Instant::now();
+    let mut visited_entries = 0usize;
 
     let walker = WalkDir::new(&normalized_path)
         .follow_links(false)
@@ -371,9 +394,13 @@ pub fn terminal_search_directory_entries(
         });
 
     for entry in walker.filter_map(Result::ok).skip(1) {
-        if entries.len() >= MAX_SEARCH_RESULTS {
+        if entries.len() >= MAX_SEARCH_RESULTS
+            || visited_entries >= MAX_SEARCH_VISITED
+            || started_at.elapsed() >= MAX_SEARCH_DURATION
+        {
             break;
         }
+        visited_entries += 1;
 
         let file_type = entry.file_type();
         let path = entry.path().to_path_buf();
@@ -385,9 +412,9 @@ pub fn terminal_search_directory_entries(
             continue;
         }
 
-        let name_matches = name.to_lowercase().contains(&normalized_query);
         let path_key = path.to_string_lossy().to_string();
-        let path_matches = path_key.to_lowercase().contains(&normalized_query);
+        let name_matches = matches_workspace_query(&name, &normalized_query);
+        let path_matches = matches_workspace_query(&path_key, &normalized_query);
 
         if name_matches || path_matches {
             entries.push(FilesystemSearchEntry {
@@ -408,7 +435,7 @@ pub fn terminal_search_directory_entries(
 }
 
 pub fn terminal_read_file(request: PathRequest) -> Result<String, String> {
-    let path = resolve_request_path(request.path)?;
+    let path = resolve_request_path(request.path, request.cwd)?;
     if !path.is_file() {
         return Err(format!("'{}' is not a file", path.display()));
     }
@@ -427,13 +454,30 @@ pub fn home_dir() -> Option<PathBuf> {
     env::var_os("HOME").map(PathBuf::from)
 }
 
-pub fn resolve_request_path(path: Option<String>) -> Result<PathBuf, String> {
-    path.filter(|value| !value.trim().is_empty())
+pub fn resolve_request_path(path: Option<String>, cwd: Option<String>) -> Result<PathBuf, String> {
+    let normalized_cwd = cwd
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from);
+    let base_path = normalized_cwd.unwrap_or(
+        env::current_dir().map_err(|error| format!("failed to read current directory: {error}"))?,
+    );
+    let target_path = path
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
         .map(PathBuf::from)
-        .unwrap_or(
-            env::current_dir()
-                .map_err(|error| format!("failed to read current directory: {error}"))?,
-        )
+        .map(|value| {
+            if value.is_absolute() {
+                value
+            } else {
+                base_path.join(value)
+            }
+        })
+        .unwrap_or(base_path);
+
+    target_path
         .canonicalize()
         .map_err(|error| format!("failed to resolve path: {error}"))
 }
@@ -501,6 +545,7 @@ mod tests {
 
         let listing = terminal_list_directory_entries(ListDirectoryEntriesRequest {
             path: Some(temp_root.to_string_lossy().to_string()),
+            cwd: None,
             query: Some("bar".to_string()),
             directories_only: Some(false),
         })
@@ -532,6 +577,7 @@ mod tests {
         let listing =
             super::terminal_search_directory_entries(super::SearchDirectoryEntriesRequest {
                 path: Some(temp_root.to_string_lossy().to_string()),
+                cwd: None,
                 query: "bar".to_string(),
             })
             .expect("search listing should succeed");

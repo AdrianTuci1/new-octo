@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 use crate::terminal::{
-    home_dir, sort_history_entries_by_recency, terminal_list_directory_entries,
+    fs::terminal_list_directory_entries, home_dir, sort_history_entries_by_recency,
     ListDirectoryEntriesRequest, ShellHistoryEntry,
 };
 
@@ -1825,6 +1825,7 @@ fn predict_argument_path_completion(input: &str, cwd: Option<&str>) -> Option<St
 
     let listing = terminal_list_directory_entries(ListDirectoryEntriesRequest {
         path: Some(directory_path),
+        cwd: Some(cwd.to_string()),
         query: Some(partial_name.clone()),
         directories_only: Some(directories_only),
     })
@@ -1868,6 +1869,7 @@ fn predict_path_completion(input: &str, cwd: Option<&str>) -> Option<String> {
         build_path_completion_request(token, cwd)?;
     let listing = terminal_list_directory_entries(ListDirectoryEntriesRequest {
         path: Some(directory_path),
+        cwd: Some(cwd.to_string()),
         query: Some(partial_name),
         directories_only: Some(false),
     })

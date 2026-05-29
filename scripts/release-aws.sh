@@ -4,6 +4,20 @@ set -eu
 ROOT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 cd "$ROOT_DIR"
 
+RELEASE_ENV_FILE="${RELEASE_ENV_FILE:-$ROOT_DIR/release.env}"
+
+if [ -f "$RELEASE_ENV_FILE" ]; then
+  set -a
+  # Load release-only settings such as AWS_REGION or R2_* values.
+  . "$RELEASE_ENV_FILE"
+  set +a
+elif [ -f "$ROOT_DIR/.env" ]; then
+  set -a
+  # Fall back to the app-local .env if no dedicated release env file exists.
+  . "$ROOT_DIR/.env"
+  set +a
+fi
+
 TARGETS="${1:-all}"
 VERSION="$(sed -n 's/^version = "\(.*\)"/\1/p' src-tauri/Cargo.toml | head -n 1)"
 TIMESTAMP="$(date -u +%Y%m%d%H%M%S)"
@@ -29,6 +43,13 @@ require_cmd aws
 require_cmd zip
 require_cmd unzip
 require_cmd git
+
+aws_r2() {
+  AWS_ACCESS_KEY_ID="${R2_ACCESS_KEY_ID:-}" \
+  AWS_SECRET_ACCESS_KEY="${R2_SECRET_ACCESS_KEY:-}" \
+  AWS_SESSION_TOKEN="${R2_SESSION_TOKEN:-}" \
+  aws "$@"
+}
 
 AWS_REGION_VALUE="${AWS_REGION:-${AWS_DEFAULT_REGION:-}}"
 if [ -z "$AWS_REGION_VALUE" ]; then
@@ -300,7 +321,13 @@ upload_to_r2_if_configured() {
   r2_prefix="${R2_PREFIX:-octomus-release/${VERSION}}"
   target_uri="s3://$R2_BUCKET/$r2_prefix/$platform/"
   echo "Syncing $platform artifacts to $target_uri..."
-  aws s3 sync "$source_dir" "$target_uri" --endpoint-url "$R2_ENDPOINT_URL" >/dev/null
+
+  if [ -z "${R2_ACCESS_KEY_ID:-}" ] || [ -z "${R2_SECRET_ACCESS_KEY:-}" ]; then
+    echo "Set R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY before enabling R2 uploads." >&2
+    return 1
+  fi
+
+  aws_r2 s3 sync "$source_dir" "$target_uri" --endpoint-url "$R2_ENDPOINT_URL" >/dev/null
 }
 
 build_linux() {

@@ -2,6 +2,7 @@ export * from './TerminalBlockCard';
 export * from './WebSearchBlock';
 export * from './ThinkingBlock';
 export * from './WorkspaceExplorationBlock';
+export * from './WorkspaceFileReadBlock';
 export { ImplementationPlanBlock } from './ImplementationPlanBlock';
 export { CodeDisplayBlock } from './CodeDisplayBlock';
 export { FileArtifactBlock } from './FileArtifactBlock';

@@ -76,7 +76,7 @@ export function useAppWindow() {
     : null;
   const selectedPaneIds = selectedPaneLayout ? Utils.collectPaneIdsFromLayout(selectedPaneLayout) : [];
   const activePaneId = selectedPaneLayout?.activePaneId ?? selectedPaneIds[0] ?? null;
-  const defaultWorkingDirectory = pathContext?.currentDir ?? pathContext?.homeDir ?? null;
+  const defaultWorkingDirectory = pathContext?.homeDir ?? pathContext?.currentDir ?? null;
   const {
     activeConversationId,
     activePaneContext,
@@ -129,7 +129,18 @@ export function useAppWindow() {
   const createTerminalTab = useCallback((options: {
     label?: string;
     terminalSession?: TerminalSessionState;
+    workingDirectory?: string | null;
   } = {}) => {
+    const resolvedWorkingDirectory = options.workingDirectory
+      ?? options.terminalSession?.workingDirectory
+      ?? (activePaneId ? getLauncherSessionForPane(activePaneId)?.workingDirectory : null)
+      ?? defaultWorkingDirectory;
+    const terminalSession = options.terminalSession
+      ? {
+          ...options.terminalSession,
+          workingDirectory: options.terminalSession.workingDirectory ?? resolvedWorkingDirectory
+        }
+      : Utils.createEmptyTerminalSession(resolvedWorkingDirectory);
     const nextTab = {
       ...Utils.buildTerminalTab(nextTerminalIndex, options.label ?? '~'),
       tintColor: preserveActiveTabColor ? selectedTab.tintColor ?? null : null
@@ -145,11 +156,18 @@ export function useAppWindow() {
     }));
     setTerminalSessions((current) => ({
       ...current,
-      [nextTab.id]: options.terminalSession ?? Utils.createEmptyTerminalSession(defaultWorkingDirectory)
+      [nextTab.id]: terminalSession
     }));
     setNextTerminalIndex((value) => value + 1);
     return nextTab;
-  }, [defaultWorkingDirectory, nextTerminalIndex, preserveActiveTabColor, selectedTab.tintColor]);
+  }, [
+    activePaneId,
+    defaultWorkingDirectory,
+    getLauncherSessionForPane,
+    nextTerminalIndex,
+    preserveActiveTabColor,
+    selectedTab.tintColor
+  ]);
   const {
     handleCloseOtherTabs,
     handleCloseTabsToRight,

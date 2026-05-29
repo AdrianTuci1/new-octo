@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import './TrayPanel.css';
 import { Command } from 'lucide-react';
 import { TrayCommands } from './TrayCommands';
@@ -6,11 +7,13 @@ import { TrayFooter } from './TrayFooter';
 import { TrayHelp } from './TrayHelp';
 import { TrayHistory } from './TrayHistory';
 import { TrayModels } from './TrayModels';
-import { useLauncherContext } from '../Layout/Launcher/LauncherContext';
+import type { LauncherViewModel } from '../Layout/Launcher/hooks';
 
-export function TrayPanel() {
-  const { launcher } = useLauncherContext();
-  const view = launcher.views.trayPanel;
+type TrayPanelProps = {
+  view: LauncherViewModel['views']['trayPanel'];
+};
+
+export const TrayPanel = memo(function TrayPanel({ view }: TrayPanelProps) {
 
   return (
     <div className={`tray-region ${view.isOpen ? 'open' : 'closed'}`}>
@@ -116,4 +119,4 @@ export function TrayPanel() {
       )}
     </div>
   );
-}
+});

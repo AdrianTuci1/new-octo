@@ -23,6 +23,24 @@ export function useLauncherActions({
 }) {
   const setIsModelDrawerOpen = useUIStore((state) => state.setIsModelDrawerOpen);
 
+  const syncAgentSurfaceToTerminalCwd = useCallback(() => {
+    const terminalCwd = runtime.terminal.cwd?.trim()
+      || runtime.activeSurfaceWorkingDirectory?.trim()
+      || runtime.workingDirectory.currentPath?.trim()
+      || null;
+
+    if (terminalCwd) {
+      runtime.workingDirectory.syncCurrentPath(terminalCwd);
+    }
+
+    runtime.agentTerminal.clearBlocks();
+  }, [
+    runtime.activeSurfaceWorkingDirectory,
+    runtime.agentTerminal,
+    runtime.terminal.cwd,
+    runtime.workingDirectory
+  ]);
+
   const clearTerminalSurface = useCallback(() => {
     refs.pendingConversationAnchorRef.current = null;
     refs.seededConversationAnchorTimesRef.current = {};
@@ -38,7 +56,7 @@ export function useLauncherActions({
     refs.suppressComposerShellAutodetectRef.current = nextPrompt || null;
 
     void runtime.chat.saveCurrentConversation?.();
-    runtime.agentTerminal.replaceBlocks([]);
+    syncAgentSurfaceToTerminalCwd();
     store.setLocalConversationId(nextId);
     if (runtime.hasControlledConversation) props.onConversationChange?.(nextId);
     
@@ -50,7 +68,7 @@ export function useLauncherActions({
     store.setComposerSurface('agent');
     runtime.chat.clearMessages();
     runtime.chat.setQuery(nextPrompt);
-  }, [props, runtime, store, tray, refs]);
+  }, [props, refs, runtime, store, syncAgentSurfaceToTerminalCwd, tray]);
 
   const openAppWindow = useCallback(() => {
     if (!(window as any).__TAURI_INTERNALS__) return;

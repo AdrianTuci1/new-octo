@@ -5,6 +5,11 @@ include!(concat!(env!("OUT_DIR"), "/menu_shortcuts.rs"));
 
 pub const EVENT_SHORTCUT_COMMAND: &str = "keybinding:command";
 
+pub const COMMAND_TOGGLE_LAUNCHER: &str = "app.toggle-launcher";
+#[cfg(target_os = "macos")]
+pub const DEFAULT_LAUNCHER_SHORTCUT: &str = "Option+Space";
+#[cfg(not(target_os = "macos"))]
+pub const DEFAULT_LAUNCHER_SHORTCUT: &str = "Ctrl+Alt+Space";
 const COMMAND_OPEN_WORKSPACE_WINDOW: &str = "app.open-workspace-window";
 const COMMAND_NEW_TERMINAL_TAB: &str = "workspace.new-terminal-tab";
 const COMMAND_NEW_CONVERSATION_TAB: &str = "workspace.new-conversation-tab";
@@ -40,6 +45,13 @@ pub struct ShortcutCommandEvent {
 }
 
 const KEYBINDING_SPECS: &[KeybindingSpec] = &[
+    KeybindingSpec {
+        command_id: COMMAND_TOGGLE_LAUNCHER,
+        title: "Toggle Launcher",
+        category: "App",
+        scope: "global",
+        shortcut: Some(DEFAULT_LAUNCHER_SHORTCUT),
+    },
     KeybindingSpec {
         command_id: COMMAND_OPEN_WORKSPACE_WINDOW,
         title: "Open Workspace Window",
@@ -154,6 +166,7 @@ fn emit_shortcut_command<R: Runtime>(app: &AppHandle<R>, command_id: &str) {
 
 pub fn handle_menu_event<R: Runtime>(app: &AppHandle<R>, event: MenuEvent) {
     match event.id.as_ref() {
+        COMMAND_TOGGLE_LAUNCHER => emit_shortcut_command(app, COMMAND_TOGGLE_LAUNCHER),
         COMMAND_OPEN_WORKSPACE_WINDOW => emit_shortcut_command(app, COMMAND_OPEN_WORKSPACE_WINDOW),
         COMMAND_NEW_TERMINAL_TAB => emit_shortcut_command(app, COMMAND_NEW_TERMINAL_TAB),
         COMMAND_NEW_CONVERSATION_TAB => emit_shortcut_command(app, COMMAND_NEW_CONVERSATION_TAB),

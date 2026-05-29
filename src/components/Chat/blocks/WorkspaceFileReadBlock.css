@@ -1,0 +1,83 @@
+.workspace-file-read-block {
+  margin-top: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.03);
+  overflow: hidden;
+}
+
+.workspace-file-read-header {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.workspace-file-read-icon {
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: rgba(16, 185, 129, 0.12);
+  color: #10b981;
+}
+
+.workspace-file-read-title {
+  flex: 1;
+  font-weight: 600;
+}
+
+.workspace-file-read-chevron {
+  transition: transform 160ms ease;
+  color: rgba(255, 255, 255, 0.58);
+}
+
+.workspace-file-read-chevron.expanded {
+  transform: rotate(180deg);
+}
+
+.workspace-file-read-body {
+  padding: 0 14px 14px;
+}
+
+.workspace-file-read-path {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #7dd3fc;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.workspace-file-read-path:hover {
+  text-decoration: underline;
+}
+
+.workspace-file-read-meta {
+  margin-top: 6px;
+  color: rgba(255, 255, 255, 0.58);
+  font-size: 12px;
+}
+
+.workspace-file-read-snippet {
+  margin: 12px 0 0;
+  padding: 12px;
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.28);
+  color: rgba(255, 255, 255, 0.92);
+  font-family: var(--font-mono, 'JetBrains Mono', monospace);
+  font-size: 12px;
+  line-height: 1.55;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}

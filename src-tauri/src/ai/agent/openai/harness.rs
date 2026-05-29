@@ -1,11 +1,15 @@
 use futures_util::StreamExt;
 use reqwest::header::{HeaderMap, HeaderValue, CONTENT_TYPE};
 use serde_json::{json, Value};
-use std::{fs, time::Duration};
+use std::{fs, path::Path, time::Duration};
 
 use crate::ai::agent::harness::{
     AgentCancellation, AgentEventSink, AgentHarness, AgentHarnessContext, AgentHarnessError,
     AgentHarnessOutcome,
+};
+use crate::ai::agent::runtime::{
+    AgentLoopRuntime, STAGE_AWAITING_APPROVAL, STAGE_COMPLETED, STAGE_EXECUTING, STAGE_REASONING,
+    STAGE_TOOL_SELECTION, STAGE_VERIFYING,
 };
 use crate::ai::agent::types::{AgentInputMessage, AgentRunStatus, AgentToolCall, AgentUsage};
 use crate::{ai::mcp, code_index};
@@ -60,20 +64,23 @@ async fn stream_chat_completion(
 ) -> Result<AgentHarnessOutcome, AgentHarnessError> {
     let use_synthetic_thinking = should_use_synthetic_thinking(&context.model_id);
     let mut negotiation_messages = context.messages.clone();
+    let mut runtime = initial_runtime_for_context(&context)?;
     let mut attempt = 0;
     let mut forced_final_answer_retry_used = false;
     let mut forced_follow_up_retry_used = false;
     let mut forced_action_retry_used = false;
     let mut forced_file_change_cleanup_retry_used = false;
+    let mut forced_local_match_retry_used = false;
+    let mut forced_workspace_rehash_retry_used = false;
 
     while attempt < 3 {
-        sink.status(
-            AgentRunStatus::Preparing,
-            Some(format!(
-                "Octomus se pregătește (Negociere {}/3)...",
-                attempt + 1
-            )),
+        let stage_message = format!(
+            "{} (Negociere {}/{})",
+            runtime.status_message(),
+            attempt + 1,
+            3
         );
+        sink.status(runtime.run_status(), Some(stage_message));
 
         let client = reqwest::Client::builder()
             .timeout(Duration::from_secs(180))
@@ -95,15 +102,23 @@ async fn stream_chat_completion(
             }
         }
 
-        let mut tools = tools::build_tool_definitions();
-        match mcp::mcp_build_openai_tool_definitions().await {
-            Ok(mcp_tools) => {
-                if let Some(tool_array) = tools.as_array_mut() {
-                    tool_array.extend(mcp_tools);
+        let mut allowed_tool_names = runtime.allowed_tool_names().into_iter().collect::<Vec<_>>();
+        if runtime.allows_tool("launch_cloud_agent") {
+            allowed_tool_names.push("launch_cloud_agent");
+        }
+
+        let mut tools =
+            tools::filter_tool_definitions(tools::build_tool_definitions(), &allowed_tool_names);
+        if runtime.allows_mcp_tools() {
+            match mcp::mcp_build_openai_tool_definitions().await {
+                Ok(mcp_tools) => {
+                    if let Some(tool_array) = tools.as_array_mut() {
+                        tool_array.extend(mcp_tools);
+                    }
                 }
-            }
-            Err(error) => {
-                eprintln!("[MCP] Failed to build MCP tool definitions: {error}");
+                Err(error) => {
+                    eprintln!("[MCP] Failed to build MCP tool definitions: {error}");
+                }
             }
         }
 
@@ -112,7 +127,7 @@ async fn stream_chat_completion(
 
         let mut request = json!({
             "model": context.model_id,
-            "messages": build_chat_messages(&updated_context),
+            "messages": build_chat_messages(&updated_context, &runtime),
             "stream": true,
             "tools": tools,
             "tool_choice": "auto"
@@ -146,8 +161,11 @@ async fn stream_chat_completion(
         }
 
         sink.status(
-            AgentRunStatus::Running,
-            Some("Streaming model response.".to_string()),
+            runtime.run_status(),
+            Some(format!(
+                "Rulez stage-ul {} și procesez răspunsul modelului.",
+                runtime.current_stage().display_name
+            )),
         );
 
         let mut streamed = String::new();
@@ -160,11 +178,13 @@ async fn stream_chat_completion(
         let mut emitted_action_tool_call = false;
         let mut emitted_file_change_tool_call = false;
         let mut ignored_plan_tool_call = false;
+        let mut pending_external_tool_name: Option<String> = None;
         let mut usage = None;
         let mut sse_buffer = String::new();
         let mut byte_stream = response.bytes_stream();
         let mut guardian_rejection_reason: Option<String> = None;
         let mut mcp_tool_result: Option<(String, String, String, String)> = None;
+        let recent_local_match_paths = extract_recent_workspace_local_match_paths(&updated_context);
 
         while let Some(next_chunk) = byte_stream.next().await {
             if cancellation.is_cancelled() {
@@ -236,6 +256,17 @@ async fn stream_chat_completion(
 
             if current_tool_call_id.is_some() && !current_tool_args.is_empty() {
                 if let Ok(args_value) = serde_json::from_str::<Value>(&current_tool_args) {
+                    if !runtime.allows_tool(&current_tool_name) {
+                        guardian_rejection_reason = Some(format!(
+                            "Tool-ul `{}` nu este permis în stage-ul curent `{}`.",
+                            current_tool_name,
+                            runtime.current_stage_id()
+                        ));
+                        current_tool_name.clear();
+                        current_tool_args.clear();
+                        break;
+                    }
+
                     if current_tool_name == "propose_plan" && !prompt_supports_plan(&context.prompt)
                     {
                         println!(
@@ -298,8 +329,9 @@ async fn stream_chat_completion(
                         let tool_name = current_tool_name.clone();
                         let raw_args = current_tool_args.clone();
 
+                        runtime_transition(&mut runtime, STAGE_EXECUTING)?;
                         sink.status(
-                            AgentRunStatus::Running,
+                            runtime.run_status(),
                             Some(format!("Rulez tool-ul MCP `{tool_name}`.")),
                         );
 
@@ -315,6 +347,18 @@ async fn stream_chat_completion(
                     }
 
                     if guardian_rejection_reason.is_none() {
+                        if current_tool_name == "explore_workspace"
+                            && !recent_local_match_paths.is_empty()
+                        {
+                            guardian_rejection_reason = Some(format!(
+                                "Există deja fișiere candidate găsite local în directorul curent: {}. Nu repeta `explore_workspace`; citește unul dintre aceste fișiere cu `read_workspace_file` sau continuă analiza pe baza lor.",
+                                recent_local_match_paths.join(", ")
+                            ));
+                            current_tool_name.clear();
+                            current_tool_args.clear();
+                            break;
+                        }
+
                         if current_tool_name == "suggest_follow_up" {
                             emitted_follow_up_tool_call = true;
                         } else {
@@ -324,11 +368,27 @@ async fn stream_chat_completion(
                             }
                         }
 
+                        let tool_name = current_tool_name.clone();
                         sink.tool_call(AgentToolCall {
                             id: current_tool_call_id.take().expect("tool id should exist"),
-                            name: current_tool_name.clone(),
+                            name: tool_name.clone(),
                             args: args_value,
                         });
+                        if tool_requires_external_resolution(&tool_name) {
+                            pending_external_tool_name = Some(tool_name.clone());
+                            if tool_requires_user_approval(&tool_name) {
+                                if runtime.current_stage_id() == STAGE_VERIFYING {
+                                    runtime_transition(&mut runtime, STAGE_TOOL_SELECTION)?;
+                                }
+                                runtime_transition(&mut runtime, STAGE_AWAITING_APPROVAL)?;
+                                sink.status(
+                                    runtime.run_status(),
+                                    Some(format!(
+                                        "Aștept aprobarea sau rezolvarea pentru `{tool_name}`."
+                                    )),
+                                );
+                            }
+                        }
                         current_tool_name.clear();
                         current_tool_args.clear();
                     }
@@ -337,6 +397,7 @@ async fn stream_chat_completion(
         }
 
         if let Some((tool_call_id, tool_name, raw_args, result)) = mcp_tool_result {
+            sink.tool_result(tool_call_id.clone(), result.clone());
             negotiation_messages.push(AgentInputMessage {
                 role: "assistant".to_string(),
                 content: String::new(),
@@ -358,28 +419,38 @@ async fn stream_chat_completion(
                 tool_call_id: Some(tool_call_id),
                 tool_calls: None,
             });
+            runtime_transition(&mut runtime, STAGE_VERIFYING)?;
             attempt += 1;
             continue;
         }
 
         if let Some(reason) = guardian_rejection_reason {
-            negotiation_messages.push(AgentInputMessage {
-                role: "assistant".to_string(),
-                content: String::new(),
-                tool_call_id: None,
-                tool_calls: Some(guardian_intercepted_tool_calls(&current_tool_args)),
-            });
+            if !current_tool_args.trim().is_empty() {
+                negotiation_messages.push(AgentInputMessage {
+                    role: "assistant".to_string(),
+                    content: String::new(),
+                    tool_call_id: None,
+                    tool_calls: Some(guardian_intercepted_tool_calls(&current_tool_args)),
+                });
+            }
             negotiation_messages.push(AgentInputMessage {
                 role: "system".to_string(),
                 content: format!(
-                    "[GUARDIAN] Comanda propusă a fost interceptată și respinsă deoarece: {}. \
-                    Te rog revizuiește comanda, selectează o alternativă mai sigură/compatibilă sau explică de ce este absolut necesară și folosește o abordare mai precisă.",
+                    "[RUNTIME] Acțiunea propusă a fost respinsă deoarece: {}. \
+                    Revizuiește alegerea în stage-ul curent și selectează o alternativă compatibilă, sigură și mai precisă.",
                     reason
                 ),
-                tool_call_id: Some("guardian-intercepted-id".to_string()),
+                tool_call_id: current_tool_args
+                    .trim()
+                    .is_empty()
+                    .then(|| None)
+                    .unwrap_or_else(|| Some("guardian-intercepted-id".to_string())),
                 tool_calls: None,
             });
 
+            if runtime.current_stage_id() == STAGE_VERIFYING {
+                runtime_transition(&mut runtime, STAGE_TOOL_SELECTION)?;
+            }
             attempt += 1;
             continue;
         }
@@ -499,6 +570,45 @@ async fn stream_chat_completion(
             continue;
         }
 
+        if !recent_local_match_paths.is_empty()
+            && response_claims_workspace_not_found(visible_response)
+            && !forced_local_match_retry_used
+        {
+            negotiation_messages.push(AgentInputMessage {
+                role: "system".to_string(),
+                content: format!(
+                    "Răspunsul anterior spune greșit că nu ai găsit nimic, dar contextul conține deja match-uri locale explicite în cwd: {}. \
+                    Nu mai spune că nu ai găsit proiectul. Următorul pas corect este să citești fișierul cel mai relevant cu `read_workspace_file` sau să continui analiza pe baza fișierului deja citit.",
+                    recent_local_match_paths.join(", ")
+                ),
+                tool_call_id: None,
+                tool_calls: None,
+            });
+            forced_local_match_retry_used = true;
+            attempt += 1;
+            continue;
+        }
+
+        if !recent_local_match_paths.is_empty()
+            && response_rehashes_workspace_process(visible_response)
+            && !forced_workspace_rehash_retry_used
+        {
+            negotiation_messages.push(AgentInputMessage {
+                role: "system".to_string(),
+                content: format!(
+                    "Ai deja rezultatul relevant în context pentru fișierele: {}. \
+                    Reîncearcă răspunsul final fără scuze, fără recapitularea tentativelor de căutare și fără formulări de tipul «voi începe să caut». \
+                    Începe direct cu faptul găsit, apoi oferă analiza sau schimbările propuse.",
+                    recent_local_match_paths.join(", ")
+                ),
+                tool_call_id: None,
+                tool_calls: None,
+            });
+            forced_workspace_rehash_retry_used = true;
+            attempt += 1;
+            continue;
+        }
+
         if !use_synthetic_thinking
             && visible_response.is_empty()
             && !reasoning_response.is_empty()
@@ -515,6 +625,17 @@ async fn stream_chat_completion(
             continue;
         }
 
+        if let Some(tool_name) = pending_external_tool_name {
+            sink.status(
+                AgentRunStatus::WaitingForTool,
+                Some(format!(
+                    "Run-ul așteaptă rezultatul extern pentru `{tool_name}`."
+                )),
+            );
+            return Ok(waiting_outcome(&context.prompt, &streamed, usage));
+        }
+
+        runtime_transition(&mut runtime, STAGE_COMPLETED)?;
         return Ok(done_outcome(&context.prompt, &streamed, usage));
     }
 
@@ -933,6 +1054,86 @@ fn is_pseudo_plan_response(visible_response: &str) -> bool {
         .starts_with("propose_plan{")
 }
 
+fn response_claims_workspace_not_found(visible_response: &str) -> bool {
+    let normalized = visible_response.to_lowercase();
+    (normalized.contains("nu am găsit")
+        || normalized.contains("n-am găsit")
+        || normalized.contains("didn't find")
+        || normalized.contains("did not find")
+        || normalized.contains("not found"))
+        && (normalized.contains("fișier")
+            || normalized.contains("fisier")
+            || normalized.contains("folder")
+            || normalized.contains("director")
+            || normalized.contains("project")
+            || normalized.contains("proiect"))
+}
+
+fn response_rehashes_workspace_process(visible_response: &str) -> bool {
+    let normalized = visible_response.to_lowercase();
+    normalized.contains("îmi pare rău")
+        || normalized.contains("imi pare rau")
+        || normalized.contains("am încercat")
+        || normalized.contains("am incercat")
+        || normalized.contains("voi începe")
+        || normalized.contains("voi incepe")
+        || normalized.contains("trebuie să identific")
+        || normalized.contains("trebuie sa identific")
+        || normalized.contains("deoarece sunt în folderul personal")
+        || normalized.contains("deoarece sunt in folderul personal")
+}
+
+fn extract_recent_workspace_local_match_paths(context: &AgentHarnessContext) -> Vec<String> {
+    let mut matches = Vec::new();
+
+    for message in context
+        .messages
+        .iter()
+        .rev()
+        .filter(|message| message.role == "tool")
+        .take(8)
+    {
+        if !message
+            .content
+            .contains("Local matches found in the current directory")
+        {
+            continue;
+        }
+
+        let mut inside_files_block = false;
+        for line in message.content.lines() {
+            let trimmed = line.trim();
+            if trimmed == "Files:" {
+                inside_files_block = true;
+                continue;
+            }
+
+            if !inside_files_block {
+                continue;
+            }
+
+            if trimmed.is_empty()
+                || trimmed.starts_with("Directories:")
+                || trimmed.starts_with("Search warnings:")
+                || trimmed.starts_with("Filtered ")
+                || trimmed.starts_with("Searched for ")
+            {
+                break;
+            }
+
+            if let Some(path) = trimmed.strip_prefix("- ") {
+                let normalized = path.trim().to_string();
+                if !normalized.is_empty() && !matches.contains(&normalized) {
+                    matches.push(normalized);
+                }
+            }
+        }
+    }
+
+    matches.reverse();
+    matches
+}
+
 fn handle_stream_payload(
     payload: &str,
     sink: &AgentEventSink,
@@ -1043,14 +1244,79 @@ fn is_openai_reasoning_model(model_id: &str) -> bool {
         || model.starts_with("gpt-5")
 }
 
-fn build_chat_messages(context: &AgentHarnessContext) -> Vec<Value> {
+fn initial_runtime_for_context(
+    context: &AgentHarnessContext,
+) -> Result<AgentLoopRuntime, AgentHarnessError> {
+    if should_resume_in_verifying_stage(context) {
+        return AgentLoopRuntime::resume(STAGE_VERIFYING)
+            .map_err(|error| AgentHarnessError::new(error.message));
+    }
+
+    let mut runtime = AgentLoopRuntime::new();
+    runtime_transition(&mut runtime, STAGE_REASONING)?;
+    runtime_transition(&mut runtime, STAGE_TOOL_SELECTION)?;
+    Ok(runtime)
+}
+
+fn should_resume_in_verifying_stage(context: &AgentHarnessContext) -> bool {
+    if is_continuation_prompt(&context.prompt) || context.prompt.trim().is_empty() {
+        return context
+            .messages
+            .iter()
+            .rev()
+            .find(|message| {
+                message.role != "system"
+                    && (message.role == "tool"
+                        || !message.content.trim().is_empty()
+                        || message.tool_calls.is_some())
+            })
+            .map(|message| message.role == "tool")
+            .unwrap_or(false);
+    }
+
+    false
+}
+
+fn runtime_transition(
+    runtime: &mut AgentLoopRuntime,
+    next_stage_id: &str,
+) -> Result<(), AgentHarnessError> {
+    runtime
+        .transition_to(next_stage_id)
+        .map_err(|error| AgentHarnessError::new(error.message))
+}
+
+fn tool_requires_user_approval(tool_name: &str) -> bool {
+    matches!(
+        tool_name,
+        "propose_terminal_command"
+            | "propose_file_change"
+            | "propose_mcp_server"
+            | "launch_cloud_agent"
+    )
+}
+
+fn tool_requires_external_resolution(tool_name: &str) -> bool {
+    matches!(
+        tool_name,
+        "lookup_web"
+            | "explore_workspace"
+            | "read_workspace_file"
+            | "propose_terminal_command"
+            | "propose_file_change"
+            | "propose_mcp_server"
+            | "launch_cloud_agent"
+    )
+}
+
+fn build_chat_messages(context: &AgentHarnessContext, runtime: &AgentLoopRuntime) -> Vec<Value> {
     let mut messages = Vec::new();
     let cwd = context.cwd.as_deref().unwrap_or("unknown");
 
     let injected_skills_text = skills::load_skills_instructions(&context.prompt, &context.messages);
 
     let mut system_prompt =
-        prompt::build_system_prompt(cwd, &context.target_os, &context.target_arch);
+        prompt::build_identity_prompt(cwd, &context.target_os, &context.target_arch);
     if !injected_skills_text.is_empty() {
         system_prompt.push_str(
             "\n\n[INFORMATIE INVIZIBILA PENTRU UTILIZATOR - SKILL-URI INVOCATE SI ACTIVE]",
@@ -1062,6 +1328,11 @@ fn build_chat_messages(context: &AgentHarnessContext) -> Vec<Value> {
     messages.push(json!({
         "role": "system",
         "content": system_prompt
+    }));
+
+    messages.push(json!({
+        "role": "system",
+        "content": prompt::build_stage_prompt(runtime.current_stage())
     }));
 
     if let Some(terminal_context) = build_terminal_context_message(context) {
@@ -1121,6 +1392,9 @@ fn build_workspace_context_message(cwd: &str) -> Option<String> {
         return None;
     }
 
+    let home_dir = std::env::var("HOME").ok();
+    let is_broad_cwd = home_dir.as_deref().map(|home| cwd == home).unwrap_or(false)
+        || Path::new(cwd).components().count() <= 3;
     let entries = fs::read_dir(cwd).ok()?;
     let mut names = entries
         .filter_map(Result::ok)
@@ -1145,14 +1419,15 @@ fn build_workspace_context_message(cwd: &str) -> Option<String> {
     }
 
     names.sort_unstable();
-    if names.len() > 80 {
-        names.truncate(80);
+    let max_entries = if is_broad_cwd { 12 } else { 24 };
+    if names.len() > max_entries {
+        names.truncate(max_entries);
         names.push("...".to_string());
     }
 
     Some(format!(
-        "CONTEXT WORKSPACE:\n- cwd: {cwd}\n- entries:\n{}\
-        \nREGULĂ PATH: tratează cwd ca rădăcina operațiunilor locale. În `propose_file_change`, folosește path-uri relative la cwd pentru fișiere de proiect. Dacă nu ești sigur de structură, cere mai întâi o comandă read-only precum `rg --files` sau `ls`.",
+        "CONTEXT WORKSPACE:\n- cwd: {cwd}\n- top-level entries:\n{}\
+        \nREGULĂ PATH: tratează cwd ca rădăcina operațiunilor locale. În `propose_file_change`, folosește path-uri relative la cwd pentru fișiere de proiect. Dacă vrei să citești un fișier anume, folosește `read_workspace_file`. Dacă vrei să listezi sau să cauți în proiect, folosește `explore_workspace`. Nu presupune că un subdirector vizibil este proiectul corect fără un pas explicit de listare sau căutare.",
         indent_block(&names.join("\n"), 2)
     ))
 }
@@ -1306,6 +1581,13 @@ fn done_outcome(prompt: &str, streamed: &str, usage: Option<AgentUsage>) -> Agen
     }
 }
 
+fn waiting_outcome(prompt: &str, streamed: &str, usage: Option<AgentUsage>) -> AgentHarnessOutcome {
+    AgentHarnessOutcome {
+        status: AgentRunStatus::WaitingForTool,
+        usage: usage.unwrap_or_else(|| AgentUsage::approximate(prompt, streamed)),
+    }
+}
+
 fn cancelled_outcome(prompt: &str, streamed: &str) -> AgentHarnessOutcome {
     AgentHarnessOutcome {
         status: AgentRunStatus::Cancelled,
@@ -1316,8 +1598,8 @@ fn cancelled_outcome(prompt: &str, streamed: &str) -> AgentHarnessOutcome {
 #[cfg(test)]
 mod tests {
     use super::{
-        context_supports_terminal_command, guardian_intercepted_tool_calls,
-        longest_tag_suffix_len, normalize_outbound_tool_calls, prompt_supports_terminal_command,
+        context_supports_terminal_command, guardian_intercepted_tool_calls, longest_tag_suffix_len,
+        normalize_outbound_tool_calls, prompt_supports_terminal_command,
         should_retry_file_change_duplicate_code, should_retry_follow_up_only,
     };
     use crate::ai::agent::harness::AgentHarnessContext;

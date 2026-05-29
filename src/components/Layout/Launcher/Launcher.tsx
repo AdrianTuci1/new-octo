@@ -18,7 +18,6 @@ import { ChatPanel } from '../../Chat';
 import { ComposerBar, ModelSetupOverlay, TerminalComposer } from '../../Composer';
 import { TrayPanel } from '../../Tray';
 import { useLauncher, type LauncherProps } from './hooks';
-import { LauncherProvider } from './LauncherContext';
 import { COMPOSER_PLACEHOLDERS } from '../../../lib';
 
 export function Launcher(props: LauncherProps) {
@@ -28,40 +27,38 @@ export function Launcher(props: LauncherProps) {
     const randomIndex = Math.floor(Math.random() * COMPOSER_PLACEHOLDERS.length);
     return COMPOSER_PLACEHOLDERS[randomIndex];
   }, [launcher.ui.resolvedConversationId]);
-  const launcherContextValue = useMemo(() => ({
-    launcher,
-    composerPlaceholder: placeholder,
-    title: props.title
-  }), [launcher, placeholder, props.title]);
+  const showComposerInputHint = launcher.ui.agentSettings?.input?.showInputHintText !== false;
 
   return (
-    <LauncherProvider value={launcherContextValue}>
-      <main className={launcher.ui.launcherRootClassName}>
-        <section
-          ref={launcher.terminal.shellRef}
-          className={launcher.ui.launcherShellClassName}
-        >
-          {launcher.ui.isChatOpen && (
-            <div className="chat-stack">
-              <ChatPanel />
-            </div>
+    <main className={launcher.ui.launcherRootClassName}>
+      <section
+        ref={launcher.terminal.shellRef}
+        className={launcher.ui.launcherShellClassName}
+      >
+        {launcher.ui.isChatOpen && (
+          <div className="chat-stack">
+            <ChatPanel view={launcher.views.chatPanel} />
+          </div>
+        )}
+
+        <div ref={launcher.ui.dockRef} className="dock-stack">
+          {!modelSetupRequired && !launcher.ui.resolvedPendingApproval && (!launcher.ui.isTerminalSurface || launcher.ui.isTerminalTrayOpen) && (
+            <TrayPanel view={launcher.views.trayPanel} />
           )}
 
-          <div ref={launcher.ui.dockRef} className="dock-stack">
-            {!modelSetupRequired && !launcher.ui.resolvedPendingApproval && (!launcher.ui.isTerminalSurface || launcher.ui.isTerminalTrayOpen) && (
-              <TrayPanel />
-            )}
-
-            {launcher.ui.resolvedPendingApproval ? null : launcher.store.composerSurface === 'terminal' ? (
-              <TerminalComposer />
-            ) : modelSetupRequired ? (
-              <ModelSetupOverlay />
-            ) : (
-              <ComposerBar />
-            )}
-          </div>
-        </section>
-      </main>
-    </LauncherProvider>
+          {launcher.ui.resolvedPendingApproval ? null : launcher.store.composerSurface === 'terminal' ? (
+            <TerminalComposer view={launcher.views.terminalComposer} />
+          ) : modelSetupRequired ? (
+            <ModelSetupOverlay view={launcher.views.modelSetupOverlay} />
+          ) : (
+            <ComposerBar
+              composerPlaceholder={placeholder}
+              showInputHintText={showComposerInputHint}
+              view={launcher.views.composerBar}
+            />
+          )}
+        </div>
+      </section>
+    </main>
   );
 }

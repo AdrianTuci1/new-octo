@@ -204,13 +204,16 @@ export function WorkspaceTopbar({
       }
     };
 
-    void refreshDiffSummary();
+    const initialTimeoutId = window.setTimeout(() => {
+      void refreshDiffSummary();
+    }, 200);
     const handleFocus = () => void refreshDiffSummary();
     const intervalId = window.setInterval(() => void refreshDiffSummary(), 8000);
     window.addEventListener('focus', handleFocus);
 
     return () => {
       cancelled = true;
+      window.clearTimeout(initialTimeoutId);
       window.clearInterval(intervalId);
       window.removeEventListener('focus', handleFocus);
     };
