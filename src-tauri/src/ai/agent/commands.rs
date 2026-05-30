@@ -6,11 +6,12 @@ use uuid::Uuid;
 
 use super::{
     harness::{AgentCancellation, AgentEventSink, AgentHarness, AgentHarnessContext},
-    openai::{OpenAiCompatibleConfig, OpenAiCompatibleHarness},
+    openai::{OpenAiCompatibleConfig, OpenAiCompatibleHarness, OpenAiCompatibleProvider},
     scripted::ScriptedHarness,
     types::{
-        AgentProviderConfigRequest, AgentProviderStatus, AgentRunLookupRequest, AgentRunRequest,
-        AgentRunSnapshot, AgentRunStatus, AgentRunStatusEvent, AgentStartResponse,
+        AgentExecutionState, AgentProviderConfigRequest, AgentProviderStatus,
+        AgentRunLookupRequest, AgentRunRequest, AgentRunSnapshot, AgentRunStatus,
+        AgentRunStatusEvent, AgentStartResponse,
     },
 };
 use crate::ai::agent_management::{
@@ -99,6 +100,7 @@ pub async fn agent_start(
         conversation_id: conversation_id.clone(),
         assistant_message_id: assistant_message_id.clone(),
         prompt: prompt.clone(),
+        surface: request.surface,
         messages: request.messages,
         terminal_blocks: request.terminal_blocks,
         cwd,
@@ -106,6 +108,7 @@ pub async fn agent_start(
         target_arch: std::env::consts::ARCH.to_string(),
         model_id: model_id.clone(),
         terminal_model_id: request.terminal_model_id,
+        resume_execution_state: None,
     };
 
     let cancel_flag = Arc::new(AtomicBool::new(false));
@@ -120,6 +123,7 @@ pub async fn agent_start(
             model_id,
             cwd: context.cwd.clone(),
             error: None,
+            execution_state: AgentExecutionState::new("preparing"),
             started_at: Utc::now(),
             finished_at: None,
         },
@@ -178,6 +182,7 @@ pub fn agent_configure_openai_compatible(
     };
 
     let mut config = OpenAiCompatibleConfig::new(
+        OpenAiCompatibleProvider::parse(request.provider_id.as_deref()),
         api_key,
         request.base_url,
         request.model_id,
@@ -209,6 +214,7 @@ pub fn agent_provider_status(
 
     Ok(AgentProviderStatus {
         provider: "scripted-local".to_string(),
+        provider_id: "custom".to_string(),
         base_url: "local".to_string(),
         model_id: DEFAULT_MODEL_ID.to_string(),
         has_api_key: false,
@@ -282,10 +288,12 @@ pub(super) async fn run_harness<H: AgentHarness>(
 }
 
 fn provider_status_from_config(config: &OpenAiCompatibleConfig) -> AgentProviderStatus {
-    let (provider, base_url, model_id, has_api_key, source) = config.redacted_status();
+    let (provider, provider_id, base_url, model_id, has_api_key, source) =
+        config.redacted_status();
 
     AgentProviderStatus {
         provider,
+        provider_id,
         base_url,
         model_id,
         has_api_key,

@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, State};
 use uuid::Uuid;
 
-use crate::ai::{agent::openai::OpenAiCompatibleConfig, AgentHarnessManager};
+use crate::ai::{agent::OpenAiCompatibleConfig, AgentHarnessManager};
 use crate::secure_store;
 use crate::terminal::{
     events::{

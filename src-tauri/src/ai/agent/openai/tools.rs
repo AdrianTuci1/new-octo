@@ -23,22 +23,38 @@ pub(super) fn build_tool_definitions() -> Value {
             "type": "function",
             "function": {
                 "name": "explore_workspace",
-                "description": "Inspect the local workspace for files, directories, symbols, functions, or variables. Use `mode=list` to list files and subdirectories inside a specific path, and use `mode=search` to search recursively from a path or from the authoritative cwd when no path is provided. Prefer this for local codebase discovery instead of a web search or terminal approval.",
+                "description": "Inspect the local workspace for files, directories, symbols, definitions, references, diagnostics, functions, or variables. Use `mode=list` to list a directory. Use `mode=search` for semantic workspace search that prefers backend LSP and only falls back to plain filesystem search when needed. Use `mode=symbols`, `mode=definition`, `mode=references`, or `mode=diagnostics` when the user is explicitly asking for semantic code navigation.",
                 "parameters": {
                     "type": "object",
                     "properties": {
                         "mode": {
                             "type": "string",
-                            "enum": ["list", "search"],
-                            "description": "Use `list` to list entries in a directory. Use `search` to search recursively for matching paths or indexed code results."
+                            "enum": ["list", "search", "symbols", "definition", "references", "diagnostics"],
+                            "description": "Use `list` to list entries in a directory. Use `search` for hybrid semantic search. Use `symbols`, `definition`, `references`, or `diagnostics` for explicit LSP-style navigation."
                         },
                         "path": {
                             "type": "string",
-                            "description": "Optional cwd-relative or absolute directory path to inspect. For `list`, this is the directory to list. For `search`, this is the directory root to search inside. Omit it when the user explicitly means the current directory."
+                            "description": "Optional cwd-relative or absolute directory path to inspect. For `list`, this is the directory to list. For semantic modes, this scopes the workspace root."
                         },
                         "query": {
                             "type": "string",
-                            "description": "For `search`, pass a short search text, symbol name, file name, or code concept. For `list`, this can be omitted or used as a lightweight filter inside the chosen directory."
+                            "description": "For `search` or `symbols`, pass a short search text, symbol name, file name, or code concept."
+                        },
+                        "symbol": {
+                            "type": "string",
+                            "description": "Optional explicit symbol name for `definition` or `references`."
+                        },
+                        "filePath": {
+                            "type": "string",
+                            "description": "Optional workspace-relative or absolute file path used to anchor semantic modes such as `definition`, `references`, or `diagnostics`."
+                        },
+                        "line": {
+                            "type": "number",
+                            "description": "Optional zero-based line for semantic navigation when a specific symbol location is already known."
+                        },
+                        "column": {
+                            "type": "number",
+                            "description": "Optional zero-based column for semantic navigation when a specific symbol location is already known."
                         },
                         "maxResults": {
                             "type": "number",
@@ -54,7 +70,7 @@ pub(super) fn build_tool_definitions() -> Value {
                         },
                         "recursive": {
                             "type": "boolean",
-                            "description": "Whether recursive search should be used. Defaults to true for `search` and false for `list`."
+                            "description": "Whether recursive fallback search should be used. Defaults to true for `search` and false for `list`."
                         }
                     }
                 }

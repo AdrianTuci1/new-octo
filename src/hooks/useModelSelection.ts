@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { getModelProviderPreset, inferModelProviderId } from '../lib/modelProviders';
 import { useMemoryStore } from '../stores/memoryStore';
 import type { AgentProviderStatus } from '../types/chat';
 import type { ModelSpec } from '../types/model';
@@ -15,6 +16,8 @@ type ConfiguredModelRecord = {
   modelId?: unknown;
   friendlyName?: unknown;
   baseUrl?: unknown;
+  providerId?: unknown;
+  providerLabel?: unknown;
   supportsAttachments?: unknown;
 };
 
@@ -34,8 +37,9 @@ function buildModelFromSettings(
 
   const configuredModels = (memorySettings?.values.configuredModels as ConfiguredModelRecord[] | undefined) ?? [];
   const selectedConfiguredModel = configuredModels.find((model) => model.id === selectedModelId);
-  const providerLabel = readString(memorySettings?.values.aiProviderLabel)
-    ?? (providerStatus?.provider === 'openai-compatible' ? 'OpenAI' : readString(providerStatus?.provider))
+  const providerLabel = readString(selectedConfiguredModel?.providerLabel)
+    ?? readString(memorySettings?.values.aiProviderLabel)
+    ?? readString(providerStatus?.provider)
     ?? 'Connected provider';
   const friendlyName = readString(memorySettings?.values.aiModelFriendlyName)
     ?? readString(selectedConfiguredModel?.friendlyName);
@@ -45,13 +49,20 @@ function buildModelFromSettings(
   const modelId = readString(selectedConfiguredModel?.modelId)
     ?? readString(providerStatus?.modelId)
     ?? selectedModelId;
-  const supportsAttachments = readBoolean(selectedConfiguredModel?.supportsAttachments) ?? false;
+  const providerId = inferModelProviderId({
+    providerId: selectedConfiguredModel?.providerId ?? providerStatus?.providerId,
+    providerLabel,
+    baseUrl
+  });
+  const supportsAttachments = readBoolean(selectedConfiguredModel?.supportsAttachments)
+    ?? getModelProviderPreset(providerId).defaultSupportsAttachments;
 
   return {
     id: selectedModelId,
     modelId,
     label: friendlyName ?? modelId ?? selectedModelId,
     provider: providerLabel,
+    providerId,
     baseUrl,
     note: modelId ? `Model ID: ${modelId}` : (baseUrl ? `Base URL: ${baseUrl}` : 'Stored securely on this device.'),
     supportsAttachments

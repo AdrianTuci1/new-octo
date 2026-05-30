@@ -8,11 +8,19 @@ use crate::ai::agent::harness::{
     AgentHarnessOutcome,
 };
 use crate::ai::agent::runtime::{
-    AgentLoopRuntime, STAGE_AWAITING_APPROVAL, STAGE_COMPLETED, STAGE_EXECUTING, STAGE_REASONING,
-    STAGE_TOOL_SELECTION, STAGE_VERIFYING,
+    AgentLoopRuntime, EVENT_AWAIT_USER_APPROVAL, EVENT_CAPTURE_TOOL_RESULT,
+    EVENT_DISPATCH_TOOL, EVENT_EMIT_FINAL_ANSWER, EVENT_PREPARE_CONTEXT,
+    EVENT_REQUEST_ANOTHER_TOOL, EVENT_SKIP_PLANNING, STAGE_EXECUTING, STAGE_VERIFYING,
 };
-use crate::ai::agent::types::{AgentInputMessage, AgentRunStatus, AgentToolCall, AgentUsage};
-use crate::{ai::mcp, code_index};
+use crate::ai::agent::types::{
+    AgentExecutionState, AgentInputMessage, AgentPendingResolutionKind, AgentPendingToolCall,
+    AgentRunStatus, AgentToolCall, AgentUsage,
+};
+use crate::{
+    ai::mcp,
+    ai::provider_adapter::{generate_completion, ProviderCompletionRequest},
+    code_index,
+};
 
 use super::config::{OpenAiCompatibleConfig, OPENROUTER_URL};
 use super::guardian::run_guardian_check;
@@ -65,15 +73,48 @@ async fn stream_chat_completion(
     let use_synthetic_thinking = should_use_synthetic_thinking(&context.model_id);
     let mut negotiation_messages = context.messages.clone();
     let mut runtime = initial_runtime_for_context(&context)?;
-    let mut attempt = 0;
+    let mut attempt = context
+        .resume_execution_state
+        .as_ref()
+        .map(|state| state.negotiation_attempt)
+        .unwrap_or(0);
     let mut forced_final_answer_retry_used = false;
     let mut forced_follow_up_retry_used = false;
     let mut forced_action_retry_used = false;
     let mut forced_file_change_cleanup_retry_used = false;
     let mut forced_local_match_retry_used = false;
     let mut forced_workspace_rehash_retry_used = false;
+    let mut pending_resolution = context
+        .resume_execution_state
+        .as_ref()
+        .and_then(|state| state.pending_resolution.clone());
+    let mut pending_tool_call = context
+        .resume_execution_state
+        .as_ref()
+        .and_then(|state| state.pending_tool_call.clone());
+    let mut last_runtime_error = context
+        .resume_execution_state
+        .as_ref()
+        .and_then(|state| state.last_error.clone());
+
+    sync_execution_state(
+        &sink,
+        &runtime,
+        attempt,
+        pending_resolution.clone(),
+        pending_tool_call.clone(),
+        last_runtime_error.clone(),
+    );
 
     while attempt < 3 {
+        sync_execution_state(
+            &sink,
+            &runtime,
+            attempt,
+            pending_resolution.clone(),
+            pending_tool_call.clone(),
+            last_runtime_error.clone(),
+        );
         let stage_message = format!(
             "{} (Negociere {}/{})",
             runtime.status_message(),
@@ -102,13 +143,19 @@ async fn stream_chat_completion(
             }
         }
 
-        let mut allowed_tool_names = runtime.allowed_tool_names().into_iter().collect::<Vec<_>>();
-        if runtime.allows_tool("launch_cloud_agent") {
-            allowed_tool_names.push("launch_cloud_agent");
-        }
-
-        let mut tools =
-            tools::filter_tool_definitions(tools::build_tool_definitions(), &allowed_tool_names);
+        let builtin_tools = tools::build_tool_definitions();
+        let allowed_tool_names = builtin_tools
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|tool| {
+                tool.get("function")
+                    .and_then(|value| value.get("name"))
+                    .and_then(Value::as_str)
+            })
+            .filter(|name| runtime.allows_tool(name))
+            .collect::<Vec<_>>();
+        let mut tools = tools::filter_tool_definitions(builtin_tools.clone(), &allowed_tool_names);
         if runtime.allows_mcp_tools() {
             match mcp::mcp_build_openai_tool_definitions().await {
                 Ok(mcp_tools) => {
@@ -125,39 +172,10 @@ async fn stream_chat_completion(
         let mut updated_context = context.clone();
         updated_context.messages = negotiation_messages.clone();
 
-        let mut request = json!({
-            "model": context.model_id,
-            "messages": build_chat_messages(&updated_context, &runtime),
-            "stream": true,
-            "tools": tools,
-            "tool_choice": "auto"
-        });
-        apply_low_reasoning_effort(&mut request, &config, &context.model_id);
+        let request_messages = build_chat_messages(&updated_context, &runtime);
 
         if cancellation.is_cancelled() {
             return Ok(cancelled_outcome(&context.prompt, ""));
-        }
-
-        println!("[AI] Sending request to {}", endpoint);
-        let response = client
-            .post(&endpoint)
-            .bearer_auth(config.api_key.clone())
-            .headers(headers)
-            .json(&request)
-            .send()
-            .await
-            .map_err(|error| AgentHarnessError::new(format!("Provider request failed: {error}")))?;
-
-        let status = response.status();
-        if !status.is_success() {
-            let body = response
-                .text()
-                .await
-                .unwrap_or_else(|_| "Provider returned an unreadable error body.".to_string());
-            return Err(AgentHarnessError::new(format!(
-                "Provider returned HTTP {status}: {}",
-                utils::trim_error_body(&body)
-            )));
         }
 
         sink.status(
@@ -180,70 +198,171 @@ async fn stream_chat_completion(
         let mut ignored_plan_tool_call = false;
         let mut pending_external_tool_name: Option<String> = None;
         let mut usage = None;
-        let mut sse_buffer = String::new();
-        let mut byte_stream = response.bytes_stream();
         let mut guardian_rejection_reason: Option<String> = None;
         let mut mcp_tool_result: Option<(String, String, String, String)> = None;
         let recent_local_match_paths = extract_recent_workspace_local_match_paths(&updated_context);
 
-        while let Some(next_chunk) = byte_stream.next().await {
-            if cancellation.is_cancelled() {
-                return Ok(cancelled_outcome(&context.prompt, &streamed));
-            }
+        if matches!(config.provider, super::config::OpenAiCompatibleProvider::Google) {
+            let response = generate_completion(
+                &client,
+                &config,
+                ProviderCompletionRequest {
+                    model: context.model_id.clone(),
+                    messages: request_messages,
+                    tools: tools
+                        .as_array()
+                        .filter(|items| !items.is_empty())
+                        .map(|_| tools.clone()),
+                    temperature: None,
+                    max_tokens: None,
+                    response_mime_type: None,
+                },
+            )
+            .await
+            .map_err(AgentHarnessError::new)?;
 
-            let bytes = next_chunk
-                .map_err(|error| AgentHarnessError::new(format!("Stream interrupted: {error}")))?;
-
-            let text = String::from_utf8_lossy(&bytes);
-            sse_buffer.push_str(&text);
-
-            while let Some(newline_index) = sse_buffer.find('\n') {
-                let line = sse_buffer[..newline_index].trim().to_string();
-                sse_buffer.drain(..=newline_index);
-
-                if line.is_empty() {
-                    continue;
-                }
-
-                if let Some(data) = line.strip_prefix("data:") {
-                    let data = data.trim();
-                    if data == "[DONE]" {
-                        break;
-                    }
-
-                    match handle_stream_payload(
-                        data,
+            usage = response.usage;
+            if !response.text.is_empty() {
+                if use_synthetic_thinking {
+                    streamed.push_str(&response.text);
+                    sink.token(&response.text);
+                } else {
+                    thinking_state.push_content(
+                        &response.text,
                         &sink,
                         &mut streamed,
                         &mut streamed_reasoning,
-                        &mut thinking_state,
-                        use_synthetic_thinking,
-                        &mut usage,
-                    ) {
-                        Ok(Some(delta_payload)) => {
-                            if !use_synthetic_thinking {
-                                if let Some(reasoning_delta) = delta_payload.reasoning {
-                                    streamed_reasoning.push_str(&reasoning_delta);
-                                    sink.reasoning(streamed_reasoning.clone(), false);
+                    );
+                }
+            }
+
+            if let Some(function_call) = response.function_calls.first() {
+                current_tool_call_id = Some(
+                    function_call
+                        .id
+                        .clone()
+                        .unwrap_or_else(|| format!("gemini_tool_call_{attempt}")),
+                );
+                current_tool_name = function_call.name.clone();
+                current_tool_args = serde_json::to_string(&function_call.arguments)
+                    .unwrap_or_else(|_| "{}".to_string());
+            }
+        } else {
+            let mut request = json!({
+                "model": context.model_id,
+                "messages": request_messages,
+                "stream": true,
+                "tools": tools,
+                "tool_choice": "auto"
+            });
+            apply_low_reasoning_effort(&mut request, &config, &context.model_id);
+
+            println!("[AI] Sending request to {}", endpoint);
+            let response = client
+                .post(&endpoint)
+                .bearer_auth(config.api_key.clone())
+                .headers(headers)
+                .json(&request)
+                .send()
+                .await
+                .map_err(|error| {
+                    AgentHarnessError::new(format!("Provider request failed: {error}"))
+                })?;
+
+            let status = response.status();
+            if !status.is_success() {
+                let body = response.text().await.unwrap_or_else(|_| {
+                    "Provider returned an unreadable error body.".to_string()
+                });
+                return Err(AgentHarnessError::new(format!(
+                    "Provider returned HTTP {status}: {}",
+                    utils::trim_error_body(&body)
+                )));
+            }
+
+            let mut sse_buffer = String::new();
+            let mut byte_stream = response.bytes_stream();
+
+            while let Some(next_chunk) = byte_stream.next().await {
+                if cancellation.is_cancelled() {
+                    return Ok(cancelled_outcome(&context.prompt, &streamed));
+                }
+
+                let bytes = next_chunk.map_err(|error| {
+                    AgentHarnessError::new(format!("Stream interrupted: {error}"))
+                })?;
+
+                let text = String::from_utf8_lossy(&bytes);
+                sse_buffer.push_str(&text);
+
+                while let Some(newline_index) = sse_buffer.find('\n') {
+                    let line = sse_buffer[..newline_index].trim().to_string();
+                    sse_buffer.drain(..=newline_index);
+
+                    if line.is_empty() {
+                        continue;
+                    }
+
+                    if let Some(data) = line.strip_prefix("data:") {
+                        let data = data.trim();
+                        if data == "[DONE]" {
+                            break;
+                        }
+
+                        match handle_stream_payload(
+                            data,
+                            &sink,
+                            &mut streamed,
+                            &mut streamed_reasoning,
+                            &mut thinking_state,
+                            use_synthetic_thinking,
+                            &mut usage,
+                        ) {
+                            Ok(Some(delta_payload)) => {
+                                if !use_synthetic_thinking {
+                                    if let Some(reasoning_delta) = delta_payload.reasoning {
+                                        streamed_reasoning.push_str(&reasoning_delta);
+                                        sink.reasoning(streamed_reasoning.clone(), false);
+                                    }
+                                }
+
+                                if let Some(id) = delta_payload.id {
+                                    current_tool_call_id = Some(id);
+                                }
+                                if let Some(name) = delta_payload.name {
+                                    current_tool_name.push_str(&name);
+                                }
+                                if let Some(args) = delta_payload.arguments {
+                                    current_tool_args.push_str(&args);
                                 }
                             }
-
-                            if let Some(id) = delta_payload.id {
-                                current_tool_call_id = Some(id);
-                            }
-                            if let Some(name) = delta_payload.name {
-                                current_tool_name.push_str(&name);
-                            }
-                            if let Some(args) = delta_payload.arguments {
-                                current_tool_args.push_str(&args);
-                            }
+                            Ok(None) => {}
+                            Err(_) => {}
                         }
-                        Ok(None) => {}
-                        Err(_) => {}
+                    } else if line.starts_with('{') && line.ends_with('}') {
+                        let _ = handle_stream_payload(
+                            &line,
+                            &sink,
+                            &mut streamed,
+                            &mut streamed_reasoning,
+                            &mut thinking_state,
+                            use_synthetic_thinking,
+                            &mut usage,
+                        );
                     }
-                } else if line.starts_with('{') && line.ends_with('}') {
+                }
+
+                if current_tool_call_id.is_some() && !current_tool_args.is_empty() {
+                    break;
+                }
+            }
+
+            let remaining = sse_buffer.trim();
+            if !remaining.is_empty() {
+                let data = remaining.strip_prefix("data:").unwrap_or(remaining).trim();
+                if data != "[DONE]" {
                     let _ = handle_stream_payload(
-                        &line,
+                        data,
                         &sink,
                         &mut streamed,
                         &mut streamed_reasoning,
@@ -253,49 +372,53 @@ async fn stream_chat_completion(
                     );
                 }
             }
+        }
 
-            if current_tool_call_id.is_some() && !current_tool_args.is_empty() {
-                if let Ok(args_value) = serde_json::from_str::<Value>(&current_tool_args) {
-                    if !runtime.allows_tool(&current_tool_name) {
-                        guardian_rejection_reason = Some(format!(
-                            "Tool-ul `{}` nu este permis în stage-ul curent `{}`.",
-                            current_tool_name,
-                            runtime.current_stage_id()
-                        ));
-                        current_tool_name.clear();
-                        current_tool_args.clear();
-                        break;
-                    }
+        if current_tool_call_id.is_some() && !current_tool_args.is_empty() {
+            if let Ok(args_value) = serde_json::from_str::<Value>(&current_tool_args) {
+                if !runtime.allows_tool(&current_tool_name) {
+                    guardian_rejection_reason = Some(format!(
+                        "Tool-ul `{}` nu este permis în stage-ul curent `{}`.",
+                        current_tool_name,
+                        runtime.current_stage_id()
+                    ));
+                    current_tool_name.clear();
+                    current_tool_args.clear();
+                }
 
-                    if current_tool_name == "propose_plan" && !prompt_supports_plan(&context.prompt)
-                    {
-                        println!(
-                            "[AI] Ignoring propose_plan for non-plan prompt: '{}'",
-                            context.prompt
-                        );
-                        ignored_plan_tool_call = true;
-                        current_tool_call_id = None;
-                        current_tool_name.clear();
-                        current_tool_args.clear();
-                        continue;
-                    }
+                if guardian_rejection_reason.is_none()
+                    && current_tool_name == "propose_plan"
+                    && !prompt_supports_plan(&context.prompt)
+                {
+                    println!(
+                        "[AI] Ignoring propose_plan for non-plan prompt: '{}'",
+                        context.prompt
+                    );
+                    ignored_plan_tool_call = true;
+                    current_tool_call_id = None;
+                    current_tool_name.clear();
+                    current_tool_args.clear();
+                }
 
-                    if current_tool_name == "propose_terminal_command" {
-                        if let Some(cmd) = args_value.get("command").and_then(Value::as_str) {
-                            let guardian_intent = guardian_intent_context(&context);
-                            if !context_supports_terminal_command(&context) {
-                                println!(
-                                    "[GUARDIAN] Rejected terminal command for non-terminal prompt: '{}'",
-                                    cmd
-                                );
-                                guardian_rejection_reason = Some(
-                                    "Cererea utilizatorului nu cere o comandă de terminal. Răspunde direct, fără să propui un shell command.".to_string(),
-                                );
-                                current_tool_args = cmd.to_string();
-                                current_tool_name.clear();
-                                break;
-                            }
-
+                if guardian_rejection_reason.is_none() && current_tool_name == "propose_terminal_command" {
+                    if let Some(cmd) = args_value.get("command").and_then(Value::as_str) {
+                        let guardian_intent = guardian_intent_context(&context);
+                        if !context_supports_terminal_command(&context) {
+                            println!(
+                                "[GUARDIAN] Rejected terminal command for non-terminal prompt: '{}'",
+                                cmd
+                            );
+                            guardian_rejection_reason = Some(
+                                "Cererea utilizatorului nu cere o comandă de terminal. Răspunde direct, fără să propui un shell command.".to_string(),
+                            );
+                            current_tool_args = cmd.to_string();
+                            current_tool_name.clear();
+                        } else if command_is_low_risk_terminal_inspection(cmd) {
+                            println!(
+                                "[GUARDIAN] Auto-approved low-risk terminal command: '{}'",
+                                cmd
+                            );
+                        } else {
                             let guardian_model = context
                                 .terminal_model_id
                                 .as_deref()
@@ -310,11 +433,9 @@ async fn stream_chat_completion(
                                         "[GUARDIAN] Rejected command: '{}'. Reason: {}",
                                         cmd, reason
                                     );
-                                    let rejected_command = cmd.to_string();
                                     guardian_rejection_reason = Some(reason);
-                                    current_tool_args = rejected_command;
+                                    current_tool_args = cmd.to_string();
                                     current_tool_name.clear();
-                                    break;
                                 }
                                 _ => {
                                     println!("[GUARDIAN] Approved command: '{}'", cmd);
@@ -322,20 +443,35 @@ async fn stream_chat_completion(
                             }
                         }
                     }
+                }
 
-                    if current_tool_name.starts_with("mcp__") {
+                if guardian_rejection_reason.is_none() && current_tool_name.starts_with("mcp__") {
                         let tool_call_id =
                             current_tool_call_id.take().expect("tool id should exist");
                         let tool_name = current_tool_name.clone();
                         let raw_args = current_tool_args.clone();
 
-                        runtime_transition(&mut runtime, STAGE_EXECUTING)?;
+                        move_runtime_to_tool_dispatch(&mut runtime)?;
+                        pending_resolution = None;
+                        pending_tool_call = Some(AgentPendingToolCall {
+                            id: tool_call_id.clone(),
+                            name: tool_name.clone(),
+                        });
+                        last_runtime_error = None;
+                        sync_execution_state(
+                            &sink,
+                            &runtime,
+                            attempt,
+                            pending_resolution.clone(),
+                            pending_tool_call.clone(),
+                            last_runtime_error.clone(),
+                        );
                         sink.status(
                             runtime.run_status(),
                             Some(format!("Rulez tool-ul MCP `{tool_name}`.")),
                         );
 
-                        let result = match mcp::call_openai_mcp_tool(&tool_name, args_value).await {
+                        let result = match mcp::call_openai_mcp_tool(&tool_name, args_value.clone()).await {
                             Ok(result) => result,
                             Err(error) => json!({ "error": error }).to_string(),
                         };
@@ -343,10 +479,11 @@ async fn stream_chat_completion(
                         mcp_tool_result = Some((tool_call_id, tool_name, raw_args, result));
                         current_tool_name.clear();
                         current_tool_args.clear();
-                        break;
+                        current_tool_name.clear();
+                        current_tool_args.clear();
                     }
 
-                    if guardian_rejection_reason.is_none() {
+                if guardian_rejection_reason.is_none() && mcp_tool_result.is_none() {
                         if current_tool_name == "explore_workspace"
                             && !recent_local_match_paths.is_empty()
                         {
@@ -356,12 +493,13 @@ async fn stream_chat_completion(
                             ));
                             current_tool_name.clear();
                             current_tool_args.clear();
-                            break;
+                            current_tool_name.clear();
+                            current_tool_args.clear();
                         }
 
-                        if current_tool_name == "suggest_follow_up" {
+                        if guardian_rejection_reason.is_none() && current_tool_name == "suggest_follow_up" {
                             emitted_follow_up_tool_call = true;
-                        } else {
+                        } else if guardian_rejection_reason.is_none() {
                             emitted_action_tool_call = true;
                             if current_tool_name == "propose_file_change" {
                                 emitted_file_change_tool_call = true;
@@ -369,26 +507,56 @@ async fn stream_chat_completion(
                         }
 
                         let tool_name = current_tool_name.clone();
+                        let tool_call_id =
+                            current_tool_call_id.take().expect("tool id should exist");
                         sink.tool_call(AgentToolCall {
-                            id: current_tool_call_id.take().expect("tool id should exist"),
+                            id: tool_call_id.clone(),
                             name: tool_name.clone(),
                             args: args_value,
                         });
-                        if tool_requires_external_resolution(&tool_name) {
+                        if runtime.tool_requires_external_result(&tool_name) {
                             pending_external_tool_name = Some(tool_name.clone());
-                            if tool_requires_user_approval(&tool_name) {
-                                if runtime.current_stage_id() == STAGE_VERIFYING {
-                                    runtime_transition(&mut runtime, STAGE_TOOL_SELECTION)?;
-                                }
-                                runtime_transition(&mut runtime, STAGE_AWAITING_APPROVAL)?;
+                            if runtime.tool_requires_approval(&tool_name) {
+                                move_runtime_to_approval_wait(&mut runtime)?;
+                                pending_resolution = Some(AgentPendingResolutionKind::Approval);
                                 sink.status(
                                     runtime.run_status(),
                                     Some(format!(
                                         "Aștept aprobarea sau rezolvarea pentru `{tool_name}`."
                                     )),
                                 );
+                            } else {
+                                move_runtime_to_tool_dispatch(&mut runtime)?;
+                                pending_resolution =
+                                    Some(AgentPendingResolutionKind::ExternalToolResult);
                             }
+                            pending_tool_call = Some(AgentPendingToolCall {
+                                id: tool_call_id,
+                                name: tool_name,
+                            });
+                            last_runtime_error = None;
+                            sync_execution_state(
+                                &sink,
+                                &runtime,
+                                attempt,
+                                pending_resolution.clone(),
+                                pending_tool_call.clone(),
+                                last_runtime_error.clone(),
+                            );
+                        } else {
+                            pending_resolution = None;
+                            pending_tool_call = None;
+                            last_runtime_error = None;
+                            sync_execution_state(
+                                &sink,
+                                &runtime,
+                                attempt,
+                                pending_resolution.clone(),
+                                pending_tool_call.clone(),
+                                last_runtime_error.clone(),
+                            );
                         }
+                    if guardian_rejection_reason.is_none() {
                         current_tool_name.clear();
                         current_tool_args.clear();
                     }
@@ -419,7 +587,18 @@ async fn stream_chat_completion(
                 tool_call_id: Some(tool_call_id),
                 tool_calls: None,
             });
-            runtime_transition(&mut runtime, STAGE_VERIFYING)?;
+            apply_runtime_event(&mut runtime, EVENT_CAPTURE_TOOL_RESULT)?;
+            pending_resolution = None;
+            pending_tool_call = None;
+            last_runtime_error = None;
+            sync_execution_state(
+                &sink,
+                &runtime,
+                attempt + 1,
+                pending_resolution.clone(),
+                pending_tool_call.clone(),
+                last_runtime_error.clone(),
+            );
             attempt += 1;
             continue;
         }
@@ -448,27 +627,20 @@ async fn stream_chat_completion(
                 tool_calls: None,
             });
 
-            if runtime.current_stage_id() == STAGE_VERIFYING {
-                runtime_transition(&mut runtime, STAGE_TOOL_SELECTION)?;
-            }
+            move_runtime_to_tool_selection_retry(&mut runtime)?;
+            pending_resolution = None;
+            pending_tool_call = None;
+            last_runtime_error = Some(reason.clone());
+            sync_execution_state(
+                &sink,
+                &runtime,
+                attempt + 1,
+                pending_resolution.clone(),
+                pending_tool_call.clone(),
+                last_runtime_error.clone(),
+            );
             attempt += 1;
             continue;
-        }
-
-        let remaining = sse_buffer.trim();
-        if !remaining.is_empty() {
-            let data = remaining.strip_prefix("data:").unwrap_or(remaining).trim();
-            if data != "[DONE]" {
-                let _ = handle_stream_payload(
-                    data,
-                    &sink,
-                    &mut streamed,
-                    &mut streamed_reasoning,
-                    &mut thinking_state,
-                    use_synthetic_thinking,
-                    &mut usage,
-                );
-            }
         }
 
         if !use_synthetic_thinking {
@@ -497,7 +669,7 @@ async fn stream_chat_completion(
                 content: format!(
                     "Răspunsul anterior nu a produs o acțiune utilă pentru cererea utilizatorului. \
                     Nu mai propune plan. Dacă sarcina cere creare/modificare fișier, emite `propose_file_change`. \
-                    Dacă sarcina cere explorare recursivă, căutare de fișiere, funcții sau variabile în workspace, emite `explore_workspace`. \
+                    Dacă sarcina cere explorare recursivă, căutare semantică de simboluri, definition/references sau diagnostic în workspace, emite `explore_workspace` cu `mode` potrivit. \
                     Dacă sarcina cere rulare/verificare/test, emite `propose_terminal_command`. \
                     Dacă deja există un fișier sau un rezultat în context, continuă concret următorul pas. \
                     Cererea curentă este: {}",
@@ -626,6 +798,14 @@ async fn stream_chat_completion(
         }
 
         if let Some(tool_name) = pending_external_tool_name {
+            sync_execution_state(
+                &sink,
+                &runtime,
+                attempt,
+                pending_resolution.clone(),
+                pending_tool_call.clone(),
+                last_runtime_error.clone(),
+            );
             sink.status(
                 AgentRunStatus::WaitingForTool,
                 Some(format!(
@@ -635,12 +815,34 @@ async fn stream_chat_completion(
             return Ok(waiting_outcome(&context.prompt, &streamed, usage));
         }
 
-        runtime_transition(&mut runtime, STAGE_COMPLETED)?;
+        apply_runtime_event(&mut runtime, EVENT_EMIT_FINAL_ANSWER)?;
+        pending_resolution = None;
+        pending_tool_call = None;
+        last_runtime_error = None;
+        sync_execution_state(
+            &sink,
+            &runtime,
+            attempt,
+            pending_resolution.clone(),
+            pending_tool_call.clone(),
+            last_runtime_error.clone(),
+        );
         return Ok(done_outcome(&context.prompt, &streamed, usage));
     }
 
     let fallback = "Nu pot continua automat cu o comandă sigură după mai multe încercări. Am nevoie de o comandă mai precisă sau de o clarificare scurtă despre ce pas vrei să verific.";
     sink.token(fallback);
+    apply_runtime_event(&mut runtime, EVENT_EMIT_FINAL_ANSWER)?;
+    pending_resolution = None;
+    pending_tool_call = None;
+    sync_execution_state(
+        &sink,
+        &runtime,
+        attempt,
+        pending_resolution,
+        pending_tool_call,
+        Some("retry budget exhausted".to_string()),
+    );
     Ok(done_outcome(&context.prompt, fallback, None))
 }
 
@@ -812,6 +1014,10 @@ fn prompt_supports_terminal_command(prompt: &str) -> bool {
 }
 
 fn context_supports_terminal_command(context: &AgentHarnessContext) -> bool {
+    if surface_supports_terminal_command(context.surface.as_deref()) {
+        return true;
+    }
+
     if prompt_supports_terminal_command(&context.prompt) {
         return true;
     }
@@ -821,6 +1027,126 @@ fn context_supports_terminal_command(context: &AgentHarnessContext) -> bool {
     }
 
     false
+}
+
+fn surface_supports_terminal_command(surface: Option<&str>) -> bool {
+    matches!(surface.map(str::trim), Some("terminal"))
+}
+
+fn command_is_low_risk_terminal_inspection(command: &str) -> bool {
+    let trimmed = command.trim();
+    if trimmed.is_empty() {
+        return false;
+    }
+
+    if trimmed.contains('\n')
+        || trimmed.contains("&&")
+        || trimmed.contains("||")
+        || trimmed.contains(';')
+        || trimmed.contains('|')
+        || trimmed.contains('>')
+        || trimmed.contains('<')
+    {
+        return false;
+    }
+
+    let command_name = trimmed
+        .split_whitespace()
+        .next()
+        .unwrap_or_default()
+        .to_lowercase();
+
+    matches!(
+        command_name.as_str(),
+        "pwd"
+            | "ls"
+            | "ll"
+            | "la"
+            | "tree"
+            | "find"
+            | "rg"
+            | "grep"
+            | "fd"
+            | "which"
+            | "whereis"
+            | "file"
+            | "stat"
+            | "head"
+            | "tail"
+            | "cat"
+            | "sed"
+            | "awk"
+            | "git"
+            | "node"
+            | "python"
+            | "python3"
+            | "go"
+            | "cargo"
+            | "npm"
+            | "pnpm"
+            | "yarn"
+            | "bun"
+    ) && read_only_command_looks_safe(trimmed, &command_name)
+}
+
+fn read_only_command_looks_safe(command: &str, command_name: &str) -> bool {
+    let normalized = command.to_lowercase();
+    let destructive_tokens = [
+        " rm ",
+        " mv ",
+        " cp ",
+        " chmod ",
+        " chown ",
+        " sudo ",
+        " install ",
+        " add ",
+        " commit ",
+        " push ",
+        " pull ",
+        " write",
+        "save",
+        "delete",
+        "remove",
+        "touch ",
+        "mkdir ",
+    ];
+
+    if destructive_tokens
+        .iter()
+        .any(|token| normalized.contains(token) || normalized.starts_with(token.trim()))
+    {
+        return false;
+    }
+
+    match command_name {
+        "git" => normalized.starts_with("git status")
+            || normalized.starts_with("git diff")
+            || normalized.starts_with("git log")
+            || normalized.starts_with("git show")
+            || normalized.starts_with("git branch")
+            || normalized.starts_with("git rev-parse"),
+        "cargo" => normalized == "cargo test"
+            || normalized.starts_with("cargo test ")
+            || normalized == "cargo check"
+            || normalized.starts_with("cargo check ")
+            || normalized == "cargo fmt"
+            || normalized.starts_with("cargo fmt ")
+            || normalized == "cargo clippy"
+            || normalized.starts_with("cargo clippy "),
+        "npm" | "pnpm" | "yarn" | "bun" => normalized.ends_with(" test")
+            || normalized.contains(" test ")
+            || normalized.ends_with(" lint")
+            || normalized.contains(" lint ")
+            || normalized.ends_with(" typecheck")
+            || normalized.contains(" typecheck ")
+            || normalized.ends_with(" run build")
+            || normalized.contains(" run build "),
+        "node" | "python" | "python3" | "go" => normalized.contains(" --help")
+            || normalized.contains(" -h")
+            || normalized.ends_with(" --version")
+            || normalized.ends_with(" version"),
+        _ => true,
+    }
 }
 
 fn is_continuation_prompt(prompt: &str) -> bool {
@@ -1252,13 +1578,37 @@ fn initial_runtime_for_context(
             .map_err(|error| AgentHarnessError::new(error.message));
     }
 
+    if let Some(resume_state) = &context.resume_execution_state {
+        return AgentLoopRuntime::resume(&resume_state.current_stage_id)
+            .map_err(|error| AgentHarnessError::new(error.message));
+    }
+
     let mut runtime = AgentLoopRuntime::new();
-    runtime_transition(&mut runtime, STAGE_REASONING)?;
-    runtime_transition(&mut runtime, STAGE_TOOL_SELECTION)?;
+    apply_runtime_event(&mut runtime, EVENT_PREPARE_CONTEXT)?;
+    apply_runtime_event(&mut runtime, EVENT_SKIP_PLANNING)?;
     Ok(runtime)
 }
 
 fn should_resume_in_verifying_stage(context: &AgentHarnessContext) -> bool {
+    if let Some(resume_state) = &context.resume_execution_state {
+        if resume_state.pending_resolution.is_some() {
+            return context
+                .messages
+                .iter()
+                .rev()
+                .find(|message| {
+                    message.role != "system"
+                        && (message.role == "tool"
+                            || !message.content.trim().is_empty()
+                            || message.tool_calls.is_some())
+                })
+                .map(|message| message.role == "tool")
+                .unwrap_or(false);
+        }
+
+        return false;
+    }
+
     if is_continuation_prompt(&context.prompt) || context.prompt.trim().is_empty() {
         return context
             .messages
@@ -1277,36 +1627,73 @@ fn should_resume_in_verifying_stage(context: &AgentHarnessContext) -> bool {
     false
 }
 
-fn runtime_transition(
-    runtime: &mut AgentLoopRuntime,
-    next_stage_id: &str,
-) -> Result<(), AgentHarnessError> {
+fn apply_runtime_event(runtime: &mut AgentLoopRuntime, event_id: &str) -> Result<(), AgentHarnessError> {
     runtime
-        .transition_to(next_stage_id)
+        .apply_event(event_id)
         .map_err(|error| AgentHarnessError::new(error.message))
 }
 
-fn tool_requires_user_approval(tool_name: &str) -> bool {
-    matches!(
-        tool_name,
-        "propose_terminal_command"
-            | "propose_file_change"
-            | "propose_mcp_server"
-            | "launch_cloud_agent"
-    )
+fn move_runtime_to_approval_wait(runtime: &mut AgentLoopRuntime) -> Result<(), AgentHarnessError> {
+    if runtime.current_stage_id() == STAGE_VERIFYING {
+        apply_runtime_event(runtime, EVENT_REQUEST_ANOTHER_TOOL)?;
+    }
+
+    apply_runtime_event(runtime, EVENT_AWAIT_USER_APPROVAL)
 }
 
-fn tool_requires_external_resolution(tool_name: &str) -> bool {
-    matches!(
-        tool_name,
-        "lookup_web"
-            | "explore_workspace"
-            | "read_workspace_file"
-            | "propose_terminal_command"
-            | "propose_file_change"
-            | "propose_mcp_server"
-            | "launch_cloud_agent"
-    )
+fn move_runtime_to_tool_dispatch(runtime: &mut AgentLoopRuntime) -> Result<(), AgentHarnessError> {
+    if runtime.current_stage_id() == STAGE_VERIFYING {
+        apply_runtime_event(runtime, EVENT_REQUEST_ANOTHER_TOOL)?;
+    }
+
+    if runtime.current_stage_id() == STAGE_EXECUTING {
+        return Ok(());
+    }
+
+    apply_runtime_event(runtime, EVENT_DISPATCH_TOOL)
+}
+
+fn move_runtime_to_tool_selection_retry(
+    runtime: &mut AgentLoopRuntime,
+) -> Result<(), AgentHarnessError> {
+    if runtime.current_stage_id() == STAGE_VERIFYING {
+        apply_runtime_event(runtime, EVENT_REQUEST_ANOTHER_TOOL)?;
+    }
+
+    Ok(())
+}
+
+fn build_execution_state(
+    runtime: &AgentLoopRuntime,
+    negotiation_attempt: u32,
+    pending_resolution: Option<AgentPendingResolutionKind>,
+    pending_tool_call: Option<AgentPendingToolCall>,
+    last_error: Option<String>,
+) -> AgentExecutionState {
+    AgentExecutionState {
+        current_stage_id: runtime.current_stage_id().to_string(),
+        negotiation_attempt,
+        pending_resolution,
+        pending_tool_call,
+        last_error,
+    }
+}
+
+fn sync_execution_state(
+    sink: &AgentEventSink,
+    runtime: &AgentLoopRuntime,
+    negotiation_attempt: u32,
+    pending_resolution: Option<AgentPendingResolutionKind>,
+    pending_tool_call: Option<AgentPendingToolCall>,
+    last_error: Option<String>,
+) {
+    sink.set_execution_state(build_execution_state(
+        runtime,
+        negotiation_attempt,
+        pending_resolution,
+        pending_tool_call,
+        last_error,
+    ));
 }
 
 fn build_chat_messages(context: &AgentHarnessContext, runtime: &AgentLoopRuntime) -> Vec<Value> {
@@ -1427,7 +1814,7 @@ fn build_workspace_context_message(cwd: &str) -> Option<String> {
 
     Some(format!(
         "CONTEXT WORKSPACE:\n- cwd: {cwd}\n- top-level entries:\n{}\
-        \nREGULĂ PATH: tratează cwd ca rădăcina operațiunilor locale. În `propose_file_change`, folosește path-uri relative la cwd pentru fișiere de proiect. Dacă vrei să citești un fișier anume, folosește `read_workspace_file`. Dacă vrei să listezi sau să cauți în proiect, folosește `explore_workspace`. Nu presupune că un subdirector vizibil este proiectul corect fără un pas explicit de listare sau căutare.",
+        \nREGULĂ PATH: tratează cwd ca rădăcina operațiunilor locale. În `propose_file_change`, folosește path-uri relative la cwd pentru fișiere de proiect. Dacă vrei să citești un fișier anume, folosește `read_workspace_file`. Dacă vrei să listezi, să cauți semantic simboluri, să afli definitions/references sau să vezi diagnostics în proiect, folosește `explore_workspace` cu `mode` potrivit. Nu presupune că un subdirector vizibil este proiectul corect fără un pas explicit de listare sau căutare.",
         indent_block(&names.join("\n"), 2)
     ))
 }
@@ -1598,12 +1985,17 @@ fn cancelled_outcome(prompt: &str, streamed: &str) -> AgentHarnessOutcome {
 #[cfg(test)]
 mod tests {
     use super::{
-        context_supports_terminal_command, guardian_intercepted_tool_calls, longest_tag_suffix_len,
+        command_is_low_risk_terminal_inspection, context_supports_terminal_command,
+        guardian_intercepted_tool_calls, initial_runtime_for_context, longest_tag_suffix_len,
         normalize_outbound_tool_calls, prompt_supports_terminal_command,
         should_retry_file_change_duplicate_code, should_retry_follow_up_only,
     };
     use crate::ai::agent::harness::AgentHarnessContext;
-    use crate::ai::agent::types::{AgentInputMessage, TerminalBlockContext};
+    use crate::ai::agent::runtime::{STAGE_EXECUTING, STAGE_VERIFYING};
+    use crate::ai::agent::types::{
+        AgentExecutionState, AgentInputMessage, AgentPendingResolutionKind, AgentPendingToolCall,
+        TerminalBlockContext,
+    };
     use serde_json::json;
 
     fn harness_context(
@@ -1616,6 +2008,7 @@ mod tests {
             conversation_id: "conv-test".to_string(),
             assistant_message_id: "assistant-test".to_string(),
             prompt: prompt.to_string(),
+            surface: None,
             messages,
             terminal_blocks,
             cwd: None,
@@ -1623,6 +2016,7 @@ mod tests {
             target_arch: "arm64".to_string(),
             model_id: "test-model".to_string(),
             terminal_model_id: None,
+            resume_execution_state: None,
         }
     }
 
@@ -1719,5 +2113,81 @@ mod tests {
         );
 
         assert!(context_supports_terminal_command(&context));
+    }
+
+    #[test]
+    fn continuation_with_pending_tool_result_resumes_in_verifying() {
+        let mut context = harness_context(
+            "",
+            vec![AgentInputMessage {
+                role: "tool".to_string(),
+                content: "Search completed".to_string(),
+                tool_call_id: Some("tool-1".to_string()),
+                tool_calls: None,
+            }],
+            vec![],
+        );
+        context.resume_execution_state = Some(AgentExecutionState {
+            current_stage_id: STAGE_EXECUTING.to_string(),
+            negotiation_attempt: 1,
+            pending_resolution: Some(AgentPendingResolutionKind::ExternalToolResult),
+            pending_tool_call: Some(AgentPendingToolCall {
+                id: "tool-1".to_string(),
+                name: "lookup_web".to_string(),
+            }),
+            last_error: None,
+        });
+
+        let runtime =
+            initial_runtime_for_context(&context).expect("continuation runtime should resume");
+
+        assert_eq!(runtime.current_stage_id(), STAGE_VERIFYING);
+    }
+
+    #[test]
+    fn continuation_without_new_tool_result_stays_in_previous_stage() {
+        let mut context = harness_context(
+            "",
+            vec![AgentInputMessage {
+                role: "assistant".to_string(),
+                content: "Aștept aprobarea".to_string(),
+                tool_call_id: None,
+                tool_calls: None,
+            }],
+            vec![],
+        );
+        context.resume_execution_state = Some(AgentExecutionState {
+            current_stage_id: STAGE_EXECUTING.to_string(),
+            negotiation_attempt: 1,
+            pending_resolution: Some(AgentPendingResolutionKind::ExternalToolResult),
+            pending_tool_call: Some(AgentPendingToolCall {
+                id: "tool-1".to_string(),
+                name: "lookup_web".to_string(),
+            }),
+            last_error: None,
+        });
+
+        let runtime =
+            initial_runtime_for_context(&context).expect("continuation runtime should resume");
+
+        assert_eq!(runtime.current_stage_id(), STAGE_EXECUTING);
+    }
+
+    #[test]
+    fn terminal_surface_allows_terminal_command_without_prompt_keywords() {
+        let mut context = harness_context("deschide asta", vec![], vec![]);
+        context.surface = Some("terminal".to_string());
+
+        assert!(context_supports_terminal_command(&context));
+    }
+
+    #[test]
+    fn low_risk_terminal_inspection_commands_are_auto_approved() {
+        assert!(command_is_low_risk_terminal_inspection("ls -la"));
+        assert!(command_is_low_risk_terminal_inspection("git status --short"));
+        assert!(command_is_low_risk_terminal_inspection("cargo test"));
+        assert!(!command_is_low_risk_terminal_inspection("rm -rf node_modules"));
+        assert!(!command_is_low_risk_terminal_inspection("git push origin main"));
+        assert!(!command_is_low_risk_terminal_inspection("ls -la && pwd"));
     }
 }

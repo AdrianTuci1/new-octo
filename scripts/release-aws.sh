@@ -43,6 +43,7 @@ require_cmd aws
 require_cmd zip
 require_cmd unzip
 require_cmd git
+require_cmd node
 
 aws_r2() {
   AWS_ACCESS_KEY_ID="${R2_ACCESS_KEY_ID:-}" \
@@ -50,6 +51,45 @@ aws_r2() {
   AWS_SESSION_TOKEN="${R2_SESSION_TOKEN:-}" \
   aws "$@"
 }
+
+strip_trailing_slash() {
+  value="$1"
+  while [ "${value%/}" != "$value" ]; do
+    value="${value%/}"
+  done
+  printf '%s\n' "$value"
+}
+
+base64_inline() {
+  printf '%s' "$1" | base64 | tr -d '\n'
+}
+
+resolve_signing_private_key() {
+  if [ -n "${TAURI_SIGNING_PRIVATE_KEY_FILE:-}" ]; then
+    cat "$TAURI_SIGNING_PRIVATE_KEY_FILE"
+    return 0
+  fi
+
+  if [ -n "${TAURI_SIGNING_PRIVATE_KEY:-}" ]; then
+    printf '%s' "$TAURI_SIGNING_PRIVATE_KEY"
+    return 0
+  fi
+
+  return 1
+}
+
+SIGNING_PRIVATE_KEY_RAW="$(resolve_signing_private_key 2>/dev/null || true)"
+if [ -n "$SIGNING_PRIVATE_KEY_RAW" ]; then
+  TAURI_SIGNING_PRIVATE_KEY_B64="$(base64_inline "$SIGNING_PRIVATE_KEY_RAW")"
+else
+  TAURI_SIGNING_PRIVATE_KEY_B64=""
+fi
+
+if [ -n "${TAURI_SIGNING_PRIVATE_KEY_PASSWORD:-}" ]; then
+  TAURI_SIGNING_PRIVATE_KEY_PASSWORD_B64="$(base64_inline "$TAURI_SIGNING_PRIVATE_KEY_PASSWORD")"
+else
+  TAURI_SIGNING_PRIVATE_KEY_PASSWORD_B64=""
+fi
 
 AWS_REGION_VALUE="${AWS_REGION:-${AWS_DEFAULT_REGION:-}}"
 if [ -z "$AWS_REGION_VALUE" ]; then
@@ -285,7 +325,9 @@ create_project() {
     "privilegedMode": false,
     "environmentVariables": [
       { "name": "RELEASE_BUNDLES", "value": "$bundles", "type": "PLAINTEXT" },
-      { "name": "CI", "value": "true", "type": "PLAINTEXT" }
+      { "name": "CI", "value": "true", "type": "PLAINTEXT" },
+      { "name": "TAURI_SIGNING_PRIVATE_KEY_B64", "value": "$TAURI_SIGNING_PRIVATE_KEY_B64", "type": "PLAINTEXT" },
+      { "name": "TAURI_SIGNING_PRIVATE_KEY_PASSWORD_B64", "value": "$TAURI_SIGNING_PRIVATE_KEY_PASSWORD_B64", "type": "PLAINTEXT" }
     ]
   },
   "timeoutInMinutes": 120,
@@ -330,6 +372,71 @@ upload_to_r2_if_configured() {
   aws_r2 s3 sync "$source_dir" "$target_uri" --endpoint-url "$R2_ENDPOINT_URL" >/dev/null
 }
 
+generate_updater_manifest() {
+  platform="$1"
+  source_dir="$2"
+
+  if [ -z "${R2_ENDPOINT_URL:-}" ] || [ -z "${R2_BUCKET:-}" ]; then
+    return 0
+  fi
+
+  if [ -z "${R2_PUBLIC_BASE_URL:-}" ]; then
+    echo "Skipping updater manifest for $platform because R2_PUBLIC_BASE_URL is not set." >&2
+    return 0
+  fi
+
+  r2_prefix="${R2_PREFIX:-octomus-release/${VERSION}}"
+  updater_prefix="${R2_UPDATER_PREFIX:-updater}"
+  public_base_url="$(strip_trailing_slash "$R2_PUBLIC_BASE_URL")"
+  pub_date="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  updater_dir="$DEST_ROOT/updater"
+  mkdir -p "$updater_dir"
+
+  case "$platform" in
+    linux)
+      target_key="linux-x86_64"
+      artifact_path="$(find "$source_dir" -maxdepth 1 -type f -name '*.AppImage' ! -name '*.sig' | head -n 1)"
+      ;;
+    windows)
+      target_key="windows-x86_64"
+      artifact_path="$(find "$source_dir" -maxdepth 1 -type f -name '*.exe' | head -n 1)"
+      if [ -z "$artifact_path" ]; then
+        artifact_path="$(find "$source_dir" -maxdepth 1 -type f -name '*.msi' | head -n 1)"
+      fi
+      ;;
+    *)
+      echo "Updater manifest generation is not configured for platform: $platform" >&2
+      return 0
+      ;;
+  esac
+
+  if [ -z "$artifact_path" ]; then
+    echo "Missing updater artifact for $platform in $source_dir" >&2
+    return 1
+  fi
+
+  signature_path="${artifact_path}.sig"
+  if [ ! -f "$signature_path" ]; then
+    echo "Missing updater signature for $artifact_path" >&2
+    return 1
+  fi
+
+  artifact_name="$(basename "$artifact_path")"
+  artifact_url="$public_base_url/$r2_prefix/$platform/$artifact_name"
+  manifest_path="$updater_dir/$target_key.json"
+
+  node ./scripts/generate-updater-manifest.mjs \
+    --version "$VERSION" \
+    --url "$artifact_url" \
+    --signature-file "$signature_path" \
+    --output "$manifest_path" \
+    --pub-date "$pub_date"
+
+  target_uri="s3://$R2_BUCKET/$updater_prefix/$target_key.json"
+  echo "Uploading updater manifest for $target_key to $target_uri..."
+  aws_r2 s3 cp "$manifest_path" "$target_uri" --endpoint-url "$R2_ENDPOINT_URL" >/dev/null
+}
+
 build_linux() {
   SOURCE_KEY="${SOURCE_PREFIX}/linux/source.zip"
   upload_source
@@ -348,6 +455,7 @@ build_linux() {
   DEST_DIR="$DEST_ROOT/linux-${VERSION}"
   download_and_expand "linux" "$DEST_DIR"
   upload_to_r2_if_configured "linux" "$DEST_DIR"
+  generate_updater_manifest "linux" "$DEST_DIR"
   echo "Linux artifacts available at $DEST_DIR"
 }
 
@@ -369,6 +477,7 @@ build_windows() {
   DEST_DIR="$DEST_ROOT/windows-${VERSION}"
   download_and_expand "windows" "$DEST_DIR"
   upload_to_r2_if_configured "windows" "$DEST_DIR"
+  generate_updater_manifest "windows" "$DEST_DIR"
   echo "Windows artifacts available at $DEST_DIR"
 }
 

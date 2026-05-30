@@ -8,6 +8,7 @@ use std::{
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
+use crate::ai::provider_adapter::{generate_completion, ProviderCompletionRequest};
 use crate::terminal::{
     fs::terminal_list_directory_entries, home_dir, sort_history_entries_by_recency,
     ListDirectoryEntriesRequest, ShellHistoryEntry,
@@ -438,7 +439,7 @@ async fn build_ai_prediction(
         .filter(|config| !config.api_key.trim().is_empty())
         .or_else(|| ai_manager.provider_config().ok().flatten())
         .filter(|config| !config.api_key.trim().is_empty())
-        .or_else(crate::ai::agent::openai::OpenAiCompatibleConfig::from_env)?;
+        .or_else(crate::ai::agent::OpenAiCompatibleConfig::from_env)?;
     let history_context =
         build_history_context(last_command, history_entries, request.cwd.as_deref());
     let rejected_suggestions = state
@@ -528,13 +529,12 @@ async fn build_ai_recommended_action(
         .filter(|config| !config.api_key.trim().is_empty())
         .or_else(|| ai_manager.provider_config().ok().flatten())
         .filter(|config| !config.api_key.trim().is_empty())
-        .or_else(crate::ai::agent::openai::OpenAiCompatibleConfig::from_env)?;
+        .or_else(crate::ai::agent::OpenAiCompatibleConfig::from_env)?;
 
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(12))
         .build()
         .ok()?;
-    let endpoint = resolve_chat_endpoint(&provider_config.base_url);
     let last_finished_block = request
         .terminal_blocks
         .iter()
@@ -588,52 +588,39 @@ async fn build_ai_recommended_action(
         })
         .unwrap_or_else(|| "No completed terminal action is available.".to_string());
 
-    let request_body = json!({
-        "model": provider_config.model_id,
-        "messages": [
-            {
-                "role": "system",
-                "content": "You produce exactly one high-signal recommended AI follow-up for a developer assistant launcher. Respond with a single JSON object only. The object must contain: id, label, value, description, mode. mode must always be \"chat\". label must be a compact version of the actual follow-up, at most 10 words, suitable for a small UI chip. It must not be just a topic or generic text like 'continue task', 'recommend next step', or 'help further'. value must be the full natural-language follow-up to insert into the AI composer, grounded in the current context. On terminal surfaces, value should usually be an imperative AI prompt about the latest terminal context. On normal AI composer surfaces, value should usually be the smart follow-up that comes next after the previous requirement or command. Never return a shell command, code block, markdown, or multiple options. description must be one sentence explaining why this follow-up is the best next move. Match the user's recent language when it is clear."
-            },
-            {
-                "role": "user",
-                "content": format!(
-                    "Surface: {}\nResolved mode: {}\nWorking directory: {}\n{}\n{}\n\nRecent conversation:\n{}\n\nRecent terminal context:\n{}\n\nReturn one JSON object only.",
-                    request.surface,
-                    mode,
-                    request.cwd.as_deref().unwrap_or("unknown"),
-                    preferred_mode,
-                    latest_summary,
-                    if conversation_context.is_empty() { "none" } else { &conversation_context },
-                    if terminal_context.is_empty() { "none" } else { &terminal_context },
-                )
-            }
-        ],
-        "temperature": 0.2,
-        "max_tokens": 180
-    });
-
-    let response = client
-        .post(endpoint)
-        .bearer_auth(&provider_config.api_key)
-        .json(&request_body)
-        .send()
-        .await
-        .ok()?;
-    if !response.status().is_success() {
-        return None;
-    }
-
-    let value: Value = response.json().await.ok()?;
-    let content = value
-        .get("choices")
-        .and_then(Value::as_array)
-        .and_then(|choices| choices.first())
-        .and_then(|choice| choice.get("message"))
-        .and_then(|message| message.get("content"))
-        .and_then(Value::as_str)?
-        .trim()
-        .to_string();
+    let response = generate_completion(
+        &client,
+        &provider_config,
+        ProviderCompletionRequest {
+            model: provider_config.model_id.clone(),
+            messages: vec![
+                json!({
+                    "role": "system",
+                    "content": "You produce exactly one high-signal recommended AI follow-up for a developer assistant launcher. Respond with a single JSON object only. The object must contain: id, label, value, description, mode. mode must always be \"chat\". label must be a compact version of the actual follow-up, at most 10 words, suitable for a small UI chip. It must not be just a topic or generic text like 'continue task', 'recommend next step', or 'help further'. value must be the full natural-language follow-up to insert into the AI composer, grounded in the current context. On terminal surfaces, value should usually be an imperative AI prompt about the latest terminal context. On normal AI composer surfaces, value should usually be the smart follow-up that comes next after the previous requirement or command. Never return a shell command, code block, markdown, or multiple options. description must be one sentence explaining why this follow-up is the best next move. Match the user's recent language when it is clear."
+                }),
+                json!({
+                    "role": "user",
+                    "content": format!(
+                        "Surface: {}\nResolved mode: {}\nWorking directory: {}\n{}\n{}\n\nRecent conversation:\n{}\n\nRecent terminal context:\n{}\n\nReturn one JSON object only.",
+                        request.surface,
+                        mode,
+                        request.cwd.as_deref().unwrap_or("unknown"),
+                        preferred_mode,
+                        latest_summary,
+                        if conversation_context.is_empty() { "none" } else { &conversation_context },
+                        if terminal_context.is_empty() { "none" } else { &terminal_context },
+                    )
+                }),
+            ],
+            tools: None,
+            temperature: Some(0.2),
+            max_tokens: Some(180),
+            response_mime_type: Some("application/json".to_string()),
+        },
+    )
+    .await
+    .ok()?;
+    let content = response.text.trim().to_string();
     let payload = extract_json_object(&content)?;
     let action = parse_ai_recommended_action(payload)?;
     if action.mode != "chat" {
@@ -843,14 +830,6 @@ fn recommended_prompt_action(
 ) -> ComposerRecommendedActionResponse {
     let label = normalize_recommended_label("", &value);
     recommended_action(id, &label, value, description, "chat")
-}
-
-fn resolve_chat_endpoint(base_url: &str) -> String {
-    if base_url.ends_with("/chat/completions") || base_url.ends_with("/responses") {
-        return base_url.to_string();
-    }
-
-    format!("{}/chat/completions", base_url.trim_end_matches('/'))
 }
 
 fn extract_json_object(content: &str) -> Option<Value> {

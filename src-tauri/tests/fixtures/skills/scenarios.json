@@ -1,0 +1,32 @@
+[
+  {
+    "id": "create-skill-direct-mention",
+    "prompt": "@skills/create-skill Vreau sa transform acest flux intr-un skill.",
+    "expectedSkillFolder": "create-skill",
+    "shouldLoad": true
+  },
+  {
+    "id": "create-skill-slash",
+    "prompt": "/create-skill Vreau sa construiesc un skill nou din composer.",
+    "expectedSkillFolder": "create-skill",
+    "shouldLoad": true
+  },
+  {
+    "id": "namespaced-add-mcp",
+    "prompt": "/skills/add-mcp-server Configureaza un MCP server pentru GitHub.",
+    "expectedSkillFolder": "add-mcp-server",
+    "shouldLoad": true
+  },
+  {
+    "id": "octo-platform-direct-mention",
+    "prompt": "@skills/octo-platform Ajuta-ma sa configurez un cloud agent.",
+    "expectedSkillFolder": "octo-platform",
+    "shouldLoad": true
+  },
+  {
+    "id": "reserved-slash-needs-frontend-alias",
+    "prompt": "/create-environment",
+    "expectedSkillFolder": "create-environment",
+    "shouldLoad": false
+  }
+]

@@ -1,0 +1,52 @@
+[
+  {
+    "id": "create-environment-alias",
+    "prompt": "/create-environment",
+    "expectedIncludes": [
+      "@skills/create-environment",
+      "Guide me using short bullet points.",
+      "preferred path when the user wants a separate cloud tab"
+    ]
+  },
+  {
+    "id": "cloud-agent-alias",
+    "prompt": "/cloud-agent",
+    "expectedIncludes": [
+      "@skills/octo-platform",
+      "What a cloud agent is here.",
+      "[Configure Modal](octomus://cloud-profile/modal)"
+    ]
+  },
+  {
+    "id": "create-mcp-alias",
+    "prompt": "/create-mcp",
+    "expectedIncludes": [
+      "@skills/add-mcp-server",
+      "ask whether this should be global or project-scoped"
+    ]
+  },
+  {
+    "id": "generic-create-skill-without-args",
+    "prompt": "/create-skill",
+    "expectedIncludes": [
+      "/create-skill",
+      "Guide me through this skill.",
+      "minimum missing details needed to proceed."
+    ]
+  },
+  {
+    "id": "generic-create-skill-with-args-passes-through",
+    "prompt": "/create-skill Creeaza un skill pentru onboarding",
+    "expectedEquals": "/create-skill Creeaza un skill pentru onboarding"
+  },
+  {
+    "id": "reserved-plan-stays-unchanged",
+    "prompt": "/plan",
+    "expectedEquals": "/plan"
+  },
+  {
+    "id": "namespaced-skill-path-stays-unchanged",
+    "prompt": "/skills/add-mcp-server Configureaza GitHub MCP",
+    "expectedEquals": "/skills/add-mcp-server Configureaza GitHub MCP"
+  }
+]

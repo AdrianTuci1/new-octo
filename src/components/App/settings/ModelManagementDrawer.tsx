@@ -1,14 +1,19 @@
 import { useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { Key, Trash2, X } from 'lucide-react';
+import {
+  getModelProviderPreset,
+  inferModelProviderId,
+  isModelProviderId,
+  listModelProviderPresets,
+  type ModelProviderId
+} from '../../../lib/modelProviders';
 import { useMemoryStore, useUIStore } from '../../../stores';
 import type { AgentProviderStatus, ConfiguredModel } from '../../../types/chat';
 import { DrawerHeader } from '../drawers/DrawerHeader';
 import './ModelManagementDrawer.css';
 
-const DEFAULT_PROVIDER_LABEL = 'OpenAI';
-const DEFAULT_BASE_URL = 'https://api.openai.com/v1';
-const DEFAULT_SUPPORTS_ATTACHMENTS = false;
+const DEFAULT_PROVIDER_ID: ModelProviderId = 'openai';
 
 export function ModelManagementDrawer() {
   const setIsModelDrawerOpen = useUIStore((state) => state.setIsModelDrawerOpen);
@@ -17,13 +22,15 @@ export function ModelManagementDrawer() {
   const settings = useMemoryStore((state) => state.settings);
   const saveSettings = useMemoryStore((state) => state.saveSettings);
 
-  const [providerLabel, setProviderLabel] = useState(DEFAULT_PROVIDER_LABEL);
+  const [providerId, setProviderId] = useState<ModelProviderId>(DEFAULT_PROVIDER_ID);
   const [modelId, setModelId] = useState('');
-  const [baseUrl, setBaseUrl] = useState(DEFAULT_BASE_URL);
+  const [baseUrl, setBaseUrl] = useState(getModelProviderPreset(DEFAULT_PROVIDER_ID).defaultBaseUrl);
   const [apiKey, setApiKey] = useState('');
   const [friendlyName, setFriendlyName] = useState('');
   const [hasApiKey, setHasApiKey] = useState(false);
-  const [supportsAttachments, setSupportsAttachments] = useState(DEFAULT_SUPPORTS_ATTACHMENTS);
+  const [supportsAttachments, setSupportsAttachments] = useState(
+    getModelProviderPreset(DEFAULT_PROVIDER_ID).defaultSupportsAttachments
+  );
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -34,30 +41,48 @@ export function ModelManagementDrawer() {
     if (selectedModelIdForEdit && selectedModelIdForEdit !== 'new') {
       const editingModel = configuredModels.find((m) => m.id === selectedModelIdForEdit);
       if (editingModel) {
-        setProviderLabel(editingModel.providerLabel);
+        const nextProviderId = inferModelProviderId(editingModel);
+        const preset = getModelProviderPreset(nextProviderId);
+        setProviderId(nextProviderId);
         setModelId(editingModel.modelId);
-        setBaseUrl(editingModel.baseUrl);
+        setBaseUrl(editingModel.baseUrl || preset.defaultBaseUrl);
         setFriendlyName(editingModel.friendlyName ?? '');
         setHasApiKey(editingModel.hasApiKey ?? true);
-        setSupportsAttachments(editingModel.supportsAttachments ?? DEFAULT_SUPPORTS_ATTACHMENTS);
+        setSupportsAttachments(editingModel.supportsAttachments ?? preset.defaultSupportsAttachments);
         setApiKey('');
       }
     } else {
-      setProviderLabel(DEFAULT_PROVIDER_LABEL);
+      const preset = getModelProviderPreset(DEFAULT_PROVIDER_ID);
+      setProviderId(DEFAULT_PROVIDER_ID);
       setModelId('');
-      setBaseUrl(DEFAULT_BASE_URL);
+      setBaseUrl(preset.defaultBaseUrl);
       setFriendlyName('');
       setHasApiKey(false);
-      setSupportsAttachments(DEFAULT_SUPPORTS_ATTACHMENTS);
+      setSupportsAttachments(preset.defaultSupportsAttachments);
       setApiKey('');
     }
     setErrorMessage(null);
     setStatusMessage(null);
   }, [selectedModelIdForEdit, settings?.values.configuredModels]);
 
+  const providerPreset = getModelProviderPreset(providerId);
+
+  const handleProviderChange = (value: string) => {
+    if (!isModelProviderId(value)) {
+      return;
+    }
+
+    const nextPreset = getModelProviderPreset(value);
+    setProviderId(value);
+    setBaseUrl(nextPreset.defaultBaseUrl);
+    setSupportsAttachments(nextPreset.defaultSupportsAttachments);
+  };
+
   const handleSave = async () => {
     const trimmedModelId = modelId.trim();
-    const trimmedBaseUrl = baseUrl.trim();
+    const trimmedBaseUrl = providerPreset.baseUrlLocked
+      ? providerPreset.defaultBaseUrl
+      : baseUrl.trim();
     const trimmedApiKey = apiKey.trim();
 
     if (!trimmedModelId) {
@@ -84,6 +109,7 @@ export function ModelManagementDrawer() {
       if (trimmedApiKey) {
         const status = await invoke<AgentProviderStatus>('agent_configure_openai_compatible', {
           request: {
+            providerId,
             apiKey: trimmedApiKey,
             baseUrl: trimmedBaseUrl,
             modelId: trimmedModelId
@@ -94,6 +120,7 @@ export function ModelManagementDrawer() {
         try {
           await invoke<AgentProviderStatus>('agent_configure_openai_compatible', {
             request: {
+              providerId,
               apiKey: '',
               baseUrl: trimmedBaseUrl,
               modelId: trimmedModelId
@@ -109,7 +136,8 @@ export function ModelManagementDrawer() {
 
       const updatedModel: ConfiguredModel = {
         id: newId,
-        providerLabel,
+        providerId,
+        providerLabel: providerPreset.label,
         modelId: trimmedModelId,
         baseUrl: trimmedBaseUrl,
         friendlyName: friendlyName.trim() || undefined,
@@ -128,7 +156,8 @@ export function ModelManagementDrawer() {
         {
           configuredModels: nextConfiguredModels,
           selectedModelId: updatedModel.id,
-          aiProviderLabel: providerLabel,
+          aiProviderLabel: updatedModel.providerLabel,
+          aiProviderId: updatedModel.providerId,
           aiModelFriendlyName: updatedModel.friendlyName || null,
           aiModelBaseUrl: updatedModel.baseUrl
         },
@@ -161,6 +190,7 @@ export function ModelManagementDrawer() {
         try {
           await invoke('agent_configure_openai_compatible', {
             request: {
+              providerId: nextActiveModel.providerId ?? inferModelProviderId(nextActiveModel),
               apiKey: '',
               baseUrl: nextActiveModel.baseUrl,
               modelId: nextActiveModel.modelId
@@ -175,6 +205,7 @@ export function ModelManagementDrawer() {
             configuredModels: nextConfiguredModels,
             selectedModelId: nextActiveModel.id,
             aiProviderLabel: nextActiveModel.providerLabel,
+            aiProviderId: nextActiveModel.providerId ?? inferModelProviderId(nextActiveModel),
             aiModelFriendlyName: nextActiveModel.friendlyName || null,
             aiModelBaseUrl: nextActiveModel.baseUrl
           },
@@ -187,6 +218,7 @@ export function ModelManagementDrawer() {
             configuredModels: [],
             selectedModelId: '',
             aiProviderLabel: '',
+            aiProviderId: '',
             aiModelFriendlyName: null,
             aiModelBaseUrl: ''
           },
@@ -233,13 +265,10 @@ export function ModelManagementDrawer() {
         <div className="form-group">
           <label>Provider</label>
           <div className="select-wrapper">
-            <select value={providerLabel} onChange={(event) => setProviderLabel(event.target.value)}>
-              <option>OpenAI</option>
-              <option>Anthropic</option>
-              <option>Google Gemini</option>
-              <option>Ollama (Local)</option>
-              <option>OpenRouter</option>
-              <option>Custom (OpenAI Compatible)</option>
+            <select value={providerId} onChange={(event) => handleProviderChange(event.target.value)}>
+              {listModelProviderPresets().map((preset) => (
+                <option key={preset.id} value={preset.id}>{preset.label}</option>
+              ))}
             </select>
           </div>
         </div>
@@ -258,10 +287,16 @@ export function ModelManagementDrawer() {
           <label>Base URL</label>
           <input
             type="text"
-            placeholder="https://api.openai.com/v1"
+            placeholder={providerPreset.defaultBaseUrl}
             value={baseUrl}
             onChange={(event) => setBaseUrl(event.target.value)}
+            disabled={providerPreset.baseUrlLocked}
           />
+          <div className="model-mgmt-field-note">
+            {providerPreset.baseUrlLocked
+              ? `This provider uses a fixed API endpoint: ${providerPreset.defaultBaseUrl}`
+              : 'Use the provider endpoint that exposes an OpenAI-compatible chat completions API.'}
+          </div>
         </div>
 
         <div className="form-group">
@@ -270,7 +305,7 @@ export function ModelManagementDrawer() {
             <Key size={14} className="input-icon" />
             <input
               type="password"
-              placeholder={hasApiKey ? 'Stored securely, leave blank to keep it' : 'sk-...'}
+              placeholder={hasApiKey ? 'Stored securely, leave blank to keep it' : providerPreset.apiKeyPlaceholder}
               value={apiKey}
               onChange={(event) => setApiKey(event.target.value)}
             />
@@ -288,7 +323,7 @@ export function ModelManagementDrawer() {
         </div>
 
         <div className="form-group">
-          <label>Attachments</label>
+          <label>Multimodal Input</label>
           <button
             className={`model-mgmt-checkbox ${supportsAttachments ? 'active' : ''}`}
             type="button"
@@ -300,11 +335,11 @@ export function ModelManagementDrawer() {
               <span className="model-mgmt-checkbox-thumb" />
             </span>
             <span className="model-mgmt-checkbox-copy">
-              Model accepts file or image attachments
+              Model accepts file or image inputs
             </span>
           </button>
           <div className="model-mgmt-field-note">
-            Keep this off unless the provider/model is known to accept multimodal input.
+            OpenAI and Google presets start with this enabled. Turn it off only when a specific model is text-only.
           </div>
         </div>
 

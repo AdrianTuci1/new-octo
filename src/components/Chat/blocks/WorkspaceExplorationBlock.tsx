@@ -45,7 +45,7 @@ function buildFallbackSegment(exploration: WorkspaceExplorationArtifact): Worksp
         : `Searched for ${search.query}`,
       detail: search.mode === 'list'
         ? `${search.resultCount} entr${search.resultCount === 1 ? 'y' : 'ies'}`
-        : `in ${search.source === 'code-index' ? 'code index' : 'workspace files'} (${search.resultCount} match${search.resultCount === 1 ? '' : 'es'})`,
+        : `in ${formatSearchSource(search.source)} (${search.resultCount} match${search.resultCount === 1 ? '' : 'es'})`,
       createdAt
     });
   });
@@ -74,6 +74,13 @@ function buildFallbackSegment(exploration: WorkspaceExplorationArtifact): Worksp
     files,
     directories: []
   };
+}
+
+function formatSearchSource(source: string) {
+  if (source === 'code-index') return 'code index';
+  if (source === 'filesystem') return 'workspace files';
+  if (source.startsWith('lsp')) return 'language server';
+  return source;
 }
 
 function formatSearchSummary(exploration: WorkspaceExplorationArtifact) {

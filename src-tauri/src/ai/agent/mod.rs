@@ -5,10 +5,11 @@ pub mod conversation;
 pub mod decision;
 mod harness;
 pub mod loop_contract;
-pub(crate) mod openai;
-pub(crate) mod runtime;
+mod openai;
+pub mod runtime;
 mod scripted;
 pub mod types;
+pub use openai::{OpenAiCompatibleConfig, OpenAiCompatibleHarness, OpenAiCompatibleProvider, skills};
 
 pub use commands::{
     agent_cancel, agent_clear_openai_compatible, agent_configure_openai_compatible, agent_get_run,

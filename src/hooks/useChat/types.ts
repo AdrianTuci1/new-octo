@@ -20,6 +20,7 @@ export type UseChatOptions = {
   onConversationCreated?: (conversationId: string) => void;
   onRequireModelSetup?: () => void;
   cwd?: string | null;
+  surface?: 'agent' | 'terminal';
   modelId?: string | null;
   terminalModelId?: string | null;
   requiresModelSetup?: boolean;

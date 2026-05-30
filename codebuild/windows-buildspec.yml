@@ -17,10 +17,14 @@ phases:
   build:
     commands:
       - $cargo = Join-Path $env:USERPROFILE '.cargo\bin\cargo.exe'
+      - if ($env:TAURI_SIGNING_PRIVATE_KEY_B64) { $env:TAURI_SIGNING_PRIVATE_KEY = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($env:TAURI_SIGNING_PRIVATE_KEY_B64)) }
+      - if ($env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD_B64) { $env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD_B64)) }
       - npx tauri build --runner $cargo --bundles $env:RELEASE_BUNDLES
       - New-Item -ItemType Directory -Force release-output | Out-Null
       - Get-ChildItem src-tauri\target\release\bundle\nsis\*.exe | Copy-Item -Destination release-output -Force
+      - Get-ChildItem src-tauri\target\release\bundle\nsis\*.exe.sig | Copy-Item -Destination release-output -Force
       - Get-ChildItem src-tauri\target\release\bundle\msi\*.msi | Copy-Item -Destination release-output -Force
+      - Get-ChildItem src-tauri\target\release\bundle\msi\*.msi.sig | Copy-Item -Destination release-output -Force
 artifacts:
   base-directory: release-output
   files:

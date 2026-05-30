@@ -1,5 +1,6 @@
 import type { FileDiff } from './diff';
 import type { FileDiffPreviewStatus } from '../lib/fileDiffs';
+import type { ModelProviderId } from '../lib/modelProviders';
 export type { FileDiffPreviewStatus } from '../lib/fileDiffs';
 
 export type ChatMessage = {
@@ -101,8 +102,8 @@ export type CloudAgentLaunchRequest = {
 };
 
 export type WorkspaceExplorationSearch = {
-  mode: 'list' | 'search';
-  source: 'code-index' | 'filesystem';
+  mode: 'list' | 'search' | 'symbols' | 'definition' | 'references' | 'diagnostics';
+  source: 'code-index' | 'filesystem' | 'lsp' | `lsp:${string}`;
   query: string;
   resultCount: number;
   path?: string;
@@ -110,7 +111,7 @@ export type WorkspaceExplorationSearch = {
 
 export type WorkspaceExplorationFile = {
   path: string;
-  source: 'code-index' | 'filesystem';
+  source: 'code-index' | 'filesystem' | 'lsp' | `lsp:${string}`;
   snippet?: string;
 };
 
@@ -140,7 +141,7 @@ export type WorkspaceExplorationSegment = {
 
 export type WorkspaceExplorationArtifact = {
   query?: string;
-  mode?: 'list' | 'search';
+  mode?: 'list' | 'search' | 'symbols' | 'definition' | 'references' | 'diagnostics';
   path?: string;
   summary?: string;
   segments: WorkspaceExplorationSegment[];
@@ -160,13 +161,22 @@ export type WorkspaceFileReadArtifact = {
 
 export type WorkspaceExplorationRequest = {
   toolCallId: string;
-  mode?: 'list' | 'search';
+  mode?: 'list' | 'search' | 'symbols' | 'definition' | 'references' | 'diagnostics';
   query?: string;
   path?: string;
+  symbol?: string;
+  filePath?: string;
+  line?: number;
+  column?: number;
   maxResults?: number;
   includeFiles?: boolean;
   includeDirectories?: boolean;
   recursive?: boolean;
+};
+
+export type WorkspaceExplorationResponse = {
+  formatted: string;
+  artifact: WorkspaceExplorationArtifact;
 };
 
 export type WorkspaceFileReadRequest = {
@@ -223,6 +233,7 @@ export type AgentRunRequest = {
   conversationId?: string | null;
   assistantMessageId?: string | null;
   prompt: string;
+  surface?: 'agent' | 'terminal' | null;
   cwd?: string | null;
   modelId?: string | null;
   terminalModelId?: string | null;
@@ -234,6 +245,7 @@ export type AgentContinueRequest = {
   runId?: string | null;
   conversationId: string;
   assistantMessageId?: string | null;
+  surface?: 'agent' | 'terminal' | null;
   cwd?: string | null;
   modelId?: string | null;
   terminalModelId?: string | null;
@@ -250,12 +262,14 @@ export type AgentInputMessage = {
 
 export type AgentProviderConfigRequest = {
   apiKey: string;
+  providerId?: ModelProviderId | null;
   baseUrl?: string | null;
   modelId?: string | null;
 };
 
 export type AgentProviderStatus = {
   provider: string;
+  providerId: ModelProviderId;
   baseUrl: string;
   modelId: string;
   hasApiKey: boolean;
@@ -321,6 +335,7 @@ export type ThinkingDisplayMode = 'show-and-collapse' | 'always-show' | 'never-s
 
 export interface ConfiguredModel {
   id: string;
+  providerId?: ModelProviderId;
   providerLabel: string;
   modelId: string;
   baseUrl: string;

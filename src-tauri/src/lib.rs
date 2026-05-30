@@ -10,3 +10,4 @@ pub mod octomus_paths;
 pub mod secure_store;
 pub mod shell_signatures;
 pub mod terminal;
+pub mod workspace_intelligence;

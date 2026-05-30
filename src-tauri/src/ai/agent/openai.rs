@@ -6,5 +6,5 @@ pub mod skills;
 mod tools;
 mod utils;
 
-pub use config::OpenAiCompatibleConfig;
+pub use config::{OpenAiCompatibleConfig, OpenAiCompatibleProvider};
 pub use harness::OpenAiCompatibleHarness;

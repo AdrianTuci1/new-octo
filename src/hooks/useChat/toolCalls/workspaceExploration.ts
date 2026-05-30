@@ -20,13 +20,39 @@ function normalizeWorkspaceExplorationRequest(args: any): WorkspaceExplorationRe
           ? args.basePath.trim()
           : '';
 
-  const mode = args?.mode === 'list' || args?.action === 'list'
-    ? 'list'
-    : args?.mode === 'search' || args?.action === 'search'
-      ? 'search'
-      : (!query && path ? 'list' : 'search');
+  const rawMode = typeof args?.mode === 'string'
+    ? args.mode.trim().toLowerCase()
+    : typeof args?.action === 'string'
+      ? args.action.trim().toLowerCase()
+      : '';
 
-  if (!query && !path) {
+  const mode = rawMode === 'list'
+    ? 'list'
+    : rawMode === 'symbols'
+      ? 'symbols'
+      : rawMode === 'definition'
+        ? 'definition'
+        : rawMode === 'references'
+          ? 'references'
+          : rawMode === 'diagnostics'
+            ? 'diagnostics'
+            : rawMode === 'search'
+              ? 'search'
+              : (!query && path ? 'list' : 'search');
+
+  const symbol = typeof args?.symbol === 'string'
+    ? args.symbol.trim()
+    : typeof args?.identifier === 'string'
+      ? args.identifier.trim()
+      : '';
+
+  const filePath = typeof args?.filePath === 'string'
+    ? args.filePath.trim()
+    : typeof args?.file === 'string'
+      ? args.file.trim()
+      : '';
+
+  if (!query && !path && !symbol && !filePath) {
     return undefined;
   }
 
@@ -34,6 +60,16 @@ function normalizeWorkspaceExplorationRequest(args: any): WorkspaceExplorationRe
     ? args.maxResults
     : typeof args?.maxResults === 'string'
       ? Number.parseInt(args.maxResults.trim(), 10)
+      : undefined;
+  const rawLine = typeof args?.line === 'number'
+    ? args.line
+    : typeof args?.line === 'string'
+      ? Number.parseInt(args.line.trim(), 10)
+      : undefined;
+  const rawColumn = typeof args?.column === 'number'
+    ? args.column
+    : typeof args?.column === 'string'
+      ? Number.parseInt(args.column.trim(), 10)
       : undefined;
 
   const maxResults = typeof rawMaxResults === 'number' && Number.isFinite(rawMaxResults)
@@ -61,6 +97,10 @@ function normalizeWorkspaceExplorationRequest(args: any): WorkspaceExplorationRe
     mode,
     query: query || undefined,
     path: path || undefined,
+    symbol: symbol || undefined,
+    filePath: filePath || undefined,
+    line: typeof rawLine === 'number' && Number.isFinite(rawLine) ? Math.max(0, Math.floor(rawLine)) : undefined,
+    column: typeof rawColumn === 'number' && Number.isFinite(rawColumn) ? Math.max(0, Math.floor(rawColumn)) : undefined,
     maxResults,
     includeFiles,
     includeDirectories,

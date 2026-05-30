@@ -15,12 +15,15 @@ phases:
   pre_build:
     commands:
       - npm ci
+      - if [ -n "${TAURI_SIGNING_PRIVATE_KEY_B64:-}" ]; then export TAURI_SIGNING_PRIVATE_KEY="$(printf '%s' "$TAURI_SIGNING_PRIVATE_KEY_B64" | base64 -d)"; fi
+      - if [ -n "${TAURI_SIGNING_PRIVATE_KEY_PASSWORD_B64:-}" ]; then export TAURI_SIGNING_PRIVATE_KEY_PASSWORD="$(printf '%s' "$TAURI_SIGNING_PRIVATE_KEY_PASSWORD_B64" | base64 -d)"; fi
   build:
     commands:
       - . "$HOME/.cargo/env"
       - npx tauri build --runner "$HOME/.cargo/bin/cargo" --bundles "$RELEASE_BUNDLES"
       - mkdir -p release-output
       - find src-tauri/target/release/bundle/appimage -maxdepth 1 -type f -name '*.AppImage' -exec cp {} release-output/ \;
+      - find src-tauri/target/release/bundle/appimage -maxdepth 1 -type f -name '*.AppImage.sig' -exec cp {} release-output/ \;
       - find src-tauri/target/release/bundle/deb -maxdepth 1 -type f -name '*.deb' -exec cp {} release-output/ \;
 artifacts:
   base-directory: release-output

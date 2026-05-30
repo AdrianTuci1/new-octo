@@ -38,6 +38,52 @@
     "propose_mcp_server",
     "suggest_follow_up"
   ],
+  "toolPolicies": [
+    {
+      "pattern": "lookup_web",
+      "allowedStages": ["tool-selection", "verifying"],
+      "requiresExternalResult": true
+    },
+    {
+      "pattern": "explore_workspace",
+      "allowedStages": ["tool-selection"],
+      "requiresExternalResult": true
+    },
+    {
+      "pattern": "read_workspace_file",
+      "allowedStages": ["tool-selection", "verifying"],
+      "requiresExternalResult": true
+    },
+    {
+      "pattern": "propose_terminal_command",
+      "allowedStages": ["tool-selection", "verifying"],
+      "requiresApproval": true,
+      "requiresExternalResult": true
+    },
+    {
+      "pattern": "propose_file_change",
+      "allowedStages": ["tool-selection", "verifying"],
+      "requiresApproval": true,
+      "requiresExternalResult": true
+    },
+    {
+      "pattern": "propose_mcp_server",
+      "allowedStages": ["tool-selection", "verifying"],
+      "requiresApproval": true,
+      "requiresExternalResult": true
+    },
+    {
+      "pattern": "launch_cloud_agent",
+      "allowedStages": ["tool-selection", "verifying"],
+      "requiresApproval": true,
+      "requiresExternalResult": true
+    },
+    {
+      "pattern": "mcp__",
+      "matchKind": "prefix",
+      "allowedStages": ["tool-selection", "verifying"]
+    }
+  ],
   "stages": [
     {
       "id": "preparing",
@@ -75,6 +121,20 @@
       ],
       "emittedEvents": [
         "agent:status(preparing)"
+      ],
+      "transitions": [
+        {
+          "eventId": "prepare-context",
+          "targetStageId": "reasoning"
+        },
+        {
+          "eventId": "fail-run",
+          "targetStageId": "failed"
+        },
+        {
+          "eventId": "cancel-run",
+          "targetStageId": "cancelled"
+        }
       ],
       "nextStages": [
         "reasoning",
@@ -122,6 +182,28 @@
       "emittedEvents": [
         "agent:reasoning",
         "agent:status(running)"
+      ],
+      "transitions": [
+        {
+          "eventId": "continue-to-planning",
+          "targetStageId": "planning"
+        },
+        {
+          "eventId": "skip-planning",
+          "targetStageId": "tool-selection"
+        },
+        {
+          "eventId": "emit-final-answer",
+          "targetStageId": "completed"
+        },
+        {
+          "eventId": "cancel-run",
+          "targetStageId": "cancelled"
+        },
+        {
+          "eventId": "fail-run",
+          "targetStageId": "failed"
+        }
       ],
       "nextStages": [
         "planning",
@@ -178,6 +260,24 @@
       ],
       "emittedEvents": [
         "agent:tool_call(propose_plan|update_plan|plan_execution)"
+      ],
+      "transitions": [
+        {
+          "eventId": "plan-tool-finished",
+          "targetStageId": "tool-selection"
+        },
+        {
+          "eventId": "decline-plan",
+          "targetStageId": "tool-selection"
+        },
+        {
+          "eventId": "emit-final-answer",
+          "targetStageId": "completed"
+        },
+        {
+          "eventId": "fail-run",
+          "targetStageId": "failed"
+        }
       ],
       "nextStages": [
         "tool-selection",
@@ -276,6 +376,24 @@
         "agent:tool_call(*)",
         "agent:status(running)"
       ],
+      "transitions": [
+        {
+          "eventId": "await-user-approval",
+          "targetStageId": "awaiting-approval"
+        },
+        {
+          "eventId": "dispatch-tool",
+          "targetStageId": "executing"
+        },
+        {
+          "eventId": "emit-final-answer",
+          "targetStageId": "completed"
+        },
+        {
+          "eventId": "fail-run",
+          "targetStageId": "failed"
+        }
+      ],
       "nextStages": [
         "awaiting-approval",
         "executing",
@@ -322,6 +440,24 @@
       ],
       "emittedEvents": [
         "agent:status(waitingForTool)"
+      ],
+      "transitions": [
+        {
+          "eventId": "approve-action",
+          "targetStageId": "executing"
+        },
+        {
+          "eventId": "edit-action",
+          "targetStageId": "executing"
+        },
+        {
+          "eventId": "reject-action",
+          "targetStageId": "failed"
+        },
+        {
+          "eventId": "cancel-run",
+          "targetStageId": "cancelled"
+        }
       ],
       "nextStages": [
         "executing",
@@ -391,6 +527,20 @@
         "terminal block events",
         "agent:status(running)"
       ],
+      "transitions": [
+        {
+          "eventId": "capture-tool-result",
+          "targetStageId": "verifying"
+        },
+        {
+          "eventId": "execution-error",
+          "targetStageId": "failed"
+        },
+        {
+          "eventId": "cancel-run",
+          "targetStageId": "cancelled"
+        }
+      ],
       "nextStages": [
         "verifying",
         "failed",
@@ -449,6 +599,20 @@
       "emittedEvents": [
         "agent:tool_call(update_plan|plan_execution|suggest_follow_up)",
         "agent:status(running)"
+      ],
+      "transitions": [
+        {
+          "eventId": "request-another-tool",
+          "targetStageId": "tool-selection"
+        },
+        {
+          "eventId": "emit-final-answer",
+          "targetStageId": "completed"
+        },
+        {
+          "eventId": "fail-run",
+          "targetStageId": "failed"
+        }
       ],
       "nextStages": [
         "tool-selection",

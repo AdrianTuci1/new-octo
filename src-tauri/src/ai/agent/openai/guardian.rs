@@ -1,8 +1,7 @@
 use super::config::OpenAiCompatibleConfig;
-use super::utils;
 use crate::ai::agent::harness::AgentHarnessError;
-use reqwest::header::{HeaderMap, HeaderValue, CONTENT_TYPE};
-use serde_json::{json, Value};
+use crate::ai::provider_adapter::{generate_completion, ProviderCompletionRequest};
+use serde_json::json;
 use std::time::Duration;
 
 pub async fn run_guardian_check(
@@ -15,8 +14,6 @@ pub async fn run_guardian_check(
         .timeout(Duration::from_secs(15))
         .build()
         .map_err(|e| AgentHarnessError::new(format!("Failed to build Guardian client: {e}")))?;
-
-    let endpoint = utils::resolve_chat_endpoint(&config.base_url);
 
     let guardian_system = "Ești un Guardian de terminal de elită încorporat într-un asistent software local. \
         Rolul tău este să interceptezi silențios comanda pe care asistentul dorește să o ruleze și să evaluezi dinamica siguranței și utilității sale. \
@@ -31,49 +28,31 @@ pub async fn run_guardian_check(
         prompt, command
     );
 
-    let request = json!({
-        "model": guardian_model,
-        "messages": [
-            {
+    let body = ProviderCompletionRequest {
+        model: guardian_model.to_string(),
+        messages: vec![
+            json!({
                 "role": "system",
                 "content": guardian_system
-            },
-            {
+            }),
+            json!({
                 "role": "user",
                 "content": guardian_user
-            }
+            }),
         ],
-        "temperature": 0.0
-    });
+        tools: None,
+        temperature: Some(0.0),
+        max_tokens: Some(256),
+        response_mime_type: None,
+    };
 
-    let mut headers = HeaderMap::new();
-    headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
-
-    let response = client
-        .post(&endpoint)
-        .bearer_auth(&config.api_key)
-        .headers(headers)
-        .json(&request)
-        .send()
-        .await
-        .map_err(|error| AgentHarnessError::new(format!("Guardian post failed: {error}")))?;
-
-    if response.status().is_success() {
-        let body: Value = response.json().await.unwrap_or(json!({}));
-        if let Some(content) = body
-            .get("choices")
-            .and_then(|c| c.as_array())
-            .and_then(|a| a.first())
-            .and_then(|f| f.get("message"))
-            .and_then(|m| m.get("content"))
-            .and_then(|s| s.as_str())
-        {
-            let trimmed = content.trim();
-            if trimmed.eq_ignore_ascii_case("APROBAT") {
-                return Ok(None);
-            } else {
-                return Ok(Some(trimmed.to_string()));
-            }
+    if let Ok(response) = generate_completion(&client, config, body).await {
+        let trimmed = response.text.trim();
+        if trimmed.eq_ignore_ascii_case("APROBAT") {
+            return Ok(None);
+        }
+        if !trimmed.is_empty() {
+            return Ok(Some(trimmed.to_string()));
         }
     }
 

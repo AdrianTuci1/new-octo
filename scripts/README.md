@@ -7,6 +7,7 @@ This folder contains the local development and packaging entrypoints for the pro
 - `tauri-env.sh`: loads the Rust/Tauri toolchain environment
 - `tauri-cli.sh`: runs the local Tauri CLI with the expected Cargo runner
 - `tauri-dev.sh`: starts the desktop app in development mode
+- `test-model-env.sh`: loads `tests.env` and runs only the explicitly requested model-backed test command
 - `dev-start.sh`: convenience wrapper for the local app/dev flow
 - `dev-stop.sh`: stops the local dev processes
 
@@ -26,4 +27,8 @@ This folder contains the local development and packaging entrypoints for the pro
 - Linux desktop builds default to `.AppImage` and `.deb`.
 - The AWS release flow expects `AWS_REGION` or a configured default region and uses temporary AWS resources that are cleaned up at the end of the run.
 - `release-aws.sh` auto-loads `release.env` from the repository root before reading `AWS_*` and `R2_*` settings, and falls back to `.env` only when `release.env` is missing.
+- For model-backed tests, keep secrets in `tests.env` and run them through `npm run test:model-env -- <command>`.
 - For R2 uploads, set `R2_ENDPOINT_URL`, `R2_BUCKET`, `R2_ACCESS_KEY_ID`, and `R2_SECRET_ACCESS_KEY`. `R2_PREFIX` is optional.
+- To publish updater manifests alongside the release bundles, also set `R2_PUBLIC_BASE_URL` to the public HTTPS base URL that serves the uploaded files from R2. `R2_UPDATER_PREFIX` is optional and defaults to `updater`.
+- With that layout, the updater endpoint template is `${R2_PUBLIC_BASE_URL%/}/${R2_UPDATER_PREFIX:-updater}/{{target}}-{{arch}}.json`.
+- AWS CodeBuild only emits signed updater artifacts when `TAURI_SIGNING_PRIVATE_KEY` or `TAURI_SIGNING_PRIVATE_KEY_FILE` is available before running `npm run release:aws`. `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` is optional.

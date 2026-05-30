@@ -3,6 +3,8 @@ dist
 src-tauri/target
 target
 .env
+tests.env
 artifacts
 .codegraphy/
 release.env
+tests.env

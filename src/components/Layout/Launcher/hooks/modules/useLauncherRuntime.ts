@@ -12,13 +12,10 @@ import type {
   WebSearchRequest,
   WebSearchResponse,
   CloudAgentLaunchRequest,
+  WorkspaceExplorationResponse,
   WorkspaceFileReadRequest,
-  WorkspaceExplorationDirectory,
-  WorkspaceExplorationFile,
   WorkspaceExplorationRequest,
-  WorkspaceExplorationEntry,
-  WorkspaceExplorationSegment,
-  WorkspaceExplorationSearch
+  WorkspaceExplorationEntry
 } from '../../../../../types/chat';
 import type { TerminalCommandBlock } from '../../../../../types/terminal';
 
@@ -44,113 +41,6 @@ function dedupeTerminalBlocks(blocks: TerminalCommandBlock[]) {
   return [...blockById.values()];
 }
 
-const WORKSPACE_QUERY_STOP_WORDS = new Set([
-  'a',
-  'ai',
-  'al',
-  'ale',
-  'all',
-  'and',
-  'are',
-  'as',
-  'at',
-  'ca',
-  'cat',
-  'ce',
-  'cum',
-  'cu',
-  'de',
-  'despre',
-  'din',
-  'do',
-  'does',
-  'este',
-  'for',
-  'how',
-  'in',
-  'is',
-  'it',
-  'la',
-  'mod',
-  'ne',
-  'of',
-  'on',
-  'pe',
-  'prin',
-  'restul',
-  'sau',
-  'si',
-  'sunt',
-  'the',
-  'to',
-  'ul',
-  'un',
-  'una',
-  'unei',
-  'unor',
-  'va'
-]);
-
-function normalizeWorkspaceToken(token: string) {
-  const trimmed = token
-    .trim()
-    .replace(/^[^A-Za-z0-9]+|[^A-Za-z0-9]+$/g, '');
-
-  if (!trimmed) {
-    return '';
-  }
-
-  const normalized = trimmed
-    .split(/[-_]/g)
-    .filter(Boolean)
-    .join(' ')
-    .toLowerCase()
-    .replace(/\b([a-z0-9]+?)(?:ului|elor|ilor|urile|urilor|ul|le|lor)\b/g, '$1')
-    .replace(/\s+/g, ' ')
-    .trim();
-
-  return normalized;
-}
-
-function buildWorkspaceSearchQueries(query: string, maxQueries = 4) {
-  const normalizedQuery = query.replace(/\s+/g, ' ').trim();
-  const queries: string[] = [];
-  const seen = new Set<string>();
-
-  const pushQuery = (value: string) => {
-    const cleaned = value.replace(/\s+/g, ' ').trim();
-    const key = cleaned.toLowerCase();
-    if (!cleaned || seen.has(key)) {
-      return;
-    }
-    seen.add(key);
-    queries.push(cleaned);
-  };
-
-  if (normalizedQuery && normalizedQuery.split(/\s+/).length <= 6) {
-    pushQuery(normalizedQuery);
-  }
-
-  const normalizedTokens = (normalizedQuery.match(/[A-Za-z0-9][A-Za-z0-9_-]*/g) ?? [])
-    .flatMap((token) => normalizeWorkspaceToken(token).split(/\s+/g))
-    .map((token) => token.trim())
-    .filter((token) => token.length >= 2 && !WORKSPACE_QUERY_STOP_WORDS.has(token));
-
-  normalizedTokens
-    .filter((token) => token.length >= 4)
-    .forEach(pushQuery);
-
-  if (normalizedTokens.length >= 2) {
-    pushQuery(`${normalizedTokens[0]} ${normalizedTokens[1]}`);
-  }
-
-  if (queries.length === 0 && normalizedQuery) {
-    pushQuery(normalizedQuery);
-  }
-
-  return queries.slice(0, Math.max(1, maxQueries));
-}
-
 function displayWorkspacePath(path: string, cwd?: string | null) {
   const normalizedPath = path.trim();
   const normalizedCwd = cwd?.trim();
@@ -168,39 +58,6 @@ function displayWorkspacePath(path: string, cwd?: string | null) {
   }
 
   return normalizedPath;
-}
-
-function summarizeWorkspaceExploration(params: {
-  mode: 'list' | 'search';
-  fileCount: number;
-  directoryCount: number;
-  searchCount: number;
-  targetPath?: string | null;
-  cwd?: string | null;
-}) {
-  const { mode, fileCount, directoryCount, searchCount, targetPath, cwd } = params;
-  const displayPath = targetPath ? displayWorkspacePath(targetPath, cwd) : '.';
-
-  if (mode === 'list') {
-    return `Listed ${directoryCount} director${directoryCount === 1 ? 'y' : 'ies'} and ${fileCount} file${fileCount === 1 ? '' : 's'} in ${displayPath || '.'}.`;
-  }
-
-  return `Explored ${fileCount} file${fileCount === 1 ? '' : 's'}, ${directoryCount} director${directoryCount === 1 ? 'y' : 'ies'}, ${searchCount} search${searchCount === 1 ? '' : 'es'} in ${displayPath || '.'}.`;
-}
-
-function isPathWithinRoot(path: string, rootPath?: string | null) {
-  const normalizedPath = path.trim();
-  const normalizedRoot = rootPath?.trim();
-  if (!normalizedPath || !normalizedRoot) {
-    return true;
-  }
-
-  if (normalizedPath === normalizedRoot) {
-    return true;
-  }
-
-  const rootPrefix = normalizedRoot.endsWith('/') ? normalizedRoot : `${normalizedRoot}/`;
-  return normalizedPath.startsWith(rootPrefix);
 }
 
 function formatWorkspaceFileSnippet(params: {
@@ -592,350 +449,42 @@ export function useLauncherRuntime(props: LauncherProps, store: any, tray: any) 
       return;
     }
 
-    const mode = request.mode === 'list' ? 'list' : 'search';
+    const mode = request.mode ?? 'search';
     const query = request.query?.trim() ?? '';
+    const symbol = request.symbol?.trim() ?? '';
+    const filePath = request.filePath?.trim() ?? '';
     const targetPath = request.path?.trim() || effectiveWorkingDirectory;
-    const includeFiles = request.includeFiles !== false;
-    const includeDirectories = request.includeDirectories ?? (mode === 'list');
-    const recursive = request.recursive ?? (mode === 'search');
 
-    if (!query && !targetPath) {
+    if (!query && !symbol && !filePath && !targetPath) {
       return;
     }
 
-    const cwd = effectiveWorkingDirectory;
-    const maxResults = Math.max(1, Math.min(50, request.maxResults ?? (mode === 'list' ? 24 : 8)));
-    const searchQueries = query ? buildWorkspaceSearchQueries(query) : [];
-
-    type FilesystemSearchEntry = {
-      name: string;
-      path: string;
-      isDirectory: boolean;
-    };
-
-    type FilesystemSearchListing = {
-      currentPath: string;
-      entries: FilesystemSearchEntry[];
-    };
-
-    type FilesystemDirectoryEntry = {
-      name: string;
-      path: string;
-      isDirectory: boolean;
-    };
-
-    type FilesystemDirectoryListing = {
-      currentPath: string;
-      parentPath?: string | null;
-      entries: FilesystemDirectoryEntry[];
-    };
-
-    type CodeIndexSearchResult = {
-      path: string;
-      snippet: string;
-      relativePath: string;
-      language: string;
-    };
-
     try {
-      const createdAt = new Date().toISOString();
-      const searches: WorkspaceExplorationSearch[] = [];
-      const fileMap = new Map<string, WorkspaceExplorationFile>();
-      const directoryMap = new Map<string, WorkspaceExplorationDirectory>();
-      const collectedErrors: string[] = [];
-      const entries: WorkspaceExplorationEntry[] = [];
-      let localSearchMatched = false;
-
-      if (mode === 'list') {
-        const listing = await invoke<FilesystemDirectoryListing>('terminal_list_directory_entries', {
-          request: {
-            path: targetPath,
-            cwd,
-            query: query || undefined,
-            directoriesOnly: false
-          }
-        });
-
-        searches.push({
-          mode: 'list',
-          source: 'filesystem',
-          query: query || '.',
-          resultCount: listing.entries.length,
-          path: listing.currentPath
-        });
-        entries.push({
-          id: `workspace-exploration-${createdAt}-filesystem-list`,
-          kind: 'search',
-          text: `Listed ${displayWorkspacePath(listing.currentPath, cwd) || '.'}`,
-          detail: query
-            ? `filtered by "${query}" (${listing.entries.length} match${listing.entries.length === 1 ? '' : 'es'}${listing.entries.length > maxResults ? `, showing first ${maxResults}` : ''})`
-            : `${listing.entries.length} visible entr${listing.entries.length === 1 ? 'y' : 'ies'}${listing.entries.length > maxResults ? `, showing first ${maxResults}` : ''}`,
-          createdAt
-        });
-
-        for (const entry of listing.entries) {
-          if (entry.isDirectory) {
-            if (includeDirectories && !directoryMap.has(entry.path)) {
-              directoryMap.set(entry.path, { path: entry.path, source: 'filesystem' });
-            }
-            continue;
-          }
-
-          if (includeFiles && !fileMap.has(entry.path)) {
-            fileMap.set(entry.path, { path: entry.path, source: 'filesystem' });
-          }
+      const response = await invoke<WorkspaceExplorationResponse>('workspace_explore', {
+        request: {
+          ...request,
+          mode,
+          query: query || undefined,
+          symbol: symbol || undefined,
+          filePath: filePath || undefined,
+          path: targetPath || undefined,
+          cwd: effectiveWorkingDirectory
         }
-      }
-
-      if (mode === 'search' && codeSettings.indexing.enabled && query && includeFiles) {
-        for (const searchQuery of searchQueries) {
-          try {
-            const results = await invoke<CodeIndexSearchResult[]>('code_index_search', {
-              query: searchQuery,
-              maxResults: Math.max(1, Math.min(20, maxResults))
-            });
-            const filteredResults = results.filter((entry) => isPathWithinRoot(entry.path, targetPath));
-
-            searches.push({
-              mode: 'search',
-              source: 'code-index',
-              query: searchQuery,
-              resultCount: filteredResults.length,
-              path: targetPath || undefined
-            });
-            entries.push({
-              id: `workspace-exploration-${createdAt}-code-index-search-${searches.length}`,
-              kind: 'search',
-              text: `Searched for ${searchQuery}`,
-              detail: `in code index (${filteredResults.length} match${filteredResults.length === 1 ? '' : 'es'})`,
-              createdAt
-            });
-
-            filteredResults.forEach((entry) => {
-              if (!entry.path.trim()) return;
-              if (!fileMap.has(entry.path)) {
-                fileMap.set(entry.path, {
-                  path: entry.path,
-                  source: 'code-index',
-                  snippet: entry.snippet?.trim() || undefined
-                });
-              }
-            });
-          } catch (error) {
-            collectedErrors.push(error instanceof Error ? error.message : String(error));
-          }
-        }
-      }
-
-      if (mode === 'search' && query) {
-        try {
-          const listing = await invoke<FilesystemDirectoryListing>('terminal_list_directory_entries', {
-            request: {
-              path: targetPath,
-              cwd,
-              query,
-              directoriesOnly: false
-            }
-          });
-          const resultCount = listing.entries.filter((entry) => (
-            (entry.isDirectory && includeDirectories) || (!entry.isDirectory && includeFiles)
-          )).length;
-          searches.push({
-            mode: 'search',
-            source: 'filesystem',
-            query,
-            resultCount,
-            path: listing.currentPath
-          });
-          localSearchMatched = resultCount > 0;
-          entries.push({
-            id: `workspace-exploration-${createdAt}-filesystem-local-filter`,
-            kind: 'search',
-            text: `Filtered ${displayWorkspacePath(listing.currentPath, cwd) || '.'}`,
-            detail: `locally with "${query}" (${resultCount} match${resultCount === 1 ? '' : 'es'})`,
-            createdAt
-          });
-
-          listing.entries.forEach((entry) => {
-            if (!entry.path.trim()) return;
-            if (entry.isDirectory) {
-              if (includeDirectories && !directoryMap.has(entry.path)) {
-                directoryMap.set(entry.path, { path: entry.path, source: 'filesystem' });
-              }
-              return;
-            }
-
-            if (includeFiles && !fileMap.has(entry.path)) {
-              fileMap.set(entry.path, { path: entry.path, source: 'filesystem' });
-            }
-          });
-        } catch (error) {
-          collectedErrors.push(error instanceof Error ? error.message : String(error));
-        }
-
-        if (!localSearchMatched) {
-          for (const searchQuery of searchQueries) {
-          try {
-            if (recursive) {
-              const listing = await invoke<FilesystemSearchListing>('terminal_search_directory_entries', {
-                request: {
-                  path: targetPath,
-                  cwd,
-                  query: searchQuery
-                }
-              });
-
-              const resultCount = listing.entries.filter((entry) => (
-                (entry.isDirectory && includeDirectories) || (!entry.isDirectory && includeFiles)
-              )).length;
-              searches.push({
-                mode: 'search',
-                source: 'filesystem',
-                query: searchQuery,
-                resultCount,
-                path: listing.currentPath
-              });
-              entries.push({
-                id: `workspace-exploration-${createdAt}-filesystem-search-${searches.length}`,
-                kind: 'search',
-                text: `Searched for ${searchQuery}`,
-                detail: `recursively in ${displayWorkspacePath(listing.currentPath, cwd) || '.'} (${resultCount} match${resultCount === 1 ? '' : 'es'}${resultCount > maxResults ? `, showing first ${maxResults}` : ''})`,
-                createdAt
-              });
-
-              listing.entries.forEach((entry) => {
-                if (!entry.path.trim()) return;
-                if (entry.isDirectory) {
-                  if (includeDirectories && !directoryMap.has(entry.path)) {
-                    directoryMap.set(entry.path, { path: entry.path, source: 'filesystem' });
-                  }
-                  return;
-                }
-
-                if (includeFiles && !fileMap.has(entry.path)) {
-                  fileMap.set(entry.path, {
-                    path: entry.path,
-                    source: 'filesystem'
-                  });
-                }
-              });
-            } else {
-              const listing = await invoke<FilesystemDirectoryListing>('terminal_list_directory_entries', {
-                request: {
-                  path: targetPath,
-                  cwd,
-                  query: searchQuery,
-                  directoriesOnly: false
-                }
-              });
-              const resultCount = listing.entries.filter((entry) => (
-                (entry.isDirectory && includeDirectories) || (!entry.isDirectory && includeFiles)
-              )).length;
-              searches.push({
-                mode: 'search',
-                source: 'filesystem',
-                query: searchQuery,
-                resultCount,
-                path: listing.currentPath
-              });
-              entries.push({
-                id: `workspace-exploration-${createdAt}-filesystem-filter-${searches.length}`,
-                kind: 'search',
-                text: `Filtered ${displayWorkspacePath(listing.currentPath, cwd) || '.'}`,
-                detail: `with "${searchQuery}" (${resultCount} match${resultCount === 1 ? '' : 'es'}${resultCount > maxResults ? `, showing first ${maxResults}` : ''})`,
-                createdAt
-              });
-
-              listing.entries.forEach((entry) => {
-                if (entry.isDirectory) {
-                  if (includeDirectories && !directoryMap.has(entry.path)) {
-                    directoryMap.set(entry.path, { path: entry.path, source: 'filesystem' });
-                  }
-                  return;
-                }
-
-                if (includeFiles && !fileMap.has(entry.path)) {
-                  fileMap.set(entry.path, { path: entry.path, source: 'filesystem' });
-                }
-              });
-            }
-          } catch (error) {
-            collectedErrors.push(error instanceof Error ? error.message : String(error));
-          }
-        }
-        }
-      }
-
-      const visibleCandidates = [
-        ...Array.from(directoryMap.values(), (directory) => ({ kind: 'directory' as const, value: directory })),
-        ...Array.from(fileMap.values(), (file) => ({ kind: 'file' as const, value: file }))
-      ]
-        .sort((left, right) => left.value.path.localeCompare(right.value.path))
-        .slice(0, maxResults);
-      const directories = visibleCandidates
-        .filter((candidate) => candidate.kind === 'directory')
-        .map((candidate) => candidate.value);
-      const files = visibleCandidates
-        .filter((candidate) => candidate.kind === 'file')
-        .map((candidate) => candidate.value);
-
-      const summary = summarizeWorkspaceExploration({
-        mode,
-        fileCount: files.length,
-        directoryCount: directories.length,
-        searchCount: searches.length,
-        targetPath,
-        cwd
       });
-
-      const segment: WorkspaceExplorationSegment = {
-        id: `workspace-exploration-${createdAt}`,
-        createdAt,
-        summary,
-        entries,
-        searches,
-        files,
-        directories
-      };
-      const formatted = [
-        localSearchMatched && files.length > 0
-          ? `Local matches found in the current directory. Inspect these files next before broader search.`
-          : '',
-        summary,
-        targetPath ? `Path: ${displayWorkspacePath(targetPath, cwd) || '.'}` : '',
-        mode === 'search' && searchQueries.length > 1 ? `Search queries: ${searchQueries.join(', ')}` : '',
-        files.length > 0 ? `Files:\n${files.map((file) => `- ${displayWorkspacePath(file.path, cwd) || file.path}`).join('\n')}` : '',
-        directories.length > 0 ? `Directories:\n${directories.map((directory) => `- ${displayWorkspacePath(directory.path, cwd) || directory.path}`).join('\n')}` : '',
-        ...(collectedErrors.length > 0 ? [`Search warnings: ${collectedErrors.join(' | ')}`] : []),
-        ...entries.map((entry) => [
-          entry.text,
-          entry.path ? `Path: ${displayWorkspacePath(entry.path, cwd)}` : '',
-          entry.detail ? `Detail: ${entry.detail}` : ''
-        ].filter(Boolean).join('\n'))
-      ].join('\n');
 
       void chatApiRef.current?.submitToolResult(
         request.toolCallId,
-        formatted,
+        response.formatted,
         'workspace-exploration',
-        request.query ?? request.path ?? mode,
+        query || symbol || filePath || request.path || mode,
         [],
         {
-          workspaceExploration: {
-            query: query || undefined,
-            mode,
-            path: targetPath,
-            summary,
-            segments: [segment],
-            searches,
-            files,
-            directories
-          }
+          workspaceExploration: response.artifact
         }
       );
     } catch (error) {
       const createdAt = new Date().toISOString();
-      const explorationLabel = query || targetPath || mode;
+      const explorationLabel = query || symbol || filePath || targetPath || mode;
       const noteEntry: WorkspaceExplorationEntry = {
         id: `workspace-exploration-error-${Date.now()}`,
         kind: 'note',
@@ -951,7 +500,7 @@ export function useLauncherRuntime(props: LauncherProps, store: any, tray: any) 
         [],
         {
           workspaceExploration: {
-            query: query || undefined,
+            query: query || symbol || undefined,
             mode,
             path: targetPath,
             summary: `Workspace exploration failed for "${explorationLabel}".`,
@@ -971,7 +520,7 @@ export function useLauncherRuntime(props: LauncherProps, store: any, tray: any) 
         }
       );
     }
-  }, [agentSettings.enabled, codeSettings.indexing.enabled, effectiveWorkingDirectory]);
+  }, [agentSettings.enabled, effectiveWorkingDirectory]);
 
   const requestWorkspaceFileRead = useCallback(async (request: WorkspaceFileReadRequest) => {
     const requestedPath = request.path.trim();
@@ -1091,6 +640,7 @@ export function useLauncherRuntime(props: LauncherProps, store: any, tray: any) 
   const chatRaw = Hooks.useChat({
     conversationId: resolvedConversationId,
     cwd: effectiveWorkingDirectory,
+    surface: store.composerSurface === 'terminal' ? 'terminal' : 'agent',
     modelId: profileBaseModelId,
     terminalModelId: profileTerminalModelId,
     requiresModelSetup: modelSelection.requiresModelSetup,

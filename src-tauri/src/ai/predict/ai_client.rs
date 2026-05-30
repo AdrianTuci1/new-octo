@@ -1,5 +1,8 @@
 use super::context::gather_local_context;
 use super::model::{CommandPrediction, ContextMessageInput, PredictionKind};
+use crate::ai::agent::{OpenAiCompatibleConfig, OpenAiCompatibleProvider};
+use crate::ai::provider_adapter::{generate_completion, ProviderCompletionRequest};
+use serde_json::json;
 
 pub async fn predict_with_llm(
     input: &str,
@@ -26,11 +29,13 @@ pub async fn predict_with_llm(
     };
 
     let client = reqwest::Client::new();
-    let url = if base_url.ends_with("/chat/completions") {
-        base_url.to_string()
-    } else {
-        format!("{}/chat/completions", base_url.trim_end_matches('/'))
-    };
+    let config = OpenAiCompatibleConfig::new(
+        OpenAiCompatibleProvider::infer_from_base_url(base_url),
+        api_key.to_string(),
+        Some(base_url.to_string()),
+        Some(model_id.to_string()),
+        "prediction".to_string(),
+    );
 
     // Format context for the prompt
     let context_history = context_messages
@@ -50,17 +55,17 @@ pub async fn predict_with_llm(
         .collect::<Vec<_>>()
         .join("\n");
 
-    let response = client
-        .post(&url)
-        .bearer_auth(api_key)
-        .json(&serde_json::json!({
-            "model": model_id,
-            "messages": [
-                {
+    let response = generate_completion(
+        &client,
+        &config,
+        ProviderCompletionRequest {
+            model: model_id.to_string(),
+            messages: vec![
+                json!({
                     "role": "system",
                     "content": "You are a professional shell completion engine. You will receive recent terminal history, similar historical command sequences, current directory file listing, and user input. Output ONLY the most likely full shell command starting with the user's input. Aim for complete, high-quality commands. No explanations, no markdown."
-                },
-                {
+                }),
+                json!({
                     "role": "user",
                     "content": format!(
                         "FILES IN DIRECTORY: {:?}\nGIT BRANCH: {:?}\n\nRECENT HISTORY:\n{}\n\nSIMILAR HISTORY CONTEXT:\n{}\n\nREJECTED SUGGESTIONS:\n{:?}\n\nCURRENT INPUT: {}\nLAST COMMAND: {}",
@@ -72,24 +77,17 @@ pub async fn predict_with_llm(
                         trimmed,
                         last_command.unwrap_or("none")
                     )
-                }
+                }),
             ],
-            "max_tokens": 50,
-            "temperature": 0.1
-        }))
-        .send()
-        .await
-        .ok()?;
-
-    if !response.status().is_success() {
-        return None;
-    }
-
-    let value: serde_json::Value = response.json().await.ok()?;
-    let suggestion = value["choices"][0]["message"]["content"]
-        .as_str()?
-        .trim()
-        .to_string();
+            tools: None,
+            temperature: Some(0.1),
+            max_tokens: Some(50),
+            response_mime_type: None,
+        },
+    )
+    .await
+    .ok()?;
+    let suggestion = response.text.trim().to_string();
 
     if suggestion
         .to_lowercase()

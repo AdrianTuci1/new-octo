@@ -16,7 +16,7 @@
 
 use octomus_launcher_prototype::{
     ai, app_updates, cloud_runtime, code_index, keybindings, memory, octomus_paths, secure_store,
-    shell_signatures, terminal,
+    shell_signatures, terminal, workspace_intelligence,
 };
 use serde::Serialize;
 use std::sync::Mutex;
@@ -357,6 +357,7 @@ fn main() {
             terminal::terminal_get_composer_intelligence,
             terminal::terminal_read_file,
             terminal::terminal_write_file,
+            workspace_intelligence::workspace_explore,
             octomus_paths::octomus_list_tab_configs,
             memory::memory_bootstrap,
             memory::memory_put_settings,

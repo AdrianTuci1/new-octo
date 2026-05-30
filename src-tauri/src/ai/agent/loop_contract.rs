@@ -15,6 +15,8 @@ pub struct AgentLoopContract {
     pub run_status_mapping: AgentLoopRunStatusMapping,
     pub shared_decision_types: Vec<String>,
     pub shared_tool_names: Vec<String>,
+    #[serde(default)]
+    pub tool_policies: Vec<AgentToolPolicy>,
     pub stages: Vec<AgentLoopStage>,
 }
 
@@ -44,7 +46,16 @@ pub struct AgentLoopStage {
     pub allowed_tools: Vec<String>,
     pub allowed_decisions: Vec<AgentLoopDecision>,
     pub emitted_events: Vec<String>,
+    #[serde(default)]
+    pub transitions: Vec<AgentLoopTransition>,
     pub next_stages: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentLoopTransition {
+    pub event_id: String,
+    pub target_stage_id: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -57,6 +68,40 @@ pub struct AgentLoopDecision {
     pub description: String,
     #[serde(default)]
     pub tool: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum AgentToolMatchKind {
+    Exact,
+    Prefix,
+}
+
+fn default_tool_match_kind() -> AgentToolMatchKind {
+    AgentToolMatchKind::Exact
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentToolPolicy {
+    pub pattern: String,
+    #[serde(default = "default_tool_match_kind")]
+    pub match_kind: AgentToolMatchKind,
+    #[serde(default)]
+    pub allowed_stages: Vec<String>,
+    #[serde(default)]
+    pub requires_approval: bool,
+    #[serde(default)]
+    pub requires_external_result: bool,
+}
+
+impl AgentToolPolicy {
+    pub fn matches(&self, tool_name: &str) -> bool {
+        match self.match_kind {
+            AgentToolMatchKind::Exact => self.pattern == tool_name,
+            AgentToolMatchKind::Prefix => tool_name.starts_with(&self.pattern),
+        }
+    }
 }
 
 static LOOP_CONTRACT: OnceLock<AgentLoopContract> = OnceLock::new();
@@ -113,9 +158,68 @@ pub fn validate_loop_contract(contract: &AgentLoopContract) -> Result<(), String
                 ));
             }
         }
+
+        for transition in &stage.transitions {
+            if transition.event_id.trim().is_empty() {
+                return Err(format!("stage '{}' has a transition with an empty eventId", stage.id));
+            }
+
+            if !stage_id_set.contains(&transition.target_stage_id) {
+                return Err(format!(
+                    "stage '{}' transition '{}' references unknown target stage '{}'",
+                    stage.id, transition.event_id, transition.target_stage_id
+                ));
+            }
+
+            if !stage.next_stages.iter().any(|next| next == &transition.target_stage_id) {
+                return Err(format!(
+                    "stage '{}' transition '{}' targets '{}' which is missing from nextStages",
+                    stage.id, transition.event_id, transition.target_stage_id
+                ));
+            }
+        }
+    }
+
+    for policy in &contract.tool_policies {
+        if policy.pattern.trim().is_empty() {
+            return Err("tool policy pattern cannot be empty".to_string());
+        }
+
+        for stage_id in &policy.allowed_stages {
+            if !stage_id_set.contains(stage_id) {
+                return Err(format!(
+                    "tool policy '{}' references unknown allowed stage '{}'",
+                    policy.pattern, stage_id
+                ));
+            }
+        }
     }
 
     Ok(())
+}
+
+pub fn find_stage(stage_id: &str) -> Option<&'static AgentLoopStage> {
+    get_loop_contract()
+        .stages
+        .iter()
+        .find(|stage| stage.id == stage_id)
+}
+
+pub fn resolve_stage_transition(
+    stage_id: &str,
+    event_id: &str,
+) -> Option<&'static AgentLoopTransition> {
+    find_stage(stage_id)?
+        .transitions
+        .iter()
+        .find(|transition| transition.event_id == event_id)
+}
+
+pub fn find_tool_policy(tool_name: &str) -> Option<&'static AgentToolPolicy> {
+    get_loop_contract()
+        .tool_policies
+        .iter()
+        .find(|policy| policy.matches(tool_name))
 }
 
 pub fn stage_id_for_status(status: AgentRunStatus) -> &'static str {

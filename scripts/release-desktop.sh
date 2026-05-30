@@ -4,6 +4,20 @@ set -eu
 ROOT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 cd "$ROOT_DIR"
 
+RELEASE_ENV_FILE="${RELEASE_ENV_FILE:-$ROOT_DIR/release.env}"
+
+if [ -f "$RELEASE_ENV_FILE" ]; then
+  set -a
+  # Load release signing settings such as TAURI_SIGNING_PRIVATE_KEY for local bundles.
+  . "$RELEASE_ENV_FILE"
+  set +a
+elif [ -f "$ROOT_DIR/.env" ]; then
+  set -a
+  # Fall back to the app-local .env if no dedicated release env file exists.
+  . "$ROOT_DIR/.env"
+  set +a
+fi
+
 . ./scripts/tauri-env.sh
 
 VERSION="$(sed -n 's/^version = "\(.*\)"/\1/p' src-tauri/Cargo.toml | head -n 1)"
@@ -56,6 +70,8 @@ case "$PLATFORM" in
   macos)
     run_tauri_build "app"
     copy_dir_if_exists "$ROOT_DIR/target/release/bundle/macos/Octomus Launcher Prototype.app"
+    copy_if_exists "$ROOT_DIR/target/release/bundle/macos" "*.app.tar.gz"
+    copy_if_exists "$ROOT_DIR/target/release/bundle/macos" "*.app.tar.gz.sig"
 
     if ! run_tauri_build "dmg"; then
       echo "DMG bundling failed. On macOS this is often caused by Finder Automation permissions for Terminal or Codex." >&2
@@ -88,11 +104,14 @@ case "$PLATFORM" in
     ;;
   linux)
     copy_if_exists "$ROOT_DIR/target/release/bundle/appimage" "*.AppImage"
+    copy_if_exists "$ROOT_DIR/target/release/bundle/appimage" "*.AppImage.sig"
     copy_if_exists "$ROOT_DIR/target/release/bundle/deb" "*.deb"
     ;;
   windows)
     copy_if_exists "$ROOT_DIR/target/release/bundle/nsis" "*.exe"
+    copy_if_exists "$ROOT_DIR/target/release/bundle/nsis" "*.exe.sig"
     copy_if_exists "$ROOT_DIR/target/release/bundle/msi" "*.msi"
+    copy_if_exists "$ROOT_DIR/target/release/bundle/msi" "*.msi.sig"
     ;;
 esac
 

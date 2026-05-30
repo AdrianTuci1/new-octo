@@ -8,7 +8,10 @@ use super::{
     harness::{AgentCancellation, AgentEventSink, AgentHarnessContext},
     openai::{OpenAiCompatibleConfig, OpenAiCompatibleHarness},
     scripted::ScriptedHarness,
-    types::{AgentContinueRequest, AgentRunSnapshot, AgentRunStatus, AgentStartResponse},
+    types::{
+        AgentContinueRequest, AgentExecutionState, AgentRunSnapshot, AgentRunStatus,
+        AgentStartResponse,
+    },
 };
 use crate::ai::agent_management::AgentHarnessManager;
 
@@ -31,6 +34,7 @@ pub async fn agent_continue(
         .assistant_message_id
         .filter(|id| !id.trim().is_empty())
         .unwrap_or_else(|| format!("assistant_{}", Uuid::new_v4()));
+    let previous_snapshot = manager.get(&run_id).ok();
 
     let provider_config = manager
         .load_provider_config_from_disk()?
@@ -59,6 +63,7 @@ pub async fn agent_continue(
         conversation_id: conversation_id.clone(),
         assistant_message_id: assistant_message_id.clone(),
         prompt: String::new(),
+        surface: request.surface,
         messages: request.messages,
         terminal_blocks: request.terminal_blocks,
         cwd,
@@ -66,6 +71,9 @@ pub async fn agent_continue(
         target_arch: std::env::consts::ARCH.to_string(),
         model_id: model_id.clone(),
         terminal_model_id: request.terminal_model_id,
+        resume_execution_state: previous_snapshot
+            .as_ref()
+            .map(|snapshot| snapshot.execution_state.clone()),
     };
 
     let cancel_flag = Arc::new(AtomicBool::new(false));
@@ -80,6 +88,10 @@ pub async fn agent_continue(
             model_id,
             cwd: context.cwd.clone(),
             error: None,
+            execution_state: previous_snapshot
+                .as_ref()
+                .map(|snapshot| snapshot.execution_state.clone())
+                .unwrap_or_else(|| AgentExecutionState::new("preparing")),
             started_at: Utc::now(),
             finished_at: None,
         },

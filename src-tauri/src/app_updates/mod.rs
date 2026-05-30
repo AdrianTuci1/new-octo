@@ -105,15 +105,7 @@ impl RuntimeUpdaterConfig {
             return Ok(None);
         }
 
-        let endpoints = endpoints_raw
-            .split(|value| value == ',' || value == '\n')
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .map(|value| {
-                Url::parse(value)
-                    .map_err(|error| format!("invalid updater endpoint `{value}`: {error}"))
-            })
-            .collect::<Result<Vec<_>, _>>()?;
+        let endpoints = parse_updater_endpoints(&endpoints_raw);
 
         if endpoints.is_empty() {
             return Ok(None);
@@ -130,6 +122,42 @@ impl RuntimeUpdaterConfig {
             timeout: Duration::from_millis(timeout_ms),
         }))
     }
+}
+
+fn parse_updater_endpoints(endpoints_raw: &str) -> Vec<Url> {
+    endpoints_raw
+        .split(|value| value == ',' || value == '\n')
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .filter_map(parse_updater_endpoint)
+        .collect()
+}
+
+fn parse_updater_endpoint(value: &str) -> Option<Url> {
+    if endpoint_looks_like_placeholder(value) {
+        eprintln!(
+            "[updater] ignoring placeholder updater endpoint `{value}`; updater remains disabled until a real URL is configured"
+        );
+        return None;
+    }
+
+    match Url::parse(value) {
+        Ok(url) => Some(url),
+        Err(error) => {
+            eprintln!(
+                "[updater] ignoring invalid updater endpoint `{value}`: {error}. Updater remains disabled for this run."
+            );
+            None
+        }
+    }
+}
+
+fn endpoint_looks_like_placeholder(value: &str) -> bool {
+    value.contains('<')
+        || value.contains('>')
+        || value.contains("{{")
+        || value.contains("}}")
+        || value.contains("R2_PUBLIC_BASE_URL")
 }
 
 fn release_from_update(update: &Update) -> AppUpdateRelease {
@@ -348,4 +376,38 @@ pub async fn app_updates_install<R: Runtime>(
 #[tauri::command]
 pub fn app_updates_restart<R: Runtime>(app: AppHandle<R>) {
     app.request_restart();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{endpoint_looks_like_placeholder, parse_updater_endpoints};
+
+    #[test]
+    fn ignores_placeholder_updater_endpoints() {
+        let endpoints = parse_updater_endpoints(
+            "https://<R2_PUBLIC_BASE_URL>/updater/{{target}}-{{arch}}.json",
+        );
+
+        assert!(endpoints.is_empty());
+    }
+
+    #[test]
+    fn ignores_invalid_updater_endpoints_and_keeps_valid_ones() {
+        let endpoints = parse_updater_endpoints(
+            "https://<R2_PUBLIC_BASE_URL>/updater/{{target}}-{{arch}}.json, https://updates.example.com/latest.json",
+        );
+
+        assert_eq!(endpoints.len(), 1);
+        assert_eq!(endpoints[0].as_str(), "https://updates.example.com/latest.json");
+    }
+
+    #[test]
+    fn detects_placeholder_markers() {
+        assert!(endpoint_looks_like_placeholder(
+            "https://<R2_PUBLIC_BASE_URL>/updater/{{target}}-{{arch}}.json"
+        ));
+        assert!(!endpoint_looks_like_placeholder(
+            "https://updates.example.com/latest.json"
+        ));
+    }
 }

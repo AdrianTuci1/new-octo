@@ -71,6 +71,12 @@
   box-shadow: 0 0 0 2px rgba(0, 163, 255, 0.1);
 }
 
+.form-group input:disabled,
+.form-group select:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
 .select-wrapper {
   position: relative;
 }

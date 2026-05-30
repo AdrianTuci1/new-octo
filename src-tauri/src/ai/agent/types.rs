@@ -9,6 +9,7 @@ pub struct AgentRunRequest {
     pub conversation_id: Option<String>,
     pub assistant_message_id: Option<String>,
     pub prompt: String,
+    pub surface: Option<String>,
     pub cwd: Option<String>,
     pub model_id: Option<String>,
     pub terminal_model_id: Option<String>,
@@ -24,6 +25,7 @@ pub struct AgentContinueRequest {
     pub run_id: Option<String>,
     pub conversation_id: String,
     pub assistant_message_id: Option<String>,
+    pub surface: Option<String>,
     pub cwd: Option<String>,
     pub model_id: Option<String>,
     pub terminal_model_id: Option<String>,
@@ -61,6 +63,7 @@ pub struct AgentInputMessage {
 #[serde(rename_all = "camelCase")]
 pub struct AgentProviderConfigRequest {
     pub api_key: String,
+    pub provider_id: Option<String>,
     pub base_url: Option<String>,
     pub model_id: Option<String>,
 }
@@ -69,6 +72,7 @@ pub struct AgentProviderConfigRequest {
 #[serde(rename_all = "camelCase")]
 pub struct AgentProviderStatus {
     pub provider: String,
+    pub provider_id: String,
     pub base_url: String,
     pub model_id: String,
     pub has_api_key: bool,
@@ -111,6 +115,45 @@ impl AgentRunStatus {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum AgentPendingResolutionKind {
+    Approval,
+    ExternalToolResult,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentPendingToolCall {
+    pub id: String,
+    pub name: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentExecutionState {
+    pub current_stage_id: String,
+    pub negotiation_attempt: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pending_resolution: Option<AgentPendingResolutionKind>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pending_tool_call: Option<AgentPendingToolCall>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_error: Option<String>,
+}
+
+impl AgentExecutionState {
+    pub fn new(current_stage_id: impl Into<String>) -> Self {
+        Self {
+            current_stage_id: current_stage_id.into(),
+            negotiation_attempt: 0,
+            pending_resolution: None,
+            pending_tool_call: None,
+            last_error: None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AgentRunSnapshot {
@@ -123,6 +166,7 @@ pub struct AgentRunSnapshot {
     pub model_id: String,
     pub cwd: Option<String>,
     pub error: Option<String>,
+    pub execution_state: AgentExecutionState,
     pub started_at: DateTime<Utc>,
     pub finished_at: Option<DateTime<Utc>>,
 }

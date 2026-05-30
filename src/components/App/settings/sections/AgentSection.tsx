@@ -1,4 +1,5 @@
 import { Plus } from 'lucide-react';
+import { inferModelProviderId, getModelProviderPreset } from '../../../../lib/modelProviders';
 import { useMemoryStore, useUIStore } from '../../../../stores';
 import type { ThinkingDisplayMode, ConfiguredModel } from '../../../../types/chat';
 import { buildAgentSettingsValues, normalizeAgentSettings, type AgentSettings } from '../agentSettings';
@@ -20,14 +21,27 @@ export function AgentSection() {
     ? settings.values.aiModelFriendlyName
     : null;
 
-  const configuredModels = (settings?.values.configuredModels as ConfiguredModel[]) ?? (modelId ? [{
-    id: modelId,
-    providerLabel,
-    modelId,
-    baseUrl: typeof settings?.values.aiModelBaseUrl === 'string' ? settings.values.aiModelBaseUrl : 'https://api.openai.com/v1',
-    friendlyName: friendlyName ?? undefined,
-    hasApiKey: true
-  }] : []);
+  const configuredModelsSource = (settings?.values.configuredModels as ConfiguredModel[] | undefined)
+    ?? (modelId ? [{
+      id: modelId,
+      providerId: inferModelProviderId({
+        providerLabel,
+        baseUrl: typeof settings?.values.aiModelBaseUrl === 'string' ? settings.values.aiModelBaseUrl : undefined
+      }),
+      providerLabel,
+      modelId,
+      baseUrl: typeof settings?.values.aiModelBaseUrl === 'string' ? settings.values.aiModelBaseUrl : 'https://api.openai.com/v1',
+      friendlyName: friendlyName ?? undefined,
+      hasApiKey: true
+    }] : []);
+  const configuredModels = configuredModelsSource.map((model) => {
+    const providerId = inferModelProviderId(model);
+    return {
+      ...model,
+      providerId,
+      providerLabel: model.providerLabel || getModelProviderPreset(providerId).label
+    };
+  });
   const thinkingDisplayModeLabel: Record<ThinkingDisplayMode, string> = {
     'show-and-collapse': 'Show & collapse',
     'always-show': 'Always show',

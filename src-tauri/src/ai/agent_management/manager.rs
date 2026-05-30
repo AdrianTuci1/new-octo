@@ -10,8 +10,8 @@ use chrono::Utc;
 use serde_json::Value;
 
 use crate::ai::agent::{
-    openai::OpenAiCompatibleConfig,
-    types::{AgentRunSnapshot, AgentRunStatus},
+    OpenAiCompatibleConfig,
+    types::{AgentExecutionState, AgentRunSnapshot, AgentRunStatus},
 };
 use crate::octomus_paths::OctomusPaths;
 use crate::secure_store;
@@ -102,6 +102,9 @@ impl AgentHarnessManager {
         if !run.snapshot.status.is_terminal() {
             run.snapshot.status = AgentRunStatus::Cancelled;
             run.snapshot.status_message = Some("Cancellation requested.".to_string());
+            run.snapshot.execution_state.current_stage_id = "cancelled".to_string();
+            run.snapshot.execution_state.pending_resolution = None;
+            run.snapshot.execution_state.pending_tool_call = None;
             run.snapshot.finished_at = Some(Utc::now());
         }
 
@@ -145,11 +148,24 @@ impl AgentHarnessManager {
         })
     }
 
+    pub fn set_execution_state(
+        &self,
+        run_id: &str,
+        execution_state: AgentExecutionState,
+    ) -> Result<AgentRunSnapshot, String> {
+        self.update(run_id, |snapshot| {
+            snapshot.execution_state = execution_state;
+        })
+    }
+
     pub fn fail(&self, run_id: &str, error: String) -> Result<AgentRunSnapshot, String> {
         self.update(run_id, |snapshot| {
             snapshot.status = AgentRunStatus::Failed;
             snapshot.status_message = Some("Harness failed.".to_string());
             snapshot.error = Some(error);
+            snapshot.execution_state.last_error = snapshot.error.clone();
+            snapshot.execution_state.pending_resolution = None;
+            snapshot.execution_state.pending_tool_call = None;
             snapshot.finished_at = Some(Utc::now());
         })
     }

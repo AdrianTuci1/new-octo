@@ -4,6 +4,7 @@ pub mod artifacts;
 pub mod diff;
 pub mod mcp;
 pub mod predict;
+pub mod provider_adapter;
 pub mod web_search;
 
 use tauri::{AppHandle, State};
@@ -82,8 +83,8 @@ pub fn agent_list_runs(
 }
 
 #[tauri::command]
-pub fn agent_list_skills() -> Result<Vec<agent::openai::skills::SkillCatalogItem>, String> {
-    Ok(agent::openai::skills::list_available_skills())
+pub fn agent_list_skills() -> Result<Vec<agent::skills::SkillCatalogItem>, String> {
+    Ok(agent::skills::list_available_skills())
 }
 
 #[tauri::command]
@@ -114,7 +115,7 @@ pub async fn ai_predict_command_smart(
                 .flatten()
                 .filter(|config| !config.api_key.trim().is_empty())
         })
-        .or_else(agent::openai::OpenAiCompatibleConfig::from_env)
+        .or_else(agent::OpenAiCompatibleConfig::from_env)
         .ok_or_else(|| {
             "No AI provider configured. Please configure OpenAI/OpenRouter in settings.".to_string()
         })?;

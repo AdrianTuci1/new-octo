@@ -1,0 +1,65 @@
+[
+  {
+    "id": "create-file",
+    "prompt": "Creeaza un fisier hello.txt cu textul salut.",
+    "expectedTool": "propose_file_change",
+    "requiresApproval": true,
+    "requiresExternalResult": true,
+    "expectedStageAfterDispatch": "awaiting-approval"
+  },
+  {
+    "id": "edit-file",
+    "prompt": "Editeaza fisierul README.md si adauga o sectiune scurta despre instalare.",
+    "expectedTool": "propose_file_change",
+    "requiresApproval": true,
+    "requiresExternalResult": true,
+    "expectedStageAfterDispatch": "awaiting-approval"
+  },
+  {
+    "id": "check-docker",
+    "prompt": "Vezi daca ruleaza docker pe masina locala.",
+    "expectedTool": "propose_terminal_command",
+    "requiresApproval": true,
+    "requiresExternalResult": true,
+    "expectedStageAfterDispatch": "awaiting-approval"
+  },
+  {
+    "id": "tech-news",
+    "prompt": "Vezi ultimele stiri din tech si fa-mi un rezumat scurt.",
+    "expectedTool": "lookup_web",
+    "requiresApproval": false,
+    "requiresExternalResult": true,
+    "expectedStageAfterDispatch": "executing",
+    "expectedStageAfterResult": "verifying"
+  },
+  {
+    "id": "use-mcp",
+    "prompt": "Foloseste un MCP GitHub pentru a cauta issue-uri deschise.",
+    "expectedTool": "mcp__github__search",
+    "requiresApproval": false,
+    "requiresExternalResult": false
+  },
+  {
+    "id": "plan-auth-refactor",
+    "prompt": "Planifica refactorizarea autentificarii intr-un mod vizibil si structurat.",
+    "expectedTool": "propose_plan",
+    "requiresApproval": false,
+    "requiresExternalResult": false
+  },
+  {
+    "id": "create-config",
+    "prompt": "Creeaza un config nou pentru serviciul local cu valori implicite rezonabile.",
+    "expectedTool": "propose_file_change",
+    "requiresApproval": true,
+    "requiresExternalResult": true,
+    "expectedStageAfterDispatch": "awaiting-approval"
+  },
+  {
+    "id": "launch-cloud-agent",
+    "prompt": "Lanseaza un cloud agent pentru a continua migrarea in fundal.",
+    "expectedTool": "launch_cloud_agent",
+    "requiresApproval": true,
+    "requiresExternalResult": true,
+    "expectedStageAfterDispatch": "awaiting-approval"
+  }
+]

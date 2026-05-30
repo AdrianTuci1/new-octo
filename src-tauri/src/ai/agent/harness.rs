@@ -10,9 +10,9 @@ use std::{
 use tauri::{AppHandle, Emitter};
 
 use super::types::{
-    AgentDoneEvent, AgentErrorEvent, AgentInputMessage, AgentReasoningEvent, AgentRunStatus,
-    AgentRunStatusEvent, AgentTokenEvent, AgentToolCall, AgentToolCallEvent, AgentToolResultEvent,
-    AgentUsage, TerminalBlockContext,
+    AgentDoneEvent, AgentErrorEvent, AgentExecutionState, AgentInputMessage,
+    AgentReasoningEvent, AgentRunStatus, AgentRunStatusEvent, AgentTokenEvent, AgentToolCall,
+    AgentToolCallEvent, AgentToolResultEvent, AgentUsage, TerminalBlockContext,
 };
 use crate::ai::agent_management::AgentHarnessManager;
 
@@ -45,6 +45,7 @@ pub struct AgentHarnessContext {
     pub conversation_id: String,
     pub assistant_message_id: String,
     pub prompt: String,
+    pub surface: Option<String>,
     pub messages: Vec<AgentInputMessage>,
     pub terminal_blocks: Vec<TerminalBlockContext>,
     pub cwd: Option<String>,
@@ -52,6 +53,7 @@ pub struct AgentHarnessContext {
     pub target_arch: String,
     pub model_id: String,
     pub terminal_model_id: Option<String>,
+    pub resume_execution_state: Option<AgentExecutionState>,
 }
 
 #[derive(Debug, Clone)]
@@ -189,6 +191,23 @@ impl AgentEventSink {
     }
 
     pub fn done(&self, status: AgentRunStatus, usage: AgentUsage) {
+        if let Some(mut execution_state) = self.execution_state() {
+            execution_state.current_stage_id = match status {
+                AgentRunStatus::Completed => "completed",
+                AgentRunStatus::Cancelled => "cancelled",
+                AgentRunStatus::Failed => "failed",
+                AgentRunStatus::Queued => "preparing",
+                AgentRunStatus::Preparing => "preparing",
+                AgentRunStatus::Running => execution_state.current_stage_id.as_str(),
+                AgentRunStatus::WaitingForTool => execution_state.current_stage_id.as_str(),
+            }
+            .to_string();
+            if status.is_terminal() {
+                execution_state.pending_resolution = None;
+                execution_state.pending_tool_call = None;
+            }
+            self.set_execution_state(execution_state);
+        }
         self.status(status, None::<String>);
         let _ = self.window.emit(
             EVENT_DONE,
@@ -204,6 +223,13 @@ impl AgentEventSink {
 
     pub fn error(&self, error: impl Into<String>) {
         let error = error.into();
+        if let Some(mut execution_state) = self.execution_state() {
+            execution_state.current_stage_id = "failed".to_string();
+            execution_state.last_error = Some(error.clone());
+            execution_state.pending_resolution = None;
+            execution_state.pending_tool_call = None;
+            self.set_execution_state(execution_state);
+        }
         let _ = self.manager.fail(&self.run_id, error.clone());
         let _ = self.window.emit(
             EVENT_ERROR,
@@ -214,6 +240,19 @@ impl AgentEventSink {
                 error,
             },
         );
+    }
+
+    pub fn execution_state(&self) -> Option<AgentExecutionState> {
+        self.manager
+            .get(&self.run_id)
+            .ok()
+            .map(|snapshot| snapshot.execution_state)
+    }
+
+    pub fn set_execution_state(&self, execution_state: AgentExecutionState) {
+        let _ = self
+            .manager
+            .set_execution_state(&self.run_id, execution_state);
     }
 }
 
