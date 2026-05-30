@@ -20,11 +20,18 @@ use crate::secure_store;
 pub struct AgentHarnessManager {
     runs: Arc<Mutex<HashMap<String, ManagedAgentRun>>>,
     provider_config: Arc<Mutex<Option<OpenAiCompatibleConfig>>>,
+    external_sessions: Arc<Mutex<HashMap<String, ManagedExternalSession>>>,
 }
 
 struct ManagedAgentRun {
     snapshot: AgentRunSnapshot,
     cancel_flag: Arc<AtomicBool>,
+}
+
+#[derive(Clone)]
+struct ManagedExternalSession {
+    source_kind: String,
+    session_id: String,
 }
 
 impl AgentHarnessManager {
@@ -87,6 +94,39 @@ impl AgentHarnessManager {
             );
 
         Ok(())
+    }
+
+    pub fn set_external_session(
+        &self,
+        conversation_id: &str,
+        source_kind: String,
+        session_id: String,
+    ) -> Result<(), String> {
+        self.external_sessions
+            .lock()
+            .map_err(|_| "agent external session map lock is poisoned".to_string())?
+            .insert(
+                conversation_id.to_string(),
+                ManagedExternalSession {
+                    source_kind,
+                    session_id,
+                },
+            );
+        Ok(())
+    }
+
+    pub fn get_external_session(
+        &self,
+        conversation_id: &str,
+        source_kind: &str,
+    ) -> Result<Option<String>, String> {
+        Ok(self
+            .external_sessions
+            .lock()
+            .map_err(|_| "agent external session map lock is poisoned".to_string())?
+            .get(conversation_id)
+            .filter(|session| session.source_kind == source_kind)
+            .map(|session| session.session_id.clone()))
     }
 
     pub fn cancel(&self, run_id: &str) -> Result<AgentRunSnapshot, String> {

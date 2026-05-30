@@ -31,6 +31,7 @@ An autonomous AI-native launcher shell built with Tauri, Rust, and React. Octomu
 
 ### Commands
 - `npm run dev:app`: Run the application.
+- `npm run test`: Run the default non-model-backed JS and Rust test suites.
 - `npm run logs`: View development logs.
 - `npm run tauri -- dev`: Raw Tauri development command.
 - `npm run release:cli`: Build and archive the `octomus-cli` runtime.
@@ -39,6 +40,7 @@ An autonomous AI-native launcher shell built with Tauri, Rust, and React. Octomu
 - `npm run release:dmg`: Build the macOS `.dmg` installer.
 - `npm run release:exe`: Build the Windows `.exe` installer.
 - See [scripts/README.md](scripts/README.md) for the packaging script map.
+- See [tests/README.md](tests/README.md) for the full testing command map, including `src-tauri/tests` and model-backed runs with `tests.env`.
 
 ### Prerequisites
 - Rust Toolchain (cargo & rustc)

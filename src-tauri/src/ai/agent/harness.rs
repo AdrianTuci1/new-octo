@@ -15,6 +15,8 @@ use super::types::{
     AgentToolCallEvent, AgentToolResultEvent, AgentUsage, TerminalBlockContext,
 };
 use crate::ai::agent_management::AgentHarnessManager;
+#[cfg(test)]
+use std::sync::Mutex;
 
 const EVENT_STATUS: &str = "agent:status";
 const EVENT_TOKEN: &str = "agent:token";
@@ -88,11 +90,26 @@ pub trait AgentHarness: Send + Sync + 'static {
 
 #[derive(Clone)]
 pub struct AgentEventSink {
-    window: tauri::Window,
+    window: Option<tauri::Window>,
     manager: AgentHarnessManager,
     run_id: String,
     conversation_id: String,
     assistant_message_id: String,
+    #[cfg(test)]
+    test_events: Option<Arc<Mutex<Vec<TestAgentEvent>>>>,
+}
+
+#[cfg(test)]
+#[allow(dead_code)]
+#[derive(Debug, Clone)]
+pub enum TestAgentEvent {
+    Status(AgentRunStatus, Option<String>),
+    Token(String),
+    Reasoning(String, bool),
+    ToolCall(AgentToolCall),
+    ToolResult(String, String),
+    Done(AgentRunStatus),
+    Error(String),
 }
 
 impl AgentEventSink {
@@ -103,11 +120,41 @@ impl AgentEventSink {
         context: &AgentHarnessContext,
     ) -> Self {
         Self {
-            window,
+            window: Some(window),
             manager,
             run_id: context.run_id.clone(),
             conversation_id: context.conversation_id.clone(),
             assistant_message_id: context.assistant_message_id.clone(),
+            #[cfg(test)]
+            test_events: None,
+        }
+    }
+
+    #[cfg(test)]
+    pub fn for_tests(
+        manager: AgentHarnessManager,
+        context: &AgentHarnessContext,
+    ) -> (Self, Arc<Mutex<Vec<TestAgentEvent>>>) {
+        let test_events = Arc::new(Mutex::new(Vec::new()));
+        (
+            Self {
+                window: None,
+                manager,
+                run_id: context.run_id.clone(),
+                conversation_id: context.conversation_id.clone(),
+                assistant_message_id: context.assistant_message_id.clone(),
+                test_events: Some(Arc::clone(&test_events)),
+            },
+            test_events,
+        )
+    }
+
+    #[cfg(test)]
+    fn record_test_event(&self, event: TestAgentEvent) {
+        if let Some(events) = &self.test_events {
+            if let Ok(mut lock) = events.lock() {
+                lock.push(event);
+            }
         }
     }
 
@@ -116,46 +163,59 @@ impl AgentEventSink {
         let _ = self
             .manager
             .set_status(&self.run_id, status, message.clone());
-        let _ = self.window.emit(
-            EVENT_STATUS,
-            AgentRunStatusEvent {
-                run_id: self.run_id.clone(),
-                conversation_id: self.conversation_id.clone(),
-                assistant_message_id: self.assistant_message_id.clone(),
-                status,
-                message,
-            },
-        );
+        #[cfg(test)]
+        self.record_test_event(TestAgentEvent::Status(status, message.clone()));
+        if let Some(window) = &self.window {
+            let _ = window.emit(
+                EVENT_STATUS,
+                AgentRunStatusEvent {
+                    run_id: self.run_id.clone(),
+                    conversation_id: self.conversation_id.clone(),
+                    assistant_message_id: self.assistant_message_id.clone(),
+                    status,
+                    message,
+                },
+            );
+        }
     }
 
     pub fn token(&self, text: impl Into<String>) {
         let text_str = text.into();
         println!("[AI] Emitting token event to frontend: {}", text_str);
-        let res = self.window.emit(
-            EVENT_TOKEN,
-            AgentTokenEvent {
-                run_id: self.run_id.clone(),
-                conversation_id: self.conversation_id.clone(),
-                assistant_message_id: self.assistant_message_id.clone(),
-                text: text_str,
-            },
-        );
-        if let Err(error) = res {
-            println!("[AI] ERROR emitting token event: {:?}", error);
+        #[cfg(test)]
+        self.record_test_event(TestAgentEvent::Token(text_str.clone()));
+        if let Some(window) = &self.window {
+            let res = window.emit(
+                EVENT_TOKEN,
+                AgentTokenEvent {
+                    run_id: self.run_id.clone(),
+                    conversation_id: self.conversation_id.clone(),
+                    assistant_message_id: self.assistant_message_id.clone(),
+                    text: text_str,
+                },
+            );
+            if let Err(error) = res {
+                println!("[AI] ERROR emitting token event: {:?}", error);
+            }
         }
     }
 
     pub fn reasoning(&self, text: impl Into<String>, is_complete: bool) {
-        let _ = self.window.emit(
-            EVENT_REASONING,
-            AgentReasoningEvent {
-                run_id: self.run_id.clone(),
-                conversation_id: self.conversation_id.clone(),
-                assistant_message_id: self.assistant_message_id.clone(),
-                text: text.into(),
-                is_complete,
-            },
-        );
+        let text = text.into();
+        #[cfg(test)]
+        self.record_test_event(TestAgentEvent::Reasoning(text.clone(), is_complete));
+        if let Some(window) = &self.window {
+            let _ = window.emit(
+                EVENT_REASONING,
+                AgentReasoningEvent {
+                    run_id: self.run_id.clone(),
+                    conversation_id: self.conversation_id.clone(),
+                    assistant_message_id: self.assistant_message_id.clone(),
+                    text,
+                    is_complete,
+                },
+            );
+        }
     }
 
     pub fn tool_call(&self, tool_call: AgentToolCall) {
@@ -163,31 +223,44 @@ impl AgentEventSink {
             "[AI] Emitting tool call: {} with args: {}",
             tool_call.name, tool_call.args
         );
-        let res = self.window.emit(
-            EVENT_TOOL_CALL,
-            AgentToolCallEvent {
-                run_id: self.run_id.clone(),
-                conversation_id: self.conversation_id.clone(),
-                assistant_message_id: self.assistant_message_id.clone(),
-                tool_call,
-            },
-        );
-        if let Err(error) = res {
-            println!("[AI] ERROR emitting tool call event: {:?}", error);
+        #[cfg(test)]
+        self.record_test_event(TestAgentEvent::ToolCall(tool_call.clone()));
+        if let Some(window) = &self.window {
+            let res = window.emit(
+                EVENT_TOOL_CALL,
+                AgentToolCallEvent {
+                    run_id: self.run_id.clone(),
+                    conversation_id: self.conversation_id.clone(),
+                    assistant_message_id: self.assistant_message_id.clone(),
+                    tool_call,
+                },
+            );
+            if let Err(error) = res {
+                println!("[AI] ERROR emitting tool call event: {:?}", error);
+            }
         }
     }
 
     pub fn tool_result(&self, tool_call_id: impl Into<String>, result: impl Into<String>) {
-        let _ = self.window.emit(
-            EVENT_TOOL_RESULT,
-            AgentToolResultEvent {
-                run_id: self.run_id.clone(),
-                conversation_id: self.conversation_id.clone(),
-                assistant_message_id: self.assistant_message_id.clone(),
-                tool_call_id: tool_call_id.into(),
-                result: result.into(),
-            },
-        );
+        let tool_call_id = tool_call_id.into();
+        let result = result.into();
+        #[cfg(test)]
+        self.record_test_event(TestAgentEvent::ToolResult(
+            tool_call_id.clone(),
+            result.clone(),
+        ));
+        if let Some(window) = &self.window {
+            let _ = window.emit(
+                EVENT_TOOL_RESULT,
+                AgentToolResultEvent {
+                    run_id: self.run_id.clone(),
+                    conversation_id: self.conversation_id.clone(),
+                    assistant_message_id: self.assistant_message_id.clone(),
+                    tool_call_id,
+                    result,
+                },
+            );
+        }
     }
 
     pub fn done(&self, status: AgentRunStatus, usage: AgentUsage) {
@@ -209,16 +282,20 @@ impl AgentEventSink {
             self.set_execution_state(execution_state);
         }
         self.status(status, None::<String>);
-        let _ = self.window.emit(
-            EVENT_DONE,
-            AgentDoneEvent {
-                run_id: self.run_id.clone(),
-                conversation_id: self.conversation_id.clone(),
-                assistant_message_id: self.assistant_message_id.clone(),
-                status,
-                usage,
-            },
-        );
+        #[cfg(test)]
+        self.record_test_event(TestAgentEvent::Done(status));
+        if let Some(window) = &self.window {
+            let _ = window.emit(
+                EVENT_DONE,
+                AgentDoneEvent {
+                    run_id: self.run_id.clone(),
+                    conversation_id: self.conversation_id.clone(),
+                    assistant_message_id: self.assistant_message_id.clone(),
+                    status,
+                    usage,
+                },
+            );
+        }
     }
 
     pub fn error(&self, error: impl Into<String>) {
@@ -231,14 +308,30 @@ impl AgentEventSink {
             self.set_execution_state(execution_state);
         }
         let _ = self.manager.fail(&self.run_id, error.clone());
-        let _ = self.window.emit(
-            EVENT_ERROR,
-            AgentErrorEvent {
-                run_id: self.run_id.clone(),
-                conversation_id: self.conversation_id.clone(),
-                assistant_message_id: self.assistant_message_id.clone(),
-                error,
-            },
+        #[cfg(test)]
+        self.record_test_event(TestAgentEvent::Error(error.clone()));
+        if let Some(window) = &self.window {
+            let _ = window.emit(
+                EVENT_ERROR,
+                AgentErrorEvent {
+                    run_id: self.run_id.clone(),
+                    conversation_id: self.conversation_id.clone(),
+                    assistant_message_id: self.assistant_message_id.clone(),
+                    error,
+                },
+            );
+        }
+    }
+
+    pub fn register_external_session(
+        &self,
+        source_kind: impl Into<String>,
+        session_id: impl Into<String>,
+    ) {
+        let _ = self.manager.set_external_session(
+            &self.conversation_id,
+            source_kind.into(),
+            session_id.into(),
         );
     }
 

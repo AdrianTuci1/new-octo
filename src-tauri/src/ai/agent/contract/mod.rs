@@ -1,3 +1,9 @@
+//! Typed loader and validator for the declarative agent loop contract.
+//!
+//! `loop.json` is the machine-readable source of truth.
+//! This module exists to deserialize it, validate its coherence, and expose
+//! helpers used by the runtime and UI command layer.
+
 use std::collections::HashSet;
 use std::sync::OnceLock;
 
@@ -108,11 +114,11 @@ static LOOP_CONTRACT: OnceLock<AgentLoopContract> = OnceLock::new();
 
 pub fn get_loop_contract() -> &'static AgentLoopContract {
     LOOP_CONTRACT.get_or_init(|| {
-        let raw = include_str!("loop_contract.json");
+        let raw = include_str!("loop.json");
         let contract: AgentLoopContract = serde_json::from_str(raw)
-            .expect("loop_contract.json must be valid AgentLoopContract JSON");
+            .expect("contract/loop.json must be valid AgentLoopContract JSON");
         validate_loop_contract(&contract)
-            .expect("loop_contract.json must define a coherent stage graph");
+            .expect("contract/loop.json must define a coherent stage graph");
         contract
     })
 }

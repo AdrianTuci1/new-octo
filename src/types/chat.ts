@@ -276,6 +276,28 @@ export type AgentProviderStatus = {
   source: string;
 };
 
+export type AgentSourceModel = {
+  id: string;
+  sourceKind: string;
+  label: string;
+  provider: string;
+  providerId: ModelProviderId;
+  modelId: string;
+  note: string;
+  supportsAttachments: boolean;
+};
+
+export type AgentModelSourceStatus = {
+  kind: string;
+  label: string;
+  available: boolean;
+  connected: boolean;
+  binaryPath?: string | null;
+  authSource?: string | null;
+  message?: string | null;
+  models: AgentSourceModel[];
+};
+
 export type ChatAttachmentKind = 'text' | 'image' | 'binary';
 
 export type ChatAttachment = {
@@ -322,6 +344,7 @@ export type AgentToolCall = {
   id: string;
   name: string;
   args: any;
+  extraContent?: any;
 };
 
 export type AgentToolCallEvent = {

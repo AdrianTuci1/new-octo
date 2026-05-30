@@ -1,14 +1,13 @@
 use std::collections::HashSet;
 
-use super::loop_contract::{
+use super::contract::{
     find_stage, find_tool_policy, resolve_stage_transition, AgentLoopStage, AgentToolPolicy,
 };
 use super::types::AgentRunStatus;
 
 pub const STAGE_PREPARING: &str = "preparing";
-#[allow(dead_code)]
 pub const STAGE_REASONING: &str = "reasoning";
-#[allow(dead_code)]
+pub const STAGE_PLANNING: &str = "planning";
 pub const STAGE_TOOL_SELECTION: &str = "tool-selection";
 pub const STAGE_AWAITING_APPROVAL: &str = "awaiting-approval";
 pub const STAGE_EXECUTING: &str = "executing";
@@ -18,23 +17,18 @@ pub const STAGE_FAILED: &str = "failed";
 pub const STAGE_CANCELLED: &str = "cancelled";
 
 pub const EVENT_PREPARE_CONTEXT: &str = "prepare-context";
-#[allow(dead_code)]
 pub const EVENT_CONTINUE_TO_PLANNING: &str = "continue-to-planning";
 pub const EVENT_SKIP_PLANNING: &str = "skip-planning";
-#[allow(dead_code)]
 pub const EVENT_PLAN_TOOL_FINISHED: &str = "plan-tool-finished";
+pub const EVENT_DECLINE_PLAN: &str = "decline-plan";
 pub const EVENT_AWAIT_USER_APPROVAL: &str = "await-user-approval";
-#[allow(dead_code)]
 pub const EVENT_APPROVE_ACTION: &str = "approve-action";
-#[allow(dead_code)]
 pub const EVENT_EDIT_ACTION: &str = "edit-action";
 pub const EVENT_DISPATCH_TOOL: &str = "dispatch-tool";
 pub const EVENT_CAPTURE_TOOL_RESULT: &str = "capture-tool-result";
 pub const EVENT_REQUEST_ANOTHER_TOOL: &str = "request-another-tool";
 pub const EVENT_EMIT_FINAL_ANSWER: &str = "emit-final-answer";
-#[allow(dead_code)]
 pub const EVENT_FAIL_RUN: &str = "fail-run";
-#[allow(dead_code)]
 pub const EVENT_CANCEL_RUN: &str = "cancel-run";
 
 #[derive(Debug, Clone, PartialEq, Eq)]

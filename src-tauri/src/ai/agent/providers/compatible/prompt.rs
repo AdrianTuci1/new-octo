@@ -1,4 +1,4 @@
-use crate::ai::agent::loop_contract::AgentLoopStage;
+use crate::ai::agent::contract::AgentLoopStage;
 
 pub(super) fn build_identity_prompt(cwd: &str, target_os: &str, target_arch: &str) -> String {
     format!(

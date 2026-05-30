@@ -1,7 +1,9 @@
+import { useEffect, useState } from 'react';
+import { invoke } from '@tauri-apps/api/core';
 import { Plus } from 'lucide-react';
 import { inferModelProviderId, getModelProviderPreset } from '../../../../lib/modelProviders';
 import { useMemoryStore, useUIStore } from '../../../../stores';
-import type { ThinkingDisplayMode, ConfiguredModel } from '../../../../types/chat';
+import type { AgentModelSourceStatus, ThinkingDisplayMode, ConfiguredModel } from '../../../../types/chat';
 import { buildAgentSettingsValues, normalizeAgentSettings, type AgentSettings } from '../agentSettings';
 import { SectionHeader, SettingsRow, SettingsSelect, SettingsToggle } from './SettingsPrimitives';
 
@@ -10,6 +12,8 @@ export function AgentSection() {
   const setSelectedModelIdForEdit = useUIStore((state) => state.setSelectedModelIdForEdit);
   const settings = useMemoryStore((state) => state.settings);
   const saveSettings = useMemoryStore((state) => state.saveSettings);
+  const [sourceStatuses, setSourceStatuses] = useState<AgentModelSourceStatus[]>([]);
+  const [sourceError, setSourceError] = useState<string | null>(null);
   const agentSettings = normalizeAgentSettings(settings?.values);
   const modelId = settings?.values.selectedModelId ?? null;
   const webSearchEnabled = agentSettings.permissions.webSearch;
@@ -57,6 +61,43 @@ export function AgentSection() {
   };
   const patchAgent = (patch: Partial<AgentSettings>) => {
     saveAgent({ ...agentSettings, ...patch });
+  };
+
+  useEffect(() => {
+    void invoke<AgentModelSourceStatus[]>('agent_list_model_sources')
+      .then((statuses) => {
+        setSourceStatuses(statuses);
+        setSourceError(null);
+      })
+      .catch((error) => {
+        setSourceError(error instanceof Error ? error.message : String(error));
+      });
+  }, []);
+
+  const refreshSourceStatuses = () => {
+    void invoke<AgentModelSourceStatus[]>('agent_list_model_sources')
+      .then((statuses) => {
+        setSourceStatuses(statuses);
+        setSourceError(null);
+      })
+      .catch((error) => {
+        setSourceError(error instanceof Error ? error.message : String(error));
+      });
+  };
+
+  const connectSource = (kind: string) => {
+    void invoke<AgentModelSourceStatus>('agent_connect_model_source', {
+      request: { kind }
+    }).then((status) => {
+      setSourceStatuses((current) => {
+        const next = current.filter((item) => item.kind !== status.kind);
+        return [...next, status];
+      });
+      setSourceError(null);
+    }).catch((error) => {
+      setSourceError(error instanceof Error ? error.message : String(error));
+      refreshSourceStatuses();
+    });
   };
 
   return (
@@ -153,6 +194,31 @@ export function AgentSection() {
         </div>
 
         <div className="settings-models-list">
+          {sourceStatuses.map((source) => (
+            <button
+              key={source.kind}
+              className={`settings-model-card ${source.connected ? 'active' : ''}`}
+              onClick={() => connectSource(source.kind)}
+              type="button"
+            >
+              <div className="settings-model-card-info">
+                <div className="settings-model-card-name">
+                  {source.connected ? source.label : `Connect ${source.label}`}
+                </div>
+                <div className="settings-model-card-provider">
+                  {source.connected
+                    ? (source.message || `Connected via ${source.authSource ?? 'local CLI'}`)
+                    : (source.message || 'Detect local CLI auth and expose subscription-backed models.')}
+                </div>
+              </div>
+              <div className={`settings-model-card-status ${source.connected ? 'active' : ''}`}>
+                {source.connected ? `${source.models.length} model${source.models.length === 1 ? '' : 's'}` : (source.available ? 'Connect' : 'Install')}
+              </div>
+            </button>
+          ))}
+        </div>
+
+        <div className="settings-models-list">
           {configuredModels.length > 0 ? (
             configuredModels.map((model) => {
               const isActive = settings?.values.selectedModelId === model.id;
@@ -198,6 +264,12 @@ export function AgentSection() {
             <span>Add new model</span>
           </button>
         </div>
+
+        {sourceError ? (
+          <div className="settings-promo" style={{ color: 'var(--settings-danger, #d96b6b)' }}>
+            {sourceError}
+          </div>
+        ) : null}
 
         <div className="settings-promo">
           <button className="settings-link">Upgrade to the Build plan</button> to use your own API keys.

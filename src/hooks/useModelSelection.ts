@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { getModelProviderPreset, inferModelProviderId } from '../lib/modelProviders';
 import { useMemoryStore } from '../stores/memoryStore';
-import type { AgentProviderStatus } from '../types/chat';
+import type { AgentModelSourceStatus, AgentProviderStatus } from '../types/chat';
 import type { ModelSpec } from '../types/model';
 
 const STORAGE_KEY = 'octomus.selectedModelId';
@@ -26,35 +26,33 @@ function readBoolean(value: unknown) {
 }
 
 function buildModelFromSettings(
-  selectedModelId: string | null,
+  modelRecord: ConfiguredModelRecord,
   memorySettings: ReturnType<typeof useMemoryStore.getState>['settings'],
-  providerStatus: AgentProviderStatus | null,
-  isConfigured: boolean
+  providerStatus: AgentProviderStatus | null
 ): ModelSpec | null {
-  if (!isConfigured || !selectedModelId) {
+  const selectedModelId = readString(modelRecord.id);
+  if (!selectedModelId) {
     return null;
   }
 
-  const configuredModels = (memorySettings?.values.configuredModels as ConfiguredModelRecord[] | undefined) ?? [];
-  const selectedConfiguredModel = configuredModels.find((model) => model.id === selectedModelId);
-  const providerLabel = readString(selectedConfiguredModel?.providerLabel)
+  const providerLabel = readString(modelRecord?.providerLabel)
     ?? readString(memorySettings?.values.aiProviderLabel)
     ?? readString(providerStatus?.provider)
     ?? 'Connected provider';
   const friendlyName = readString(memorySettings?.values.aiModelFriendlyName)
-    ?? readString(selectedConfiguredModel?.friendlyName);
+    ?? readString(modelRecord?.friendlyName);
   const baseUrl = readString(memorySettings?.values.aiModelBaseUrl)
-    ?? readString(selectedConfiguredModel?.baseUrl)
+    ?? readString(modelRecord?.baseUrl)
     ?? (providerStatus?.baseUrl && providerStatus.baseUrl !== 'local' ? providerStatus.baseUrl : null);
-  const modelId = readString(selectedConfiguredModel?.modelId)
+  const modelId = readString(modelRecord?.modelId)
     ?? readString(providerStatus?.modelId)
     ?? selectedModelId;
   const providerId = inferModelProviderId({
-    providerId: selectedConfiguredModel?.providerId ?? providerStatus?.providerId,
+    providerId: modelRecord?.providerId ?? providerStatus?.providerId,
     providerLabel,
     baseUrl
   });
-  const supportsAttachments = readBoolean(selectedConfiguredModel?.supportsAttachments)
+  const supportsAttachments = readBoolean(modelRecord?.supportsAttachments)
     ?? getModelProviderPreset(providerId).defaultSupportsAttachments;
 
   return {
@@ -78,30 +76,44 @@ export function useModelSelection() {
     return window.localStorage.getItem(STORAGE_KEY);
   });
   const [providerStatus, setProviderStatus] = useState<AgentProviderStatus | null>(null);
+  const [sourceStatuses, setSourceStatuses] = useState<AgentModelSourceStatus[]>([]);
   const [isProviderStatusLoaded, setIsProviderStatusLoaded] = useState(false);
   const memorySettings = useMemoryStore((state) => state.settings);
   const saveSettings = useMemoryStore((state) => state.saveSettings);
 
   useEffect(() => {
-    void invoke<AgentProviderStatus>('agent_provider_status')
-      .then((status) => {
-        setProviderStatus(status);
-        setIsProviderStatusLoaded(true);
+    void Promise.all([
+      invoke<AgentProviderStatus>('agent_provider_status')
+        .then((status) => {
+          setProviderStatus(status);
+          return status;
+        })
+        .catch((error) => {
+          console.warn('[model-selection] failed to load provider status', error);
+          return null;
+        }),
+      invoke<AgentModelSourceStatus[]>('agent_list_model_sources')
+        .then((statuses) => {
+          setSourceStatuses(statuses);
+          return statuses;
+        })
+        .catch((error) => {
+          console.warn('[model-selection] failed to load model sources', error);
+          return [] as AgentModelSourceStatus[];
+        })
+    ]).then(([status]) => {
+      setIsProviderStatusLoaded(true);
 
-        if (
-          status.hasApiKey
-          && status.source !== 'environment'
-          && typeof window !== 'undefined'
-          && !window.localStorage.getItem(STORAGE_KEY)
-          && !memorySettings?.values.selectedModelId
-        ) {
-          setSelectedModelId(status.modelId ?? null);
-        }
-      })
-      .catch((error) => {
-        console.warn('[model-selection] failed to load provider status', error);
-        setIsProviderStatusLoaded(true);
-      });
+      if (
+        status?.hasApiKey
+        && status.source !== 'environment'
+        && typeof window !== 'undefined'
+        && !window.localStorage.getItem(STORAGE_KEY)
+        && !memorySettings?.values.selectedModelId
+      ) {
+        setSelectedModelId(status.modelId ?? null);
+      }
+    });
   }, [memorySettings?.values.selectedModelId]);
 
   useEffect(() => {
@@ -111,20 +123,79 @@ export function useModelSelection() {
     }
   }, [memorySettings?.values.selectedModelId]);
 
-  const isConfigured = isProviderStatusLoaded
-    && Boolean(providerStatus?.hasApiKey)
-    && providerStatus?.source !== 'environment';
-  const resolvedSelectedModelId = isConfigured
-    ? (selectedModelId ?? providerStatus?.modelId ?? null)
-    : null;
+  const configuredModels = useMemo(() => {
+    const models = (memorySettings?.values.configuredModels as ConfiguredModelRecord[] | undefined) ?? [];
+    const normalized = models
+      .map((model) => buildModelFromSettings(model, memorySettings, providerStatus))
+      .filter((model): model is ModelSpec => Boolean(model));
 
+    if (normalized.length > 0) {
+      return normalized;
+    }
+
+    if (
+      providerStatus?.hasApiKey
+      && providerStatus.source !== 'environment'
+      && providerStatus.modelId
+    ) {
+      const legacyRecord: ConfiguredModelRecord = {
+        id: providerStatus.modelId,
+        modelId: providerStatus.modelId,
+        providerId: providerStatus.providerId,
+        providerLabel: providerStatus.provider,
+        baseUrl: providerStatus.baseUrl,
+        supportsAttachments: getModelProviderPreset(
+          inferModelProviderId({
+            providerId: providerStatus.providerId,
+            providerLabel: providerStatus.provider,
+            baseUrl: providerStatus.baseUrl
+          })
+        ).defaultSupportsAttachments
+      };
+      const legacyModel = buildModelFromSettings(legacyRecord, memorySettings, providerStatus);
+      return legacyModel ? [legacyModel] : [];
+    }
+
+    return [];
+  }, [memorySettings, providerStatus]);
+
+  const sourceModels = useMemo(() => {
+    return sourceStatuses
+      .filter((status) => status.connected)
+      .flatMap((status) => status.models.map((model) => ({
+        id: model.id,
+        modelId: model.modelId,
+        label: model.label,
+        provider: model.provider,
+        providerId: model.providerId ?? 'custom',
+        baseUrl: null,
+        note: model.note,
+        supportsAttachments: model.supportsAttachments
+      } satisfies ModelSpec)));
+  }, [sourceStatuses]);
+
+  const models = useMemo(() => {
+    const byId = new Map<string, ModelSpec>();
+    [...sourceModels, ...configuredModels].forEach((model) => {
+      if (!byId.has(model.id)) {
+        byId.set(model.id, model);
+      }
+    });
+    return Array.from(byId.values());
+  }, [configuredModels, sourceModels]);
+
+  const resolvedSelectedModelId = models.some((model) => model.id === selectedModelId)
+    ? selectedModelId
+    : (memorySettings?.values.selectedModelId && models.some((model) => model.id === memorySettings.values.selectedModelId)
+      ? memorySettings.values.selectedModelId
+      : models[0]?.id ?? null);
   const selectedModel = useMemo(
-    () => buildModelFromSettings(resolvedSelectedModelId, memorySettings, providerStatus, isConfigured),
-    [isConfigured, memorySettings, providerStatus, resolvedSelectedModelId]
+    () => models.find((model) => model.id === resolvedSelectedModelId) ?? null,
+    [models, resolvedSelectedModelId]
   );
 
-  const models = useMemo(() => (selectedModel ? [selectedModel] : []), [selectedModel]);
-  const requiresModelSetup = isProviderStatusLoaded && !isConfigured;
+  const isConfigured = isProviderStatusLoaded && models.length > 0;
+  const requiresModelSetup = isProviderStatusLoaded && models.length === 0;
   const selectedModelLabel = selectedModel?.label ?? "You don't have any model";
   const selectedModelApiId = selectedModel?.modelId ?? selectedModel?.id ?? null;
   const selectedModelSupportsAttachments = selectedModel?.supportsAttachments ?? false;
@@ -132,6 +203,25 @@ export function useModelSelection() {
   const selectModel = (modelId: string, persist = false) => {
     setSelectedModelId(modelId);
     void saveSettings({ selectedModelId: modelId }, true);
+    const configuredModel = ((memorySettings?.values.configuredModels as ConfiguredModelRecord[] | undefined) ?? [])
+      .find((model) => readString(model.id) === modelId);
+    if (configuredModel) {
+      const nextProviderId = inferModelProviderId({
+        providerId: configuredModel.providerId,
+        providerLabel: configuredModel.providerLabel,
+        baseUrl: configuredModel.baseUrl
+      });
+      void invoke('agent_configure_openai_compatible', {
+        request: {
+          providerId: nextProviderId,
+          apiKey: '',
+          baseUrl: readString(configuredModel.baseUrl),
+          modelId: readString(configuredModel.modelId)
+        }
+      }).catch((error) => {
+        console.warn('[model-selection] failed to activate configured model', error);
+      });
+    }
     if (persist && typeof window !== 'undefined') {
       window.localStorage.setItem(STORAGE_KEY, modelId);
     }
@@ -147,6 +237,7 @@ export function useModelSelection() {
     isConfigured,
     isProviderStatusLoaded,
     requiresModelSetup,
+    sourceStatuses,
     selectModel
   };
 }

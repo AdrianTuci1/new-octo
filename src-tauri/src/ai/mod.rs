@@ -9,10 +9,11 @@ pub mod web_search;
 
 use tauri::{AppHandle, State};
 
-use agent::loop_contract::AgentLoopContract;
+use agent::contract::AgentLoopContract;
 use agent::types::{
-    AgentContinueRequest, AgentProviderConfigRequest, AgentProviderStatus, AgentRunLookupRequest,
-    AgentRunRequest, AgentRunSnapshot, AgentStartResponse,
+    AgentContinueRequest, AgentModelSourceConnectRequest, AgentModelSourceStatus,
+    AgentProviderConfigRequest, AgentProviderStatus, AgentRunLookupRequest, AgentRunRequest,
+    AgentRunSnapshot, AgentStartResponse,
 };
 pub use agent_management::AgentHarnessManager;
 
@@ -56,6 +57,18 @@ pub fn agent_provider_status(
     manager: State<'_, AgentHarnessManager>,
 ) -> Result<AgentProviderStatus, String> {
     agent::agent_provider_status(manager)
+}
+
+#[tauri::command]
+pub fn agent_list_model_sources() -> Result<Vec<AgentModelSourceStatus>, String> {
+    agent::agent_list_model_sources()
+}
+
+#[tauri::command]
+pub fn agent_connect_model_source(
+    request: AgentModelSourceConnectRequest,
+) -> Result<AgentModelSourceStatus, String> {
+    agent::agent_connect_model_source(request)
 }
 
 #[tauri::command]

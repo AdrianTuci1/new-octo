@@ -1,5 +1,6 @@
 use reqwest::header::{HeaderMap, HeaderValue, CONTENT_TYPE};
 use serde_json::{json, Map, Value};
+use std::error::Error as _;
 
 use crate::ai::agent::{OpenAiCompatibleConfig, OpenAiCompatibleProvider};
 use crate::ai::agent::types::AgentUsage;
@@ -19,6 +20,7 @@ pub struct ProviderFunctionCall {
     pub id: Option<String>,
     pub name: String,
     pub arguments: Value,
+    pub thought_signature: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -91,6 +93,12 @@ fn parse_openai_tool_calls(message: &Value) -> Vec<ProviderFunctionCall> {
                 id: tool_call.get("id").and_then(Value::as_str).map(|value| value.to_string()),
                 name,
                 arguments,
+                thought_signature: tool_call
+                    .get("extra_content")
+                    .and_then(|value| value.get("google"))
+                    .and_then(|value| value.get("thought_signature"))
+                    .and_then(Value::as_str)
+                    .map(|value| value.to_string()),
             })
         })
         .collect()
@@ -251,6 +259,11 @@ fn extract_google_text_and_calls(value: &Value) -> (String, Vec<ProviderFunction
                         .get("args")
                         .cloned()
                         .unwrap_or_else(|| json!({})),
+                    thought_signature: part
+                        .get("thoughtSignature")
+                        .or_else(|| part.get("thought_signature"))
+                        .and_then(Value::as_str)
+                        .map(|value| value.to_string()),
                 });
             }
         }
@@ -279,22 +292,33 @@ fn convert_openai_messages_to_google(
 
         if role == "assistant" {
             let mut parts = Vec::new();
-            let text = openai_text_from_message(message);
+            let tool_calls = parse_openai_tool_calls(message);
+            let text = if tool_calls.is_empty() {
+                openai_text_from_message(message)
+            } else {
+                String::new()
+            };
             if !text.trim().is_empty() {
                 parts.push(json!({ "text": text }));
             }
 
-            for function_call in parse_openai_tool_calls(message) {
+            for function_call in tool_calls {
                 if let Some(id) = &function_call.id {
                     tool_name_by_id.insert(id.clone(), function_call.name.clone());
                 }
-                parts.push(json!({
+                let mut part = json!({
                     "functionCall": {
                         "id": function_call.id,
                         "name": function_call.name,
                         "args": function_call.arguments
                     }
-                }));
+                });
+                if let Some(signature) = function_call.thought_signature {
+                    if let Some(object) = part.as_object_mut() {
+                        object.insert("thoughtSignature".to_string(), json!(signature));
+                    }
+                }
+                parts.push(part);
             }
 
             if !parts.is_empty() {
@@ -364,7 +388,12 @@ fn convert_openai_tools_to_google(tools: &Value) -> Vec<Value> {
             Some(json!({
                 "name": function.get("name").and_then(Value::as_str).unwrap_or_default(),
                 "description": function.get("description").and_then(Value::as_str).unwrap_or_default(),
-                "parameters": function.get("parameters").cloned().unwrap_or_else(|| json!({ "type": "object", "properties": {} }))
+                "parameters": sanitize_google_schema(
+                    &function
+                        .get("parameters")
+                        .cloned()
+                        .unwrap_or_else(|| json!({ "type": "object", "properties": {} }))
+                )
             }))
         })
         .collect::<Vec<_>>();
@@ -373,6 +402,28 @@ fn convert_openai_tools_to_google(tools: &Value) -> Vec<Value> {
         Vec::new()
     } else {
         vec![json!({ "functionDeclarations": declarations })]
+    }
+}
+
+fn sanitize_google_schema(value: &Value) -> Value {
+    match value {
+        Value::Object(map) => {
+            let mut sanitized = Map::new();
+            for (key, entry) in map {
+                if key == "additionalProperties" {
+                    continue;
+                }
+                sanitized.insert(key.clone(), sanitize_google_schema(entry));
+            }
+            Value::Object(sanitized)
+        }
+        Value::Array(items) => Value::Array(
+            items
+                .iter()
+                .map(sanitize_google_schema)
+                .collect::<Vec<_>>(),
+        ),
+        _ => value.clone(),
     }
 }
 
@@ -425,30 +476,103 @@ async fn generate_google_completion(
         body.insert("generationConfig".to_string(), Value::Object(generation_config));
     }
 
-    let response = client
-        .post(endpoint)
-        .header(CONTENT_TYPE, "application/json")
-        .json(&Value::Object(body))
-        .send()
-        .await
-        .map_err(|error| format!("provider request failed: {error}"))?;
+    let debug_google_request = std::env::var("OCTOMUS_DEBUG_GOOGLE_REQUEST")
+        .ok()
+        .as_deref()
+        .map(|value| value == "1" || value.eq_ignore_ascii_case("true"))
+        .unwrap_or(false);
+    let mut last_error = None;
+    let max_attempts = 5;
+    for attempt in 0..max_attempts {
+        if debug_google_request {
+            eprintln!(
+                "[Google] attempt {}/{} payload for model `{}`:\n{}",
+                attempt + 1,
+                max_attempts,
+                request.model,
+                serde_json::to_string_pretty(&Value::Object(body.clone()))
+                    .unwrap_or_else(|_| Value::Object(body.clone()).to_string())
+            );
+        }
 
-    let status = response.status();
-    let value: Value = response
-        .json()
-        .await
-        .map_err(|error| format!("failed to parse provider response: {error}"))?;
+        let attempt_client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(180))
+            .build()
+            .map_err(|error| format!("failed to build Google request client: {error}"))?;
 
-    if !status.is_success() {
-        return Err(format!("provider returned HTTP {status}: {}", trim_error_value(&value)));
+        let response = match attempt_client
+            .post(&endpoint)
+            .header(CONTENT_TYPE, "application/json")
+            .json(&Value::Object(body.clone()))
+            .send()
+            .await
+        {
+            Ok(response) => response,
+            Err(error) => {
+                let rendered = format!("provider request failed: {}", render_reqwest_error(&error));
+                last_error = Some(rendered.clone());
+                if attempt + 1 < max_attempts {
+                    let backoff_ms = 500_u64.saturating_mul(1_u64 << attempt);
+                    tokio::time::sleep(std::time::Duration::from_millis(backoff_ms))
+                        .await;
+                    continue;
+                }
+                return Err(rendered);
+            }
+        };
+
+        let status = response.status();
+        let value: Value = response
+            .json()
+            .await
+            .map_err(|error| format!("failed to parse provider response: {error}"))?;
+
+        if status.is_success() {
+            let (text, function_calls) = extract_google_text_and_calls(&value);
+            return Ok(ProviderCompletionResponse {
+                text,
+                function_calls,
+                usage: extract_google_usage(&value),
+            });
+        }
+
+        let rendered = format!("provider returned HTTP {status}: {}", trim_error_value(&value));
+        last_error = Some(rendered.clone());
+        if matches!(status.as_u16(), 429 | 500 | 502 | 503 | 504) && attempt + 1 < max_attempts {
+            let backoff_ms = 500_u64.saturating_mul(1_u64 << attempt);
+            tokio::time::sleep(std::time::Duration::from_millis(backoff_ms))
+                .await;
+            continue;
+        }
+
+        return Err(rendered);
     }
 
-    let (text, function_calls) = extract_google_text_and_calls(&value);
-    Ok(ProviderCompletionResponse {
-        text,
-        function_calls,
-        usage: extract_google_usage(&value),
-    })
+    return Err(last_error.unwrap_or_else(|| "provider request failed".to_string()));
+}
+
+fn render_reqwest_error(error: &reqwest::Error) -> String {
+    let mut details = vec![error.to_string()];
+    if error.is_timeout() {
+        details.push("timeout=true".to_string());
+    }
+    if error.is_connect() {
+        details.push("connect=true".to_string());
+    }
+    if error.is_body() {
+        details.push("body=true".to_string());
+    }
+    if error.is_builder() {
+        details.push("builder=true".to_string());
+    }
+    let mut source = error.source();
+    let mut depth = 0;
+    while let Some(current) = source {
+        details.push(format!("source[{depth}]={current}"));
+        source = current.source();
+        depth += 1;
+    }
+    details.join(" | ")
 }
 
 fn trim_error_value(value: &Value) -> String {
@@ -463,14 +587,17 @@ fn trim_error_value(value: &Value) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{convert_openai_messages_to_google, convert_openai_tools_to_google};
+    use super::{
+        convert_openai_messages_to_google, convert_openai_tools_to_google,
+        sanitize_google_schema,
+    };
     use serde_json::json;
 
     #[test]
     fn converts_openai_tool_history_to_google_contents() {
         let messages = vec![
             json!({"role":"system","content":"You are helpful."}),
-            json!({"role":"assistant","content":"","tool_calls":[{"id":"call_1","type":"function","function":{"name":"lookup_web","arguments":"{\"query\":\"news\"}"}}]}),
+            json!({"role":"assistant","content":"","tool_calls":[{"id":"call_1","type":"function","extra_content":{"google":{"thought_signature":"sig-1"}},"function":{"name":"lookup_web","arguments":"{\"query\":\"news\"}"}}]}),
             json!({"role":"tool","tool_call_id":"call_1","content":"{\"results\":[]}"}),
             json!({"role":"user","content":"Continue."}),
         ];
@@ -480,6 +607,7 @@ mod tests {
         assert_eq!(contents.len(), 3);
         assert_eq!(contents[0]["role"], "model");
         assert!(contents[0]["parts"][0]["functionCall"].is_object());
+        assert_eq!(contents[0]["parts"][0]["thoughtSignature"], "sig-1");
         assert!(contents[1]["parts"][0]["functionResponse"].is_object());
     }
 
@@ -504,5 +632,40 @@ mod tests {
         let converted = convert_openai_tools_to_google(&tools);
         assert_eq!(converted.len(), 1);
         assert_eq!(converted[0]["functionDeclarations"][0]["name"], "lookup_web");
+    }
+
+    #[test]
+    fn strips_additional_properties_from_google_schema() {
+        let schema = json!({
+            "type": "object",
+            "properties": {
+                "env": {
+                    "type": "object",
+                    "additionalProperties": { "type": "string" }
+                },
+                "nested": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "additionalProperties": { "type": "number" },
+                        "properties": {
+                            "name": { "type": "string" }
+                        }
+                    }
+                }
+            }
+        });
+
+        let sanitized = sanitize_google_schema(&schema);
+        assert!(sanitized["properties"]["env"]
+            .get("additionalProperties")
+            .is_none());
+        assert!(sanitized["properties"]["nested"]["items"]
+            .get("additionalProperties")
+            .is_none());
+        assert_eq!(
+            sanitized["properties"]["nested"]["items"]["properties"]["name"]["type"],
+            "string"
+        );
     }
 }

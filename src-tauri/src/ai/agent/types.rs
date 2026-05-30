@@ -79,6 +79,38 @@ pub struct AgentProviderStatus {
     pub source: String,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentSourceModel {
+    pub id: String,
+    pub source_kind: String,
+    pub label: String,
+    pub provider: String,
+    pub provider_id: String,
+    pub model_id: String,
+    pub note: String,
+    pub supports_attachments: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentModelSourceStatus {
+    pub kind: String,
+    pub label: String,
+    pub available: bool,
+    pub connected: bool,
+    pub binary_path: Option<String>,
+    pub auth_source: Option<String>,
+    pub message: Option<String>,
+    pub models: Vec<AgentSourceModel>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentModelSourceConnectRequest {
+    pub kind: String,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AgentRunLookupRequest {
@@ -206,6 +238,8 @@ pub struct AgentToolCall {
     pub id: String,
     pub name: String,
     pub args: Value,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub extra_content: Option<Value>,
 }
 
 #[derive(Debug, Clone, Serialize)]

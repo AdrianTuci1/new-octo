@@ -5,8 +5,10 @@ use tauri::{AppHandle, State};
 use uuid::Uuid;
 
 use super::{
+    cli_harness::CliDelegateHarness,
     harness::{AgentCancellation, AgentEventSink, AgentHarnessContext},
-    openai::{OpenAiCompatibleConfig, OpenAiCompatibleHarness},
+    providers::{OpenAiCompatibleConfig, OpenAiCompatibleHarness},
+    sources,
     scripted::ScriptedHarness,
     types::{
         AgentContinueRequest, AgentExecutionState, AgentRunSnapshot, AgentRunStatus,
@@ -49,6 +51,10 @@ pub async fn agent_continue(
         .or_else(OpenAiCompatibleConfig::from_env);
 
     let model_id = super::commands::resolve_model_id(request.model_id, provider_config.as_ref());
+    let external_source = sources::parse_source_model(&model_id);
+    let external_session_id = external_source
+        .as_ref()
+        .and_then(|(kind, _)| manager.get_external_session(&conversation_id, kind.as_str()).ok().flatten());
 
     let cwd = request.cwd.or_else(|| {
         std::env::var("HOME").ok().or_else(|| {
@@ -104,7 +110,10 @@ pub async fn agent_continue(
     tauri::async_runtime::spawn(async move {
         let cancellation = AgentCancellation::new(cancel_flag);
 
-        if let Some(config) = provider_config {
+        if let Some((kind, external_model_id)) = external_source {
+            let harness = CliDelegateHarness::new(kind, external_model_id, external_session_id);
+            super::commands::run_harness(harness, context, sink, cancellation).await;
+        } else if let Some(config) = provider_config {
             let harness = OpenAiCompatibleHarness::new(config);
             super::commands::run_harness(harness, context, sink, cancellation).await;
         } else {

@@ -1,6 +1,9 @@
 # Agent Loop Contract
 
-This file documents the machine-readable agent loop contract in [loop_contract.json](/Users/adriantucicovenco/Proiecte/launcher-rs-react/src-tauri/src/ai/agent/loop_contract.json).
+This file documents the machine-readable agent loop contract in [loop.json](/Users/adriantucicovenco/Proiecte/launcher-rs-react/src-tauri/src/ai/agent/contract/loop.json).
+
+The JSON file is the machine-readable source of truth.
+The sibling Rust module [mod.rs](/Users/adriantucicovenco/Proiecte/launcher-rs-react/src-tauri/src/ai/agent/contract/mod.rs) is not a duplicate specification; it is the typed loader, validator, and query API used by the runtime.
 
 ## Why this exists
 

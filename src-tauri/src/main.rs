@@ -330,6 +330,8 @@ fn main() {
             ai::agent_configure_openai_compatible,
             ai::agent_clear_openai_compatible,
             ai::agent_provider_status,
+            ai::agent_list_model_sources,
+            ai::agent_connect_model_source,
             ai::mcp::mcp_list_servers,
             ai::mcp::mcp_list_runtime_tools,
             ai::mcp::mcp_upsert_server,
@@ -418,7 +420,7 @@ fn main() {
             octomus_paths::OctomusPaths::default()
                 .ensure_layout()
                 .map_err(|error| -> Box<dyn std::error::Error> { error.into() })?;
-            let _ = ai::agent::loop_contract::get_loop_contract();
+            let _ = ai::agent::contract::get_loop_contract();
 
             #[cfg(target_os = "macos")]
             {

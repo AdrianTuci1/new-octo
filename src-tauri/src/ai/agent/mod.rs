@@ -1,19 +1,26 @@
 pub mod actions;
 mod commands;
+mod cli_harness;
 mod continuation;
+pub mod contract;
 pub mod conversation;
 pub mod decision;
+#[cfg(test)]
+mod evals;
 mod harness;
-pub mod loop_contract;
-mod openai;
+pub mod providers;
+pub mod sources;
 pub mod runtime;
 mod scripted;
 pub mod types;
-pub use openai::{OpenAiCompatibleConfig, OpenAiCompatibleHarness, OpenAiCompatibleProvider, skills};
+pub use providers::{
+    skills, OpenAiCompatibleConfig, OpenAiCompatibleHarness, OpenAiCompatibleProvider,
+};
 
 pub use commands::{
     agent_cancel, agent_clear_openai_compatible, agent_configure_openai_compatible, agent_get_run,
-    agent_list_runs, agent_provider_status, agent_start,
+    agent_connect_model_source, agent_list_model_sources, agent_list_runs, agent_provider_status,
+    agent_start,
 };
 pub use continuation::agent_continue;
-pub use loop_contract::agent_get_loop_contract;
+pub use contract::agent_get_loop_contract;

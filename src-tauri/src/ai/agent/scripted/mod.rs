@@ -82,6 +82,7 @@ impl AgentHarness for ScriptedHarness {
                         "requiresApproval": true,
                         "reason": util::approval_reason(command),
                     }),
+                    extra_content: None,
                 });
 
                 if sleep_or_cancel(&cancellation, Duration::from_millis(120)) {
@@ -110,6 +111,7 @@ impl AgentHarness for ScriptedHarness {
                     args: json!({
                         "query": query,
                     }),
+                    extra_content: None,
                 });
 
                 if sleep_or_cancel(&cancellation, Duration::from_millis(120)) {
@@ -131,6 +133,7 @@ impl AgentHarness for ScriptedHarness {
                         .unwrap_or("propose_plan")
                         .to_string(),
                     args: execution_plan.clone(),
+                    extra_content: None,
                 });
 
                 if sleep_or_cancel(&cancellation, Duration::from_millis(80)) {
@@ -166,6 +169,7 @@ impl AgentHarness for ScriptedHarness {
                         "description": "Suggested next user message based on the current answer.",
                         "confidence": 0.95
                     }),
+                    extra_content: None,
                 });
             }
 

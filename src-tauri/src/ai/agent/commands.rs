@@ -5,13 +5,15 @@ use tauri::{AppHandle, Emitter, State};
 use uuid::Uuid;
 
 use super::{
+    cli_harness::CliDelegateHarness,
     harness::{AgentCancellation, AgentEventSink, AgentHarness, AgentHarnessContext},
-    openai::{OpenAiCompatibleConfig, OpenAiCompatibleHarness, OpenAiCompatibleProvider},
+    providers::{OpenAiCompatibleConfig, OpenAiCompatibleHarness, OpenAiCompatibleProvider},
+    sources,
     scripted::ScriptedHarness,
     types::{
-        AgentExecutionState, AgentProviderConfigRequest, AgentProviderStatus,
-        AgentRunLookupRequest, AgentRunRequest, AgentRunSnapshot, AgentRunStatus,
-        AgentRunStatusEvent, AgentStartResponse,
+        AgentExecutionState, AgentModelSourceConnectRequest, AgentModelSourceStatus,
+        AgentProviderConfigRequest, AgentProviderStatus, AgentRunLookupRequest, AgentRunRequest,
+        AgentRunSnapshot, AgentRunStatus, AgentRunStatusEvent, AgentStartResponse,
     },
 };
 use crate::ai::agent_management::{
@@ -47,6 +49,16 @@ pub(crate) fn resolve_model_id(
         .filter(|id| !id.is_empty())
         .map(|id| id.to_string())
         .unwrap_or_else(|| DEFAULT_MODEL_ID.to_string())
+}
+
+pub fn agent_list_model_sources() -> Result<Vec<AgentModelSourceStatus>, String> {
+    Ok(sources::list_model_sources())
+}
+
+pub fn agent_connect_model_source(
+    request: AgentModelSourceConnectRequest,
+) -> Result<AgentModelSourceStatus, String> {
+    sources::connect_model_source(request)
 }
 
 pub async fn agent_start(
@@ -86,6 +98,10 @@ pub async fn agent_start(
         })
         .or_else(OpenAiCompatibleConfig::from_env);
     let model_id = resolve_model_id(request.model_id, provider_config.as_ref());
+    let external_source = sources::parse_source_model(&model_id);
+    let external_session_id = external_source
+        .as_ref()
+        .and_then(|(kind, _)| manager.get_external_session(&conversation_id, kind.as_str()).ok().flatten());
 
     let cwd = request.cwd.or_else(|| {
         std::env::var("HOME").ok().or_else(|| {
@@ -137,7 +153,10 @@ pub async fn agent_start(
         let cancellation = AgentCancellation::new(cancel_flag);
 
         println!("[AI] Starting harness run in background task");
-        if let Some(config) = provider_config {
+        if let Some((kind, external_model_id)) = external_source {
+            let harness = CliDelegateHarness::new(kind, external_model_id, external_session_id);
+            run_harness(harness, context, sink, cancellation).await;
+        } else if let Some(config) = provider_config {
             println!(
                 "[AI] Using OpenAI-compatible harness with provider: {}",
                 config.source
