@@ -59,6 +59,7 @@ export function useChatActions({
     assistantMessageId: string;
     status: 'started' | 'failed';
   }>>({});
+  const lastSubmitRef = useRef<{ key: string; timestamp: number } | null>(null);
 
   const attachFiles = useCallback(async (files: File[]) => {
     if (!files.length) {
@@ -275,6 +276,17 @@ export function useChatActions({
     const prompt = typeof promptOverride === 'string' ? promptOverride : state.query;
     const trimmed = prompt.trim();
     if (!trimmed && state.attachments.length === 0) return;
+    const attachmentIds = state.attachments.map((attachment) => attachment.id).join(',');
+    const submitKey = `${trimmed}\n${attachmentIds}`;
+    const now = Date.now();
+    if (
+      lastSubmitRef.current?.key === submitKey
+      && now - lastSubmitRef.current.timestamp < 1_000
+    ) {
+      return;
+    }
+    lastSubmitRef.current = { key: submitKey, timestamp: now };
+
     const resolvedPrompt = resolveAgentPrompt(trimmed);
     const { mentions, promptWithoutMentions } = parseComposerContextMentions(resolvedPrompt);
     const contextSummary = buildComposerContextSummary(mentions);

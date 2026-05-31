@@ -10,6 +10,7 @@ default-run = "octomus_launcher_prototype"
 tauri-build = { version = "2.0.0", features = [] }
 
 [dependencies]
+base64 = "0.22"
 chrono = { version = "0.4", features = ["serde"] }
 derivative = "2.2.0"
 image = { version = "0.25", default-features = false, features = ["png"] }
@@ -22,7 +23,7 @@ octomus-cloud-protocol = { path = "../octomus-cloud-protocol" }
 portable-pty = "0.8"
 rangemap = "1.7.1"
 regex = "1.12.3"
-reqwest = { version = "0.12", features = ["json", "stream", "native-tls", "hickory-dns"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls-native-roots", "hickory-dns"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 similar = "3.1.0"

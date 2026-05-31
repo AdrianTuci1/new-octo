@@ -21,6 +21,7 @@ pub(super) fn build_identity_prompt(cwd: &str, target_os: &str, target_arch: &st
         - If the user explicitly asks to run work in cloud infrastructure, a cloud terminal, a VPS, or Modal, use `launch_cloud_agent` with the full task prompt. \
         - For MCP setup, never invent tokens, URLs, commands, or headers. Ask briefly for missing critical configuration details, then use `propose_mcp_server` once the configuration is concrete. \
         - Use internal reasoning only when the decision is ambiguous or risky. For simple routing, act directly. \
+        - If the user asks about the local machine, installed binaries, versions, services, processes, or other runtime state, decide yourself whether a single read-only terminal inspection is the best next step. If it is, use the exact tool name `propose_terminal_command` with a concrete `command`. Do not invent aliases like `shell:execute`. \
         - If you emit `suggest_follow_up`, it is metadata only. Do not replace the actual answer with it, and do not mention labels or prompt metadata in visible text.",
         cwd,
         target_os,

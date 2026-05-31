@@ -297,7 +297,7 @@ pub(super) fn build_tool_definitions() -> Value {
             "type": "function",
             "function": {
                 "name": "propose_terminal_command",
-                "description": "Propose a terminal command to the user for approval and execution.",
+                "description": "Propose a terminal command to the user for approval and execution. Use this exact function name and do not invent aliases like shell:execute.",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -350,6 +350,19 @@ pub(super) fn build_tool_definitions() -> Value {
                         "workBranch": {
                             "type": "string",
                             "description": "Optional branch name for cloud work."
+                        },
+                        "syncStrategy": {
+                            "type": "string",
+                            "enum": ["git", "patch", "none"],
+                            "description": "Optional result sync mode. Use `git` when the cloud workspace can push a branch, `patch` when changes should come back as an artifact, and `none` for read-only delegation."
+                        },
+                        "commitMessage": {
+                            "type": "string",
+                            "description": "Optional commit message to use when syncStrategy is `git`."
+                        },
+                        "artifactPath": {
+                            "type": "string",
+                            "description": "Optional artifact path inside the cloud workspace when syncStrategy is `patch`."
                         }
                     },
                     "required": ["prompt"]

@@ -113,7 +113,8 @@ impl OpenAiCompatibleConfig {
         let model_id = std::env::var("OCTOMUS_AI_MODEL")
             .or_else(|_| std::env::var("OPENAI_MODEL"))
             .unwrap_or_else(|_| DEFAULT_MODEL_ID.to_string());
-        let provider = provider.unwrap_or_else(|| OpenAiCompatibleProvider::infer_from_base_url(&base_url));
+        let provider =
+            provider.unwrap_or_else(|| OpenAiCompatibleProvider::infer_from_base_url(&base_url));
 
         Some(Self::new(
             provider,

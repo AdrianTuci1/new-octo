@@ -13,6 +13,9 @@ export const cloudAgentToolCallHandler: ToolCallHandler = {
     const workBranch = stringArg(toolCall.args?.workBranch);
     const profileId = stringArg(toolCall.args?.profileId);
     const provider = stringArg(toolCall.args?.provider);
+    const syncStrategy = stringArg(toolCall.args?.syncStrategy);
+    const commitMessage = stringArg(toolCall.args?.commitMessage);
+    const artifactPath = stringArg(toolCall.args?.artifactPath);
 
     registrations.forEach((registration) => {
       registration.update((message) => ({
@@ -29,7 +32,10 @@ export const cloudAgentToolCallHandler: ToolCallHandler = {
         profileId: profileId || null,
         repo: repo || null,
         baseBranch: baseBranch || null,
-        workBranch: workBranch || null
+        workBranch: workBranch || null,
+        syncStrategy: syncStrategy || null,
+        commitMessage: commitMessage || null,
+        artifactPath: artifactPath || null
       });
     });
   }

@@ -54,6 +54,7 @@ export type CloudTerminalTarget = {
   kind: 'cloud';
   provider: TerminalSessionProvider;
   profileId: string;
+  environment?: string | null;
   host?: string | null;
   username?: string | null;
   connectionMethod?: CloudConnectionMethod | null;
@@ -174,6 +175,7 @@ export function toTerminalTarget(profile: CloudProfile): CloudTerminalTarget {
     kind: 'cloud',
     provider: profile.provider === 'modal' ? 'modal' : 'custom-vm',
     profileId: profile.id,
+    environment: profile.environment ?? null,
     host: profile.host ?? null,
     username: profile.username ?? null,
     connectionMethod: profile.connectionMethod ?? null

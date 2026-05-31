@@ -7,7 +7,10 @@ use tokio::{
 };
 
 use super::{
-    harness::{AgentCancellation, AgentHarness, AgentHarnessContext, AgentHarnessError, AgentHarnessOutcome, AgentEventSink},
+    harness::{
+        AgentCancellation, AgentEventSink, AgentHarness, AgentHarnessContext, AgentHarnessError,
+        AgentHarnessOutcome,
+    },
     sources::AgentModelSourceKind,
     types::{AgentModelSourceConnectRequest, AgentRunStatus, AgentUsage},
 };
@@ -19,7 +22,11 @@ pub struct CliDelegateHarness {
 }
 
 impl CliDelegateHarness {
-    pub fn new(kind: AgentModelSourceKind, model_alias: String, session_id: Option<String>) -> Self {
+    pub fn new(
+        kind: AgentModelSourceKind,
+        model_alias: String,
+        session_id: Option<String>,
+    ) -> Self {
         Self {
             kind,
             model_alias,
@@ -65,12 +72,28 @@ impl AgentHarness for CliDelegateHarness {
     ) -> Result<AgentHarnessOutcome, AgentHarnessError> {
         match self.kind {
             AgentModelSourceKind::Codex => {
-                run_codex(context, sink, cancellation, &self.model_alias, self.session_id.clone()).await
+                run_codex(
+                    context,
+                    sink,
+                    cancellation,
+                    &self.model_alias,
+                    self.session_id.clone(),
+                )
+                .await
             }
             AgentModelSourceKind::Claude => {
-                run_claude(context, sink, cancellation, &self.model_alias, self.session_id.clone()).await
+                run_claude(
+                    context,
+                    sink,
+                    cancellation,
+                    &self.model_alias,
+                    self.session_id.clone(),
+                )
+                .await
             }
-            AgentModelSourceKind::OpenAiCompatible => Err(AgentHarnessError::new("openai-compatible should use the native runtime")),
+            AgentModelSourceKind::OpenAiCompatible => Err(AgentHarnessError::new(
+                "openai-compatible should use the native runtime",
+            )),
         }
     }
 }
@@ -82,12 +105,16 @@ async fn run_codex(
     model_alias: &str,
     session_id: Option<String>,
 ) -> Result<AgentHarnessOutcome, AgentHarnessError> {
-    let output_file = std::env::temp_dir().join(format!("octomus-codex-{}.last-message.txt", context.run_id));
+    let output_file =
+        std::env::temp_dir().join(format!("octomus-codex-{}.last-message.txt", context.run_id));
     let prompt = build_prompt_for_cli(&context);
 
     let mut command = Command::new("codex");
     command.current_dir(context.cwd.clone().unwrap_or_else(|| ".".to_string()));
-    if let Some(existing) = session_id.as_deref().filter(|value| !value.trim().is_empty()) {
+    if let Some(existing) = session_id
+        .as_deref()
+        .filter(|value| !value.trim().is_empty())
+    {
         command.arg("exec").arg("resume").arg(existing);
     } else {
         command.arg("exec");
@@ -106,7 +133,10 @@ async fn run_codex(
     command.stdout(std::process::Stdio::piped());
     command.stderr(std::process::Stdio::piped());
 
-    sink.status(AgentRunStatus::Running, Some("Running through Codex CLI.".to_string()));
+    sink.status(
+        AgentRunStatus::Running,
+        Some("Running through Codex CLI.".to_string()),
+    );
     let mut child = command
         .spawn()
         .map_err(|error| AgentHarnessError::new(format!("failed to launch Codex CLI: {error}")))?;
@@ -160,7 +190,10 @@ async fn run_claude(
     let mut command = Command::new("claude");
     command.current_dir(cwd);
 
-    if let Some(existing) = session_id.as_deref().filter(|value| !value.trim().is_empty()) {
+    if let Some(existing) = session_id
+        .as_deref()
+        .filter(|value| !value.trim().is_empty())
+    {
         command.arg("-r").arg(existing);
     } else if context.prompt.trim().is_empty() {
         command.arg("-c");
@@ -179,10 +212,13 @@ async fn run_claude(
     command.stdout(std::process::Stdio::piped());
     command.stderr(std::process::Stdio::piped());
 
-    sink.status(AgentRunStatus::Running, Some("Running through Claude Code CLI.".to_string()));
-    let mut child = command
-        .spawn()
-        .map_err(|error| AgentHarnessError::new(format!("failed to launch Claude Code CLI: {error}")))?;
+    sink.status(
+        AgentRunStatus::Running,
+        Some("Running through Claude Code CLI.".to_string()),
+    );
+    let mut child = command.spawn().map_err(|error| {
+        AgentHarnessError::new(format!("failed to launch Claude Code CLI: {error}"))
+    })?;
 
     let stdout = child.stdout.take();
     let stderr = child.stderr.take();
@@ -223,10 +259,9 @@ async fn wait_for_child(
             let _ = child.kill().await;
             return Ok(None);
         }
-        if let Some(status) = child
-            .try_wait()
-            .map_err(|error| AgentHarnessError::new(format!("failed to poll child process: {error}")))?
-        {
+        if let Some(status) = child.try_wait().map_err(|error| {
+            AgentHarnessError::new(format!("failed to poll child process: {error}"))
+        })? {
             return Ok(Some(status));
         }
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
@@ -244,7 +279,10 @@ async fn stream_codex_stdout(stdout: Option<tokio::process::ChildStdout>, sink: 
             continue;
         }
         if let Ok(value) = serde_json::from_str::<Value>(trimmed) {
-            let event_type = value.get("type").and_then(Value::as_str).unwrap_or_default();
+            let event_type = value
+                .get("type")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
             match event_type {
                 "thread.started" => {
                     if let Some(thread_id) = value.get("thread_id").and_then(Value::as_str) {
@@ -278,7 +316,10 @@ async fn stream_claude_stdout(stdout: Option<tokio::process::ChildStdout>, sink:
             sink.token(format!("{trimmed}\n"));
             continue;
         };
-        let root_type = value.get("type").and_then(Value::as_str).unwrap_or_default();
+        let root_type = value
+            .get("type")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
         if root_type == "stream_event" {
             if let Some(text) = value
                 .get("event")
@@ -290,12 +331,22 @@ async fn stream_claude_stdout(stdout: Option<tokio::process::ChildStdout>, sink:
                 continue;
             }
         }
-        if root_type == "system" && value.get("subtype").and_then(Value::as_str) == Some("api_retry") {
-            let attempt = value.get("attempt").and_then(Value::as_i64).unwrap_or_default();
-            let max_retries = value.get("max_retries").and_then(Value::as_i64).unwrap_or_default();
+        if root_type == "system"
+            && value.get("subtype").and_then(Value::as_str) == Some("api_retry")
+        {
+            let attempt = value
+                .get("attempt")
+                .and_then(Value::as_i64)
+                .unwrap_or_default();
+            let max_retries = value
+                .get("max_retries")
+                .and_then(Value::as_i64)
+                .unwrap_or_default();
             sink.status(
                 AgentRunStatus::Running,
-                Some(format!("Claude Code retrying request ({attempt}/{max_retries}).")),
+                Some(format!(
+                    "Claude Code retrying request ({attempt}/{max_retries})."
+                )),
             );
             continue;
         }
@@ -337,5 +388,7 @@ fn build_prompt_for_cli(context: &AgentHarnessContext) -> String {
         .find(|message| message.role == "user")
         .map(|message| message.content.trim().to_string())
         .filter(|message| !message.is_empty())
-        .unwrap_or_else(|| "Continue the current task using the latest available context.".to_string())
+        .unwrap_or_else(|| {
+            "Continue the current task using the latest available context.".to_string()
+        })
 }

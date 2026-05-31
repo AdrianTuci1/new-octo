@@ -13,6 +13,18 @@ pub(super) struct DeltaToolCall {
     pub(super) reasoning: Option<String>,
 }
 
+fn delta_tool_call_arguments_fragment(value: Option<&Value>) -> Option<String> {
+    let value = value?;
+
+    match value {
+        Value::Null => None,
+        Value::String(raw) => Some(raw.to_string()),
+        Value::Object(_) | Value::Array(_) | Value::Bool(_) | Value::Number(_) => {
+            serde_json::to_string(value).ok()
+        }
+    }
+}
+
 pub(super) fn handle_stream_payload(
     payload: &str,
     sink: &AgentEventSink,
@@ -42,8 +54,7 @@ pub(super) fn handle_stream_payload(
     let delta = choice.get("delta");
     let message = choice.get("message");
 
-    if let Some(content) = extract_stream_content_text(delta.and_then(|item| item.get("content")))
-    {
+    if let Some(content) = extract_stream_content_text(delta.and_then(|item| item.get("content"))) {
         if use_synthetic_thinking {
             streamed.push_str(&content);
             if emit_visible_tokens {
@@ -94,10 +105,9 @@ pub(super) fn handle_stream_payload(
                 .and_then(|value| value.get("name"))
                 .and_then(Value::as_str)
                 .map(|value| value.to_string());
-            let arguments = function
-                .and_then(|value| value.get("arguments"))
-                .and_then(Value::as_str)
-                .map(|value| value.to_string());
+            let arguments = delta_tool_call_arguments_fragment(
+                function.and_then(|value| value.get("arguments")),
+            );
 
             return Ok(Some(DeltaToolCall {
                 id,
@@ -122,10 +132,9 @@ pub(super) fn handle_stream_payload(
                 .and_then(|value| value.get("name"))
                 .and_then(Value::as_str)
                 .map(|value| value.to_string());
-            let arguments = function
-                .and_then(|value| value.get("arguments"))
-                .and_then(Value::as_str)
-                .map(|value| value.to_string());
+            let arguments = delta_tool_call_arguments_fragment(
+                function.and_then(|value| value.get("arguments")),
+            );
 
             return Ok(Some(DeltaToolCall {
                 id,
@@ -153,8 +162,7 @@ fn extract_stream_content_text(content: Option<&Value>) -> Option<String> {
     let content = content?;
 
     if let Some(text) = content.as_str() {
-        let trimmed = text.trim();
-        if !trimmed.is_empty() {
+        if !text.is_empty() {
             return Some(text.to_string());
         }
     }
@@ -163,20 +171,17 @@ fn extract_stream_content_text(content: Option<&Value>) -> Option<String> {
     let text = parts
         .iter()
         .filter_map(|part| {
-            part.get("text")
-                .and_then(Value::as_str)
-                .or_else(|| {
-                    part.get("type")
-                        .and_then(Value::as_str)
-                        .filter(|kind| *kind == "text")
-                        .and_then(|_| part.get("text").and_then(Value::as_str))
-                })
+            part.get("text").and_then(Value::as_str).or_else(|| {
+                part.get("type")
+                    .and_then(Value::as_str)
+                    .filter(|kind| *kind == "text")
+                    .and_then(|_| part.get("text").and_then(Value::as_str))
+            })
         })
         .collect::<Vec<_>>()
         .join("");
 
-    let trimmed = text.trim();
-    if trimmed.is_empty() {
+    if text.is_empty() {
         None
     } else {
         Some(text)

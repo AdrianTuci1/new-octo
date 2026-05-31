@@ -12,9 +12,10 @@ use crate::ai::mcp;
 
 use super::super::config::OpenAiCompatibleConfig;
 use super::super::guardian::run_guardian_check;
+use super::context;
 use super::heuristics::{
-    command_is_low_risk_terminal_inspection, context_supports_terminal_command,
-    guardian_intent_context, prompt_requests_file_change, response_looks_like_inline_code,
+    command_is_low_risk_terminal_inspection, guardian_intent_context, prompt_requests_file_change,
+    response_looks_like_inline_code,
 };
 use super::messages::{
     emit_internal_tool_call, rejected_tool_result_message, summarize_internal_tool_result,
@@ -22,7 +23,7 @@ use super::messages::{
 };
 use super::resume::{apply_runtime_event, sync_execution_state};
 use super::types::{ActionStageOutcome, StageModelResponse};
-use super::context;
+use crate::ai::provider_adapter::normalize_tool_call_name;
 
 #[allow(clippy::too_many_arguments)]
 pub(super) async fn handle_action_stage_response(
@@ -35,13 +36,14 @@ pub(super) async fn handle_action_stage_response(
     pending_tool_call: &mut Option<AgentPendingToolCall>,
     last_runtime_error: &mut Option<String>,
     pass_index: u32,
-    local_terminal_check_requested: bool,
     response: StageModelResponse,
     from_verifying: bool,
 ) -> Result<ActionStageOutcome, AgentHarnessError> {
     let visible_text = response.visible_text;
 
-    if let Some(tool_call) = response.tool_call {
+    if let Some(mut tool_call) = response.tool_call {
+        tool_call.name = normalize_tool_call_name(&tool_call.name);
+
         if !runtime.allows_tool(&tool_call.name) {
             emit_internal_tool_call(sink, negotiation_messages, &tool_call);
             negotiation_messages.push(rejected_tool_result_message(
@@ -151,7 +153,6 @@ pub(super) async fn handle_action_stage_response(
         pending_tool_call,
         last_runtime_error,
         pass_index,
-        local_terminal_check_requested,
         visible_text,
         from_verifying,
     )
@@ -166,8 +167,9 @@ pub(super) fn emit_final_answer(
     pending_tool_call: &mut Option<AgentPendingToolCall>,
     last_runtime_error: &mut Option<String>,
     answer: &str,
+    emit_answer_token: bool,
 ) -> Result<(), AgentHarnessError> {
-    if !answer.is_empty() {
+    if emit_answer_token && !answer.is_empty() {
         sink.token(answer);
     }
     apply_runtime_event(runtime, EVENT_EMIT_FINAL_ANSWER)?;
@@ -197,15 +199,23 @@ async fn guard_terminal_tool_call(
         return Ok(None);
     }
 
-    let Some(command) = tool_args.get("command").and_then(Value::as_str) else {
-        return Ok(None);
+    let Some(command) = tool_args
+        .get("command")
+        .and_then(Value::as_str)
+        .map(str::trim)
+    else {
+        negotiation_messages.push(system_message(
+            "Tool call `propose_terminal_command` is missing the required `command` field. Re-emit the tool call with a concrete read-only command, or answer directly if no local inspection is needed.",
+        ));
+        *last_runtime_error = Some("terminal-command-missing-command".to_string());
+        return Ok(Some(ActionStageOutcome::Continue));
     };
 
-    if !context_supports_terminal_command(context) {
+    if command.is_empty() {
         negotiation_messages.push(system_message(
-            "Cererea curentă nu cere o comandă de terminal. Reia pasul și răspunde direct sau alege alt tool local potrivit.",
+            "Tool call `propose_terminal_command` must include a non-empty `command`. Re-emit the tool call with a concrete read-only command, or answer directly if no local inspection is needed.",
         ));
-        *last_runtime_error = Some("terminal-command-out-of-context".to_string());
+        *last_runtime_error = Some("terminal-command-empty-command".to_string());
         return Ok(Some(ActionStageOutcome::Continue));
     }
 
@@ -364,8 +374,11 @@ fn handle_internal_tool_completion(
         pending_tool_call,
         last_runtime_error,
         visible_text.trim(),
+        false,
     )?;
-    Ok(ActionStageOutcome::Completed(visible_text.trim().to_string()))
+    Ok(ActionStageOutcome::Completed(
+        visible_text.trim().to_string(),
+    ))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -415,7 +428,6 @@ fn handle_empty_or_direct_response(
     pending_tool_call: &mut Option<AgentPendingToolCall>,
     last_runtime_error: &mut Option<String>,
     pass_index: u32,
-    local_terminal_check_requested: bool,
     visible_text: String,
     from_verifying: bool,
 ) -> Result<ActionStageOutcome, AgentHarnessError> {
@@ -428,17 +440,11 @@ fn handle_empty_or_direct_response(
             pending_tool_call,
             last_runtime_error,
             visible_text.trim(),
+            false,
         )?;
-        return Ok(ActionStageOutcome::Completed(visible_text.trim().to_string()));
-    }
-
-    if local_terminal_check_requested && runtime.current_stage_id() == STAGE_TOOL_SELECTION {
-        negotiation_messages.push(system_message(format!(
-            "Cererea `{}` cere o verificare locală. Reia acum și emite obligatoriu `propose_terminal_command` cu o singură comandă read-only care poate răspunde local.",
-            context.prompt
-        )));
-        *last_runtime_error = Some("llm-missed-local-terminal-check".to_string());
-        return Ok(ActionStageOutcome::Continue);
+        return Ok(ActionStageOutcome::Completed(
+            visible_text.trim().to_string(),
+        ));
     }
 
     if prompt_requests_file_change(&context.prompt)
@@ -452,21 +458,18 @@ fn handle_empty_or_direct_response(
         return Ok(ActionStageOutcome::Continue);
     }
 
-    let fallback = if from_verifying {
-        "Modelul nu a produs o verificare finală utilă după rezultatul tool-ului. Încearcă din nou sau oferă o instrucțiune puțin mai precisă."
+    let retry_message = if from_verifying {
+        "Modelul nu a produs o verificare finală utilă după rezultatul tool-ului. Re-evaluează ultimul rezultat și alege o acțiune concretă sau un răspuns final direct."
     } else {
-        "Modelul nu a produs niciun răspuns vizibil sau tool call util pentru această cerere. Încearcă din nou sau reformulează cererea mai concret."
+        "Modelul nu a produs niciun răspuns vizibil sau tool call util pentru această cerere. Re-evaluează cererea și alege exact o acțiune concretă sau un răspuns final direct."
     };
-    emit_final_answer(
-        sink,
-        runtime,
-        pass_index,
-        pending_resolution,
-        pending_tool_call,
-        last_runtime_error,
-        fallback,
-    )?;
-    Ok(ActionStageOutcome::Completed(fallback.to_string()))
+    negotiation_messages.push(system_message(retry_message));
+    *last_runtime_error = Some(if from_verifying {
+        "empty-verifying-stage-response".to_string()
+    } else {
+        "empty-tool-selection-stage-response".to_string()
+    });
+    Ok(ActionStageOutcome::Continue)
 }
 
 fn transition_to_approval_wait(

@@ -26,6 +26,7 @@ export type TerminalSessionTarget = {
   kind?: TerminalSessionKind;
   provider?: TerminalSessionProvider;
   profileId?: string | null;
+  environment?: string | null;
   host?: string | null;
   username?: string | null;
   connectionMethod?: string | null;

@@ -2,9 +2,8 @@ use std::path::{Path, PathBuf};
 
 use serde_json::Value;
 
-use crate::ai::agent::types::AgentToolCall;
-
 use super::workspace::EvalWorkspace;
+use crate::ai::agent::types::AgentToolCall;
 
 #[derive(Debug, Default)]
 pub(super) struct EvalToolSimulator {
@@ -19,8 +18,15 @@ impl EvalToolSimulator {
     ) -> Result<String, String> {
         match tool_call.name.as_str() {
             "explore_workspace" => simulate_explore_workspace(workspace.root(), &tool_call.args),
-            "read_workspace_file" => simulate_read_workspace_file(workspace.root(), &tool_call.args),
+            "read_workspace_file" => {
+                simulate_read_workspace_file(workspace.root(), &tool_call.args)
+            }
             "propose_file_change" => self.simulate_file_change(workspace.root(), &tool_call.args),
+            "propose_terminal_command" => simulate_terminal_command(&tool_call.args),
+            "propose_plan" => simulate_plan_artifact("propose_plan", &tool_call.args),
+            "update_plan" => simulate_plan_artifact("update_plan", &tool_call.args),
+            "plan_execution" => simulate_plan_artifact("plan_execution", &tool_call.args),
+            "suggest_follow_up" => simulate_follow_up_suggestion(&tool_call.args),
             "launch_cloud_agent" => simulate_cloud_launch(&tool_call.args),
             other => Err(format!("unsupported eval tool simulation for `{other}`")),
         }
@@ -128,7 +134,11 @@ fn simulate_explore_workspace(root: &Path, args: &Value) -> Result<String, Strin
                 .iter()
                 .map(|entry| format!("- {}", relativize(root, entry)))
                 .collect::<Vec<_>>();
-            Ok(format!("Workspace listing for {}:\n{}", path, listed.join("\n")))
+            Ok(format!(
+                "Workspace listing for {}:\n{}",
+                path,
+                listed.join("\n")
+            ))
         }
         "search" | "symbols" | "definition" | "references" => {
             let mut matches = Vec::new();
@@ -137,7 +147,10 @@ fn simulate_explore_workspace(root: &Path, args: &Value) -> Result<String, Strin
                 .into_iter()
                 .filter_map(|file_path| {
                     let content = std::fs::read_to_string(&file_path).ok()?;
-                    if !query.is_empty() && !content.contains(&query) && !file_path.to_string_lossy().contains(&query) {
+                    if !query.is_empty()
+                        && !content.contains(&query)
+                        && !file_path.to_string_lossy().contains(&query)
+                    {
                         return None;
                     }
                     Some(format!("- {}", relativize(root, &file_path)))
@@ -172,10 +185,7 @@ fn simulate_read_workspace_file(root: &Path, args: &Value) -> Result<String, Str
     let resolved = resolve_workspace_path(root, path);
     let content = std::fs::read_to_string(&resolved)
         .map_err(|error| format!("failed to read '{}': {error}", resolved.display()))?;
-    let start = args
-        .get("startLine")
-        .and_then(Value::as_u64)
-        .unwrap_or(1) as usize;
+    let start = args.get("startLine").and_then(Value::as_u64).unwrap_or(1) as usize;
     let end = args
         .get("endLine")
         .and_then(Value::as_u64)
@@ -217,6 +227,39 @@ fn simulate_cloud_launch(args: &Value) -> Result<String, String> {
     ))
 }
 
+fn simulate_terminal_command(args: &Value) -> Result<String, String> {
+    let command = args
+        .get("command")
+        .and_then(Value::as_str)
+        .ok_or_else(|| "propose_terminal_command is missing command".to_string())?;
+    let requires_approval = args
+        .get("requiresApproval")
+        .and_then(Value::as_bool)
+        .unwrap_or(true);
+    let reason = args
+        .get("reason")
+        .and_then(Value::as_str)
+        .unwrap_or("Terminal command proposed for local inspection.");
+
+    Ok(format!(
+        "Terminal command proposal accepted. requiresApproval={requires_approval}; command={command}; reason={reason}"
+    ))
+}
+
+fn simulate_plan_artifact(tool_name: &str, args: &Value) -> Result<String, String> {
+    Ok(format!(
+        "Plan artifact accepted by the runtime and displayed to the user via `{tool_name}`: {}",
+        serde_json::to_string(args).unwrap_or_else(|_| "{}".to_string())
+    ))
+}
+
+fn simulate_follow_up_suggestion(args: &Value) -> Result<String, String> {
+    Ok(format!(
+        "Follow-up suggestion metadata captured by the runtime: {}",
+        serde_json::to_string(args).unwrap_or_else(|_| "{}".to_string())
+    ))
+}
+
 fn apply_update_deltas(existing: &str, raw_deltas: Option<&Value>) -> Result<String, String> {
     let deltas = match raw_deltas {
         Some(Value::Array(items)) => items.clone(),
@@ -224,13 +267,19 @@ fn apply_update_deltas(existing: &str, raw_deltas: Option<&Value>) -> Result<Str
         _ => return Ok(existing.to_string()),
     };
 
-    let mut lines = existing.lines().map(ToString::to_string).collect::<Vec<_>>();
+    let mut lines = existing
+        .lines()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>();
     for delta in deltas.into_iter().rev() {
         let range = delta
             .get("replacement_line_range")
             .ok_or_else(|| "delta is missing replacement_line_range".to_string())?;
         let start = range.get("start").and_then(Value::as_u64).unwrap_or(1) as usize;
-        let end = range.get("end").and_then(Value::as_u64).unwrap_or(start as u64) as usize;
+        let end = range
+            .get("end")
+            .and_then(Value::as_u64)
+            .unwrap_or(start as u64) as usize;
         let insertion = delta
             .get("insertion")
             .and_then(Value::as_str)
@@ -288,7 +337,7 @@ fn relativize(root: &Path, path: &Path) -> String {
 mod tests {
     use serde_json::json;
 
-    use super::apply_update_deltas;
+    use super::{apply_update_deltas, simulate_plan_artifact, simulate_terminal_command};
 
     #[test]
     fn update_deltas_replace_requested_lines() {
@@ -305,5 +354,32 @@ mod tests {
 
         assert_eq!(updated, "line1\nmiddle\nline3\n");
     }
-}
 
+    #[test]
+    fn terminal_command_simulation_acknowledges_proposed_command() {
+        let response = simulate_terminal_command(&json!({
+            "command": "ls -la",
+            "requiresApproval": true,
+            "reason": "Inspect local files"
+        }))
+        .expect("terminal command simulation should succeed");
+
+        assert!(response.contains("ls -la"));
+        assert!(response.contains("requiresApproval=true"));
+    }
+
+    #[test]
+    fn plan_artifact_simulation_returns_stable_summary() {
+        let response = simulate_plan_artifact(
+            "propose_plan",
+            &json!({
+                "id": "plan-1",
+                "title": "Investigate bug"
+            }),
+        )
+        .expect("plan artifact simulation should succeed");
+
+        assert!(response.contains("propose_plan"));
+        assert!(response.contains("Investigate bug"));
+    }
+}

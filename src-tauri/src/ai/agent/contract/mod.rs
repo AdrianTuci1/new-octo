@@ -167,7 +167,10 @@ pub fn validate_loop_contract(contract: &AgentLoopContract) -> Result<(), String
 
         for transition in &stage.transitions {
             if transition.event_id.trim().is_empty() {
-                return Err(format!("stage '{}' has a transition with an empty eventId", stage.id));
+                return Err(format!(
+                    "stage '{}' has a transition with an empty eventId",
+                    stage.id
+                ));
             }
 
             if !stage_id_set.contains(&transition.target_stage_id) {
@@ -177,7 +180,11 @@ pub fn validate_loop_contract(contract: &AgentLoopContract) -> Result<(), String
                 ));
             }
 
-            if !stage.next_stages.iter().any(|next| next == &transition.target_stage_id) {
+            if !stage
+                .next_stages
+                .iter()
+                .any(|next| next == &transition.target_stage_id)
+            {
                 return Err(format!(
                     "stage '{}' transition '{}' targets '{}' which is missing from nextStages",
                     stage.id, transition.event_id, transition.target_stage_id

@@ -1,8 +1,8 @@
 use std::path::Path;
 
 use crate::terminal::fs::{
-    terminal_list_directory_entries, terminal_search_directory_entries, ListDirectoryEntriesRequest,
-    SearchDirectoryEntriesRequest,
+    terminal_list_directory_entries, terminal_search_directory_entries,
+    ListDirectoryEntriesRequest, SearchDirectoryEntriesRequest,
 };
 
 use super::{
@@ -51,7 +51,11 @@ pub(super) fn build_listing_results(
         detail: Some(format!(
             "{} visible entr{}",
             listing.entries.len(),
-            if listing.entries.len() == 1 { "y" } else { "ies" }
+            if listing.entries.len() == 1 {
+                "y"
+            } else {
+                "ies"
+            }
         )),
         path: None,
         created_at: created_at.to_string(),
@@ -158,16 +162,18 @@ pub(super) fn build_fallback_search_results(
 
     if files.is_empty() && directories.is_empty() && recursive {
         for query_value in queries {
-            let recursive_listing = terminal_search_directory_entries(SearchDirectoryEntriesRequest {
-                path: Some(target_path.to_string_lossy().to_string()),
-                cwd: cwd.clone(),
-                query: query_value.clone(),
-            })?;
+            let recursive_listing =
+                terminal_search_directory_entries(SearchDirectoryEntriesRequest {
+                    path: Some(target_path.to_string_lossy().to_string()),
+                    cwd: cwd.clone(),
+                    query: query_value.clone(),
+                })?;
             let matched = recursive_listing
                 .entries
                 .iter()
                 .filter(|entry| {
-                    (entry.is_directory && include_directories) || (!entry.is_directory && include_files)
+                    (entry.is_directory && include_directories)
+                        || (!entry.is_directory && include_files)
                 })
                 .take(max_results)
                 .cloned()
@@ -188,11 +194,8 @@ pub(super) fn build_fallback_search_results(
                 text: format!("Searched for {}", query_value),
                 detail: Some(format!(
                     "recursively in {} ({} match{})",
-                    display_workspace_path(
-                        recursive_listing.current_path.as_str(),
-                        cwd.as_deref()
-                    )
-                    .unwrap_or_else(|| ".".to_string()),
+                    display_workspace_path(recursive_listing.current_path.as_str(), cwd.as_deref())
+                        .unwrap_or_else(|| ".".to_string()),
                     matched.len(),
                     if matched.len() == 1 { "" } else { "es" }
                 )),

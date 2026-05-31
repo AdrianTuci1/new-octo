@@ -25,6 +25,20 @@ const toolCallHandlers: ToolCallHandler[] = [
   fileChangeToolCallHandler
 ];
 
+function normalizeToolCallName(name: string) {
+  const trimmed = name.trim();
+  if (!trimmed) {
+    return trimmed;
+  }
+
+  const colonIndex = trimmed.indexOf(':');
+  if (colonIndex > 0 && colonIndex < trimmed.length - 1) {
+    return trimmed.slice(colonIndex + 1).trim() || trimmed;
+  }
+
+  return trimmed;
+}
+
 function appendRawToolCall(registrations: AssistantMessageRegistration[], toolCall: AgentToolCall) {
   registrations.forEach((registration) => {
     registration.update((message) => ({
@@ -47,17 +61,24 @@ function findToolCallHandler(toolName: string) {
 
 export function dispatchToolCall(context: ToolCallHandlerContext) {
   const { registrations, toolCall } = context;
-  const handler = findToolCallHandler(toolCall.name);
+  const normalizedToolCall = {
+    ...toolCall,
+    name: normalizeToolCallName(toolCall.name)
+  };
+  const handler = findToolCallHandler(normalizedToolCall.name);
 
   if (!handler) {
-    appendRawToolCall(registrations, toolCall);
+    appendRawToolCall(registrations, normalizedToolCall);
     return false;
   }
 
   if (handler.recordRawToolCall !== false) {
-    appendRawToolCall(registrations, toolCall);
+    appendRawToolCall(registrations, normalizedToolCall);
   }
 
-  handler.handle(context);
+  handler.handle({
+    ...context,
+    toolCall: normalizedToolCall
+  });
   return true;
 }

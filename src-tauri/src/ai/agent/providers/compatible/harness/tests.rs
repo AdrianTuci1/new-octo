@@ -2,23 +2,18 @@ use super::{
     actions::handle_action_stage_response,
     context::{guardian_intercepted_tool_calls, normalize_outbound_tool_calls},
     heuristics::{
-        command_is_low_risk_terminal_inspection, context_supports_terminal_command,
-        prompt_requires_local_terminal_check, prompt_supports_terminal_command,
-        should_retry_file_change_duplicate_code, should_retry_follow_up_only,
+        command_is_low_risk_terminal_inspection, should_retry_file_change_duplicate_code,
+        should_retry_follow_up_only,
     },
+    parser::handle_stream_payload,
     resume::{apply_runtime_event, initial_runtime_for_context},
     thinking::longest_tag_suffix_len,
     types::{ActionStageOutcome, CollectedToolCall, StageModelResponse},
 };
-use crate::ai::agent::harness::{
-    AgentEventSink, AgentHarnessContext, TestAgentEvent,
-};
-use crate::ai::agent::providers::{
-    OpenAiCompatibleConfig, OpenAiCompatibleProvider,
-};
+use crate::ai::agent::harness::{AgentEventSink, AgentHarnessContext, TestAgentEvent};
+use crate::ai::agent::providers::{OpenAiCompatibleConfig, OpenAiCompatibleProvider};
 use crate::ai::agent::runtime::{
-    EVENT_SKIP_PLANNING, STAGE_AWAITING_APPROVAL, STAGE_EXECUTING, STAGE_REASONING,
-    STAGE_VERIFYING,
+    EVENT_SKIP_PLANNING, STAGE_AWAITING_APPROVAL, STAGE_EXECUTING, STAGE_REASONING, STAGE_VERIFYING,
 };
 use crate::ai::agent::types::{
     AgentExecutionState, AgentInputMessage, AgentPendingResolutionKind, AgentPendingToolCall,
@@ -27,10 +22,7 @@ use crate::ai::agent::types::{
 use crate::ai::agent_management::AgentHarnessManager;
 use chrono::Utc;
 use serde_json::json;
-use std::sync::{
-    atomic::AtomicBool,
-    Arc, Mutex,
-};
+use std::sync::{atomic::AtomicBool, Arc, Mutex};
 
 fn harness_context(
     prompt: &str,
@@ -126,41 +118,55 @@ fn normalizes_assistant_tool_call_arguments_from_objects_to_strings() {
 }
 
 #[test]
-fn terminal_prompt_support_includes_modal_cloud_flows() {
-    assert!(prompt_supports_terminal_command(
-        "modal e deja configurat; creează un container și scrie un fișier în cloud"
-    ));
-}
+fn stream_parser_preserves_whitespace_only_markdown_tokens() {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("tokio runtime should build");
+    runtime.block_on(async {
+        let test_runtime = TestHarnessRuntime::new(
+            "run-markdown-whitespace",
+            "format markdown",
+            vec![],
+            None,
+        );
+        let mut streamed = String::new();
+        let mut reasoning = String::new();
+        let mut thinking_state = super::thinking::ThinkingStreamState::default();
+        let mut usage = None;
 
-#[test]
-fn generic_local_runtime_check_is_detected_without_hardcoded_binary_match() {
-    assert!(prompt_requires_local_terminal_check(
-        "verifică dacă rulează vreun serviciu local"
-    ));
-}
+        for chunk in ["Intro", "\n\n", "### Titlu", "\n\n", "- item"] {
+            let payload = json!({
+                "choices": [{
+                    "delta": {
+                        "content": chunk
+                    }
+                }]
+            })
+            .to_string();
 
-#[test]
-fn project_questions_do_not_get_misclassified_as_local_runtime_checks() {
-    assert!(!prompt_requires_local_terminal_check(
-        "verifică dacă rulează testele din repo"
-    ));
-}
+            handle_stream_payload(
+                &payload,
+                &test_runtime.sink,
+                &mut streamed,
+                &mut reasoning,
+                &mut thinking_state,
+                false,
+                true,
+                false,
+                &mut usage,
+            )
+            .expect("stream payload should parse");
+        }
 
-#[test]
-fn empty_prompt_is_treated_like_continuation_when_recent_tool_context_exists() {
-    let context = harness_context(
-        "",
-        vec![AgentInputMessage {
-            role: "tool".to_string(),
-            content: "[Invisible harness instruction]\nContinue toward the original user goal."
-                .to_string(),
-            tool_call_id: Some("tool-1".to_string()),
-            tool_calls: None,
-        }],
-        vec![],
-    );
+        assert_eq!(streamed, "Intro\n\n### Titlu\n\n- item");
 
-    assert!(context_supports_terminal_command(&context));
+        let events = test_runtime.events.lock().expect("events should lock");
+        assert_eq!(
+            extract_tokens(&events).join(""),
+            "Intro\n\n### Titlu\n\n- item"
+        );
+    });
 }
 
 #[test]
@@ -259,21 +265,203 @@ fn approval_stage_with_tool_result_resumes_in_verifying() {
 }
 
 #[test]
-fn terminal_surface_allows_terminal_command_without_prompt_keywords() {
-    let mut context = harness_context("deschide asta", vec![], vec![]);
-    context.surface = Some("terminal".to_string());
-
-    assert!(context_supports_terminal_command(&context));
+fn low_risk_terminal_inspection_commands_are_auto_approved() {
+    assert!(command_is_low_risk_terminal_inspection("ls -la"));
+    assert!(command_is_low_risk_terminal_inspection(
+        "git status --short"
+    ));
+    assert!(command_is_low_risk_terminal_inspection("cargo test"));
+    assert!(!command_is_low_risk_terminal_inspection(
+        "rm -rf node_modules"
+    ));
+    assert!(!command_is_low_risk_terminal_inspection(
+        "git push origin main"
+    ));
+    assert!(!command_is_low_risk_terminal_inspection("ls -la && pwd"));
 }
 
 #[test]
-fn low_risk_terminal_inspection_commands_are_auto_approved() {
-    assert!(command_is_low_risk_terminal_inspection("ls -la"));
-    assert!(command_is_low_risk_terminal_inspection("git status --short"));
-    assert!(command_is_low_risk_terminal_inspection("cargo test"));
-    assert!(!command_is_low_risk_terminal_inspection("rm -rf node_modules"));
-    assert!(!command_is_low_risk_terminal_inspection("git push origin main"));
-    assert!(!command_is_low_risk_terminal_inspection("ls -la && pwd"));
+fn terminal_tool_missing_command_requests_repair() {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("tokio runtime should build");
+    runtime.block_on(async {
+        let test_runtime = TestHarnessRuntime::new(
+            "run-terminal-missing-command",
+            "verifică mediul local",
+            vec![],
+            None,
+        );
+        let config = test_config();
+        let mut loop_runtime =
+            initial_runtime_for_context(&test_runtime.context).expect("runtime should initialize");
+        apply_runtime_event(&mut loop_runtime, EVENT_SKIP_PLANNING)
+            .expect("reasoning -> tool-selection should be valid");
+
+        let mut negotiation_messages = test_runtime.context.messages.clone();
+        let outcome = handle_action_stage_response(
+            &config,
+            &test_runtime.context,
+            &test_runtime.sink,
+            &mut loop_runtime,
+            &mut negotiation_messages,
+            &mut None,
+            &mut None,
+            &mut None,
+            0,
+            StageModelResponse {
+                visible_text: String::new(),
+                tool_call: Some(CollectedToolCall {
+                    id: "call_missing_command".to_string(),
+                    name: "propose_terminal_command".to_string(),
+                    args: json!({}),
+                    raw_args: "{}".to_string(),
+                    google_thought_signature: None,
+                }),
+                usage: None,
+            },
+            false,
+        )
+        .await
+        .expect("action handling should succeed");
+
+        match outcome {
+            ActionStageOutcome::Continue => {}
+            _ => panic!("expected repair retry when command is missing"),
+        }
+
+        let repair_instruction = negotiation_messages
+            .iter()
+            .rev()
+            .find(|message| message.role == "system")
+            .map(|message| message.content.clone())
+            .unwrap_or_default();
+        assert!(repair_instruction.contains("missing the required `command`"));
+        assert!(repair_instruction.contains("propose_terminal_command"));
+    });
+}
+
+#[test]
+fn namespaced_terminal_tool_calls_are_normalized() {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("tokio runtime should build");
+    runtime.block_on(async {
+        let test_runtime = TestHarnessRuntime::new(
+            "run-terminal-namespaced",
+            "vezi daca docker ruleaza",
+            vec![],
+            None,
+        );
+        let config = test_config();
+        let mut loop_runtime =
+            initial_runtime_for_context(&test_runtime.context).expect("runtime should initialize");
+        apply_runtime_event(&mut loop_runtime, EVENT_SKIP_PLANNING)
+            .expect("reasoning -> tool-selection should be valid");
+
+        let outcome = handle_action_stage_response(
+            &config,
+            &test_runtime.context,
+            &test_runtime.sink,
+            &mut loop_runtime,
+            &mut test_runtime.context.messages.clone(),
+            &mut None,
+            &mut None,
+            &mut None,
+            0,
+            StageModelResponse {
+                visible_text: String::new(),
+                tool_call: Some(CollectedToolCall {
+                    id: "call_docker".to_string(),
+                    name: "octomus:propose_terminal_command".to_string(),
+                    args: json!({ "command": "docker ps" }),
+                    raw_args: "{\"command\":\"docker ps\"}".to_string(),
+                    google_thought_signature: None,
+                }),
+                usage: None,
+            },
+            false,
+        )
+        .await
+        .expect("action handling should succeed");
+
+        match outcome {
+            ActionStageOutcome::Waiting(_) => {}
+            _ => panic!("expected waiting outcome for namespaced terminal command"),
+        }
+
+        let snapshot = test_runtime
+            .manager
+            .get("run-terminal-namespaced")
+            .expect("snapshot should exist");
+        assert_eq!(
+            snapshot
+                .execution_state
+                .pending_tool_call
+                .as_ref()
+                .map(|tool| tool.name.as_str()),
+            Some("propose_terminal_command")
+        );
+    });
+}
+
+#[test]
+fn stream_payload_object_tool_arguments_are_serialized() {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("tokio runtime should build");
+    runtime.block_on(async {
+        let test_runtime = TestHarnessRuntime::new(
+            "run-stream-object-args",
+            "vezi daca docker ruleaza",
+            vec![],
+            None,
+        );
+        let mut streamed = String::new();
+        let mut reasoning = String::new();
+        let mut thinking_state = super::thinking::ThinkingStreamState::default();
+        let mut usage = None;
+        let payload = json!({
+            "choices": [{
+                "delta": {
+                    "tool_calls": [{
+                        "id": "call_1",
+                        "function": {
+                            "name": "propose_terminal_command",
+                            "arguments": {
+                                "command": "docker ps",
+                                "requiresApproval": true
+                            }
+                        }
+                    }]
+                }
+            }]
+        })
+        .to_string();
+
+        let delta = handle_stream_payload(
+            &payload,
+            &test_runtime.sink,
+            &mut streamed,
+            &mut reasoning,
+            &mut thinking_state,
+            false,
+            false,
+            false,
+            &mut usage,
+        )
+        .expect("stream payload should parse")
+        .expect("tool delta should be returned");
+
+        assert_eq!(delta.name.as_deref(), Some("propose_terminal_command"));
+        assert_eq!(
+            delta.arguments.as_deref(),
+            Some("{\"command\":\"docker ps\",\"requiresApproval\":true}")
+        );
+    });
 }
 
 #[test]
@@ -283,66 +471,65 @@ fn local_runtime_check_first_turn_enters_waiting_for_approval() {
         .build()
         .expect("tokio runtime should build");
     runtime.block_on(async {
-    let test_runtime = TestHarnessRuntime::new(
-        "run-python-turn-1",
-        "verifica daca am python instalat",
-        vec![],
-        None,
-    );
-    let config = test_config();
-    let mut loop_runtime =
-        initial_runtime_for_context(&test_runtime.context).expect("runtime should initialize");
-    apply_runtime_event(&mut loop_runtime, EVENT_SKIP_PLANNING)
-        .expect("reasoning -> tool-selection should be valid");
+        let test_runtime = TestHarnessRuntime::new(
+            "run-python-turn-1",
+            "verifica daca am python instalat",
+            vec![],
+            None,
+        );
+        let config = test_config();
+        let mut loop_runtime =
+            initial_runtime_for_context(&test_runtime.context).expect("runtime should initialize");
+        apply_runtime_event(&mut loop_runtime, EVENT_SKIP_PLANNING)
+            .expect("reasoning -> tool-selection should be valid");
 
-    let outcome = handle_action_stage_response(
-        &config,
-        &test_runtime.context,
-        &test_runtime.sink,
-        &mut loop_runtime,
-        &mut test_runtime.context.messages.clone(),
-        &mut None,
-        &mut None,
-        &mut None,
-        0,
-        true,
-        StageModelResponse {
-            visible_text: String::new(),
-            tool_call: Some(CollectedToolCall {
-                id: "call_python".to_string(),
-                name: "propose_terminal_command".to_string(),
-                args: json!({ "command": "python3 --version" }),
-                raw_args: "{\"command\":\"python3 --version\"}".to_string(),
-                google_thought_signature: None,
-            }),
-            usage: None,
-        },
-        false,
-    )
-    .await
-    .expect("action handling should succeed");
+        let outcome = handle_action_stage_response(
+            &config,
+            &test_runtime.context,
+            &test_runtime.sink,
+            &mut loop_runtime,
+            &mut test_runtime.context.messages.clone(),
+            &mut None,
+            &mut None,
+            &mut None,
+            0,
+            StageModelResponse {
+                visible_text: String::new(),
+                tool_call: Some(CollectedToolCall {
+                    id: "call_python".to_string(),
+                    name: "propose_terminal_command".to_string(),
+                    args: json!({ "command": "python3 --version" }),
+                    raw_args: "{\"command\":\"python3 --version\"}".to_string(),
+                    google_thought_signature: None,
+                }),
+                usage: None,
+            },
+            false,
+        )
+        .await
+        .expect("action handling should succeed");
 
-    match outcome {
-        ActionStageOutcome::Waiting(_) => {}
-        _ => panic!("expected waiting outcome for approval-gated command"),
-    }
+        match outcome {
+            ActionStageOutcome::Waiting(_) => {}
+            _ => panic!("expected waiting outcome for approval-gated command"),
+        }
 
-    let snapshot = test_runtime
-        .manager
-        .get("run-python-turn-1")
-        .expect("snapshot should exist");
-    assert_eq!(
-        snapshot.execution_state.current_stage_id,
-        STAGE_AWAITING_APPROVAL
-    );
-    assert_eq!(
-        snapshot
-            .execution_state
-            .pending_tool_call
-            .as_ref()
-            .map(|tool| tool.name.as_str()),
-        Some("propose_terminal_command")
-    );
+        let snapshot = test_runtime
+            .manager
+            .get("run-python-turn-1")
+            .expect("snapshot should exist");
+        assert_eq!(
+            snapshot.execution_state.current_stage_id,
+            STAGE_AWAITING_APPROVAL
+        );
+        assert_eq!(
+            snapshot
+                .execution_state
+                .pending_tool_call
+                .as_ref()
+                .map(|tool| tool.name.as_str()),
+            Some("propose_terminal_command")
+        );
     });
 }
 
@@ -353,73 +540,72 @@ fn local_runtime_check_resume_produces_non_fallback_answer() {
         .build()
         .expect("tokio runtime should build");
     runtime.block_on(async {
-    let continuation_messages = vec![
-        assistant_tool_call_message(
-            "call_python",
-            "propose_terminal_command",
-            "{\"command\":\"python3 --version\"}",
-        ),
-        AgentInputMessage {
-            role: "tool".to_string(),
-            content: "Python 3.12.0".to_string(),
-            tool_call_id: Some("call_python".to_string()),
-            tool_calls: None,
-        },
-    ];
+        let continuation_messages = vec![
+            assistant_tool_call_message(
+                "call_python",
+                "propose_terminal_command",
+                "{\"command\":\"python3 --version\"}",
+            ),
+            AgentInputMessage {
+                role: "tool".to_string(),
+                content: "Python 3.12.0".to_string(),
+                tool_call_id: Some("call_python".to_string()),
+                tool_calls: None,
+            },
+        ];
 
-    let second_turn = TestHarnessRuntime::new(
-        "run-python-turn-2",
-        "",
-        continuation_messages,
-        Some(AgentExecutionState {
-            current_stage_id: STAGE_AWAITING_APPROVAL.to_string(),
-            negotiation_attempt: 0,
-            pending_resolution: Some(AgentPendingResolutionKind::Approval),
-            pending_tool_call: Some(AgentPendingToolCall {
-                id: "call_python".to_string(),
-                name: "propose_terminal_command".to_string(),
+        let second_turn = TestHarnessRuntime::new(
+            "run-python-turn-2",
+            "",
+            continuation_messages,
+            Some(AgentExecutionState {
+                current_stage_id: STAGE_AWAITING_APPROVAL.to_string(),
+                negotiation_attempt: 0,
+                pending_resolution: Some(AgentPendingResolutionKind::Approval),
+                pending_tool_call: Some(AgentPendingToolCall {
+                    id: "call_python".to_string(),
+                    name: "propose_terminal_command".to_string(),
+                }),
+                last_error: None,
             }),
-            last_error: None,
-        }),
-    );
-    let config = test_config();
-    let mut loop_runtime =
-        initial_runtime_for_context(&second_turn.context).expect("runtime should resume");
-    assert_eq!(loop_runtime.current_stage_id(), STAGE_VERIFYING);
+        );
+        let config = test_config();
+        let mut loop_runtime =
+            initial_runtime_for_context(&second_turn.context).expect("runtime should resume");
+        assert_eq!(loop_runtime.current_stage_id(), STAGE_VERIFYING);
 
-    let outcome = handle_action_stage_response(
-        &config,
-        &second_turn.context,
-        &second_turn.sink,
-        &mut loop_runtime,
-        &mut second_turn.context.messages.clone(),
-        &mut None,
-        &mut None,
-        &mut None,
-        1,
-        true,
-        StageModelResponse {
-            visible_text:
-                "Da, Python este instalat local. `python3 --version` a returnat Python 3.12.0."
-                    .to_string(),
-            tool_call: None,
-            usage: None,
-        },
-        true,
-    )
-    .await
-    .expect("verification stage should succeed");
+        let outcome = handle_action_stage_response(
+            &config,
+            &second_turn.context,
+            &second_turn.sink,
+            &mut loop_runtime,
+            &mut second_turn.context.messages.clone(),
+            &mut None,
+            &mut None,
+            &mut None,
+            1,
+            StageModelResponse {
+                visible_text:
+                    "Da, Python este instalat local. `python3 --version` a returnat Python 3.12.0."
+                        .to_string(),
+                tool_call: None,
+                usage: None,
+            },
+            true,
+        )
+        .await
+        .expect("verification stage should succeed");
 
-    match outcome {
-        ActionStageOutcome::Completed(answer) => {
-            assert!(answer.contains("Python este instalat local"));
+        match outcome {
+            ActionStageOutcome::Completed(answer) => {
+                assert!(answer.contains("Python este instalat local"));
+            }
+            _ => panic!("expected completed outcome after verification"),
         }
-        _ => panic!("expected completed outcome after verification"),
-    }
 
-    let final_tokens = extract_tokens(&second_turn.events.lock().expect("event lock")).join("");
-    assert!(final_tokens.contains("Python este instalat"));
-    assert!(!final_tokens.contains("Nu pot continua automat"));
+        let final_tokens = extract_tokens(&second_turn.events.lock().expect("event lock")).join("");
+        assert!(final_tokens.contains("Python este instalat"));
+        assert!(!final_tokens.contains("Nu pot continua automat"));
     });
 }
 

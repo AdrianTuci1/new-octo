@@ -84,9 +84,8 @@ fn parse_decision(text: &str) -> Result<SimulatedUserDecision, String> {
         .unwrap_or(trimmed)
         .trim();
     let trimmed = trimmed.strip_suffix("```").unwrap_or(trimmed).trim();
-    let decision = serde_json::from_str::<SimulatedUserDecision>(trimmed).map_err(|error| {
-        format!("failed to parse simulated-user JSON: {error}; body={trimmed}")
-    })?;
+    let decision = serde_json::from_str::<SimulatedUserDecision>(trimmed)
+        .map_err(|error| format!("failed to parse simulated-user JSON: {error}; body={trimmed}"))?;
 
     if !decision.goal_achieved
         && decision

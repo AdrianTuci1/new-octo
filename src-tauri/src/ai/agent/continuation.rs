@@ -8,8 +8,8 @@ use super::{
     cli_harness::CliDelegateHarness,
     harness::{AgentCancellation, AgentEventSink, AgentHarnessContext},
     providers::{OpenAiCompatibleConfig, OpenAiCompatibleHarness},
-    sources,
     scripted::ScriptedHarness,
+    sources,
     types::{
         AgentContinueRequest, AgentExecutionState, AgentRunSnapshot, AgentRunStatus,
         AgentStartResponse,
@@ -52,9 +52,12 @@ pub async fn agent_continue(
 
     let model_id = super::commands::resolve_model_id(request.model_id, provider_config.as_ref());
     let external_source = sources::parse_source_model(&model_id);
-    let external_session_id = external_source
-        .as_ref()
-        .and_then(|(kind, _)| manager.get_external_session(&conversation_id, kind.as_str()).ok().flatten());
+    let external_session_id = external_source.as_ref().and_then(|(kind, _)| {
+        manager
+            .get_external_session(&conversation_id, kind.as_str())
+            .ok()
+            .flatten()
+    });
 
     let cwd = request.cwd.or_else(|| {
         std::env::var("HOME").ok().or_else(|| {

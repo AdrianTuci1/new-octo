@@ -8,8 +8,8 @@ use super::{
     cli_harness::CliDelegateHarness,
     harness::{AgentCancellation, AgentEventSink, AgentHarness, AgentHarnessContext},
     providers::{OpenAiCompatibleConfig, OpenAiCompatibleHarness, OpenAiCompatibleProvider},
-    sources,
     scripted::ScriptedHarness,
+    sources,
     types::{
         AgentExecutionState, AgentModelSourceConnectRequest, AgentModelSourceStatus,
         AgentProviderConfigRequest, AgentProviderStatus, AgentRunLookupRequest, AgentRunRequest,
@@ -99,9 +99,12 @@ pub async fn agent_start(
         .or_else(OpenAiCompatibleConfig::from_env);
     let model_id = resolve_model_id(request.model_id, provider_config.as_ref());
     let external_source = sources::parse_source_model(&model_id);
-    let external_session_id = external_source
-        .as_ref()
-        .and_then(|(kind, _)| manager.get_external_session(&conversation_id, kind.as_str()).ok().flatten());
+    let external_session_id = external_source.as_ref().and_then(|(kind, _)| {
+        manager
+            .get_external_session(&conversation_id, kind.as_str())
+            .ok()
+            .flatten()
+    });
 
     let cwd = request.cwd.or_else(|| {
         std::env::var("HOME").ok().or_else(|| {
@@ -307,8 +310,7 @@ pub(super) async fn run_harness<H: AgentHarness>(
 }
 
 fn provider_status_from_config(config: &OpenAiCompatibleConfig) -> AgentProviderStatus {
-    let (provider, provider_id, base_url, model_id, has_api_key, source) =
-        config.redacted_status();
+    let (provider, provider_id, base_url, model_id, has_api_key, source) = config.redacted_status();
 
     AgentProviderStatus {
         provider,

@@ -55,7 +55,11 @@ pub(super) fn assert_eval_result(
     }
 
     for expected_file in scenario.changed_files_must_include {
-        if !result.changed_files.iter().any(|path| path == expected_file) {
+        if !result
+            .changed_files
+            .iter()
+            .any(|path| path == expected_file)
+        {
             return Err(format!(
                 "Scenario '{}' expected changed file `{}` but changed files were: {}",
                 scenario.id,
@@ -82,4 +86,3 @@ pub(super) fn assert_eval_result(
 
     Ok(())
 }
-

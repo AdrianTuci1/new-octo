@@ -1,7 +1,10 @@
 import { ChevronDown } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { useMemoryStore } from '../../../stores';
 import type { ThinkingDisplayMode } from '../../../types/chat';
+import { prepareMarkdownBody } from '../messageBubble/markdownText';
 import './ThinkingBlock.css';
 
 type ThinkingBlockProps = {
@@ -79,7 +82,9 @@ export function ThinkingBlock({ body, isStreaming = false, durationSeconds }: Th
 
       {isExpanded && (
         <div className="thinking-simple-body">
-          {body}
+          <ReactMarkdown remarkPlugins={[remarkGfm]}>
+            {prepareMarkdownBody(body)}
+          </ReactMarkdown>
         </div>
       )}
     </div>

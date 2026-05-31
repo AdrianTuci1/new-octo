@@ -30,6 +30,36 @@ pub enum HarnessKind {
     Custom,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum CloudSyncStrategy {
+    None,
+    Git,
+    Patch,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum CloudArtifactFormat {
+    UnifiedDiff,
+    JsonBundle,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum CloudCliTransferMode {
+    Download,
+    InlineBase64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum CloudChangedFileKind {
+    Created,
+    Updated,
+    Deleted,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CloudRunGitSpec {
@@ -69,6 +99,24 @@ impl Default for CloudRunPolicy {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct CloudRunSyncSpec {
+    pub strategy: CloudSyncStrategy,
+    pub commit_message: Option<String>,
+    pub artifact_path: Option<String>,
+}
+
+impl Default for CloudRunSyncSpec {
+    fn default() -> Self {
+        Self {
+            strategy: CloudSyncStrategy::None,
+            commit_message: None,
+            artifact_path: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CloudRunLaunchSpec {
     pub session_id: String,
     pub provider: CloudProvider,
@@ -79,6 +127,17 @@ pub struct CloudRunLaunchSpec {
     pub git: Option<CloudRunGitSpec>,
     pub llm: Option<CloudRunLlmSpec>,
     pub policy: CloudRunPolicy,
+    #[serde(default)]
+    pub sync: CloudRunSyncSpec,
+    #[serde(default)]
+    pub bootstrap: CloudCliBootstrapSpec,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CloudChangedFile {
+    pub path: String,
+    pub kind: CloudChangedFileKind,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -114,6 +173,21 @@ pub enum CloudRunEventKind {
     PullRequestCreated {
         url: String,
     },
+    GitCommitCreated {
+        branch: String,
+        commit_sha: String,
+    },
+    SyncArtifactReady {
+        strategy: CloudSyncStrategy,
+        format: CloudArtifactFormat,
+        path: String,
+        changed_files: Vec<CloudChangedFile>,
+    },
+    Bootstrap {
+        transfer_mode: CloudCliTransferMode,
+        binary_name: String,
+        install_dir: String,
+    },
     Error {
         message: String,
     },
@@ -135,6 +209,8 @@ pub struct CloudCliBootstrapSpec {
     pub install_url: String,
     pub install_dir: String,
     pub binary_name: String,
+    pub transfer_mode: CloudCliTransferMode,
+    pub local_binary_path: Option<String>,
 }
 
 impl Default for CloudCliBootstrapSpec {
@@ -143,6 +219,8 @@ impl Default for CloudCliBootstrapSpec {
             install_url: "https://get.octomus.dev/linux/octomus-cli".to_string(),
             install_dir: "$HOME/.octomus/bin".to_string(),
             binary_name: "octomus-cli".to_string(),
+            transfer_mode: CloudCliTransferMode::Download,
+            local_binary_path: None,
         }
     }
 }

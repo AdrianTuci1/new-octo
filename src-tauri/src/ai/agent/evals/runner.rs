@@ -8,8 +8,8 @@ use crate::ai::agent::harness::{
 };
 use crate::ai::agent::providers::{OpenAiCompatibleConfig, OpenAiCompatibleHarness};
 use crate::ai::agent::types::{
-    AgentExecutionState, AgentInputMessage, AgentPendingToolCall, AgentRunSnapshot,
-    AgentRunStatus, AgentToolCall,
+    AgentExecutionState, AgentInputMessage, AgentPendingToolCall, AgentRunSnapshot, AgentRunStatus,
+    AgentToolCall,
 };
 use crate::ai::agent_management::AgentHarnessManager;
 
@@ -68,13 +68,8 @@ pub(super) async fn run_live_eval(
         )
         .await?;
 
-        let simulated_user = next_user_turn(
-            &config,
-            scenario,
-            &transcript_messages,
-            &final_answer,
-        )
-        .await?;
+        let simulated_user =
+            next_user_turn(&config, scenario, &transcript_messages, &final_answer).await?;
         simulated_user_summaries.push(simulated_user.summary.clone());
         if simulated_user.goal_achieved {
             goal_achieved = true;
@@ -220,12 +215,12 @@ async fn run_single_user_turn(
         let (sink, events) = AgentEventSink::for_tests(manager.clone(), &context);
         let outcome = harness
             .run_async(
-            context,
-            sink,
-            AgentCancellation::new(Arc::new(AtomicBool::new(false))),
-        )
-        .await
-        .map_err(|error| error.message)?;
+                context,
+                sink,
+                AgentCancellation::new(Arc::new(AtomicBool::new(false))),
+            )
+            .await
+            .map_err(|error| error.message)?;
         let events = snapshot_events(&events)?;
         let snapshot = manager.get(&run_id)?;
         let run_visible_text = extract_tokens(&events);

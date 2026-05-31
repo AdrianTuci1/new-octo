@@ -15,7 +15,7 @@ This submodule contains model-backed evals for the agent harness. It exists sepa
 - `runner.rs`
   Runs the real compatible harness turn-by-turn, simulates the UI continuation loop, and coordinates the outer conversation loop.
 - `simulators.rs`
-  Provides local tool simulators for `explore_workspace`, `read_workspace_file`, `propose_file_change`, and `launch_cloud_agent`.
+  Provides local tool simulators for `explore_workspace`, `read_workspace_file`, `propose_file_change`, `propose_terminal_command`, `propose_plan`, `update_plan`, `plan_execution`, `suggest_follow_up`, and `launch_cloud_agent`.
 - `scenarios.rs`
   Defines the live eval scenarios, goals, and turn budgets.
 - `user_simulator.rs`

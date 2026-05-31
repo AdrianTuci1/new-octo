@@ -99,6 +99,9 @@ export type CloudAgentLaunchRequest = {
   repo?: string | null;
   baseBranch?: string | null;
   workBranch?: string | null;
+  syncStrategy?: 'git' | 'patch' | 'none' | string | null;
+  commitMessage?: string | null;
+  artifactPath?: string | null;
 };
 
 export type WorkspaceExplorationSearch = {

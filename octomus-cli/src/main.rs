@@ -1,9 +1,12 @@
 use octomus_cloud_protocol::{
+    CloudArtifactFormat, CloudChangedFile, CloudChangedFileKind, CloudCliBootstrapSpec,
     CloudProvider, CloudRunEvent, CloudRunEventKind, CloudRunGitSpec, CloudRunLaunchSpec,
-    CloudRunLlmSpec, CloudRunPolicy, CloudRunStatus, HarnessKind, TerminalStream,
+    CloudRunLlmSpec, CloudRunPolicy, CloudRunStatus, CloudSyncStrategy, HarnessKind,
+    TerminalStream,
 };
 use serde::Serialize;
 use std::{
+    collections::{BTreeMap, BTreeSet},
     env, fs,
     io::{self, Read},
     path::{Path, PathBuf},
@@ -93,6 +96,28 @@ struct EventEmitter {
     sequence: u64,
 }
 
+#[derive(Clone)]
+struct WorkspaceSnapshot {
+    files: BTreeMap<String, Vec<u8>>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct JsonBundleArtifact {
+    format: &'static str,
+    workspace: String,
+    files: Vec<JsonBundleFileChange>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct JsonBundleFileChange {
+    path: String,
+    kind: CloudChangedFileKind,
+    encoding: &'static str,
+    data: String,
+}
+
 impl EventEmitter {
     fn new(session_id: String) -> Self {
         Self {
@@ -163,16 +188,25 @@ fn run_agent_inner(launch: &CloudRunLaunchSpec, emitter: &mut EventEmitter) -> R
             launch.harness, launch.provider
         )),
     )?;
+    emit_bootstrap_config(launch, emitter)?;
 
     let workspace = PathBuf::from(&launch.workspace);
     emit_llm_config(launch, emitter)?;
     prepare_workspace(&workspace, launch.git.as_ref(), emitter)?;
+    let patch_snapshot = if matches!(launch.sync.strategy, CloudSyncStrategy::Patch)
+        && !workspace.join(".git").exists()
+    {
+        Some(capture_workspace_snapshot(&workspace)?)
+    } else {
+        None
+    };
 
     emitter.status(
         CloudRunStatus::RunningHarness,
         Some("Workspace is ready".to_string()),
     )?;
     run_configured_harness(&workspace, launch, emitter)?;
+    sync_workspace(&workspace, launch, patch_snapshot.as_ref(), emitter)?;
     emit_git_status(&workspace, launch.git.as_ref(), emitter)?;
 
     emitter.emit(CloudRunEventKind::Done {
@@ -219,6 +253,7 @@ fn parse_launch_spec(args: Vec<String>) -> Result<CloudRunLaunchSpec, String> {
         }),
         None => None,
     };
+    let default_sync_strategy = if git.is_some() { "git" } else { "patch" };
 
     Ok(CloudRunLaunchSpec {
         session_id,
@@ -235,6 +270,19 @@ fn parse_launch_spec(args: Vec<String>) -> Result<CloudRunLaunchSpec, String> {
             allow_merge: false,
             max_runtime_minutes: Some(60),
         },
+        sync: octomus_cloud_protocol::CloudRunSyncSpec {
+            strategy: parse_sync_strategy(
+                option_value(&args, "--sync-strategy")
+                    .or_else(|| env::var("OCTOMUS_SYNC_STRATEGY").ok())
+                    .as_deref()
+                    .unwrap_or(default_sync_strategy),
+            )?,
+            commit_message: option_value(&args, "--commit-message")
+                .or_else(|| env::var("OCTOMUS_COMMIT_MESSAGE").ok()),
+            artifact_path: option_value(&args, "--artifact-path")
+                .or_else(|| env::var("OCTOMUS_ARTIFACT_PATH").ok()),
+        },
+        bootstrap: CloudCliBootstrapSpec::default(),
     })
 }
 
@@ -316,6 +364,26 @@ fn parse_harness(value: &str) -> Result<HarnessKind, String> {
         "custom" => Ok(HarnessKind::Custom),
         other => Err(format!("unsupported harness: {other}")),
     }
+}
+
+fn parse_sync_strategy(value: &str) -> Result<CloudSyncStrategy, String> {
+    match value {
+        "none" => Ok(CloudSyncStrategy::None),
+        "git" => Ok(CloudSyncStrategy::Git),
+        "patch" | "artifact" => Ok(CloudSyncStrategy::Patch),
+        other => Err(format!("unsupported cloud sync strategy: {other}")),
+    }
+}
+
+fn emit_bootstrap_config(
+    launch: &CloudRunLaunchSpec,
+    emitter: &mut EventEmitter,
+) -> Result<(), String> {
+    emitter.emit(CloudRunEventKind::Bootstrap {
+        transfer_mode: launch.bootstrap.transfer_mode.clone(),
+        binary_name: launch.bootstrap.binary_name.clone(),
+        install_dir: launch.bootstrap.install_dir.clone(),
+    })
 }
 
 fn prepare_workspace(
@@ -424,10 +492,15 @@ fn run_builtin_llm_harness(
         .as_deref()
         .map(str::trim)
         .filter(|value| !value.is_empty())
-        .ok_or_else(|| "cloud agent prompt is required when no harness command is configured".to_string())?;
+        .ok_or_else(|| {
+            "cloud agent prompt is required when no harness command is configured".to_string()
+        })?;
     let api_key = env::var("OCTOMUS_AI_API_KEY")
         .or_else(|_| env::var("OPENAI_API_KEY"))
-        .map_err(|_| "OCTOMUS_AI_API_KEY or OPENAI_API_KEY is required for the built-in cloud harness".to_string())?;
+        .map_err(|_| {
+            "OCTOMUS_AI_API_KEY or OPENAI_API_KEY is required for the built-in cloud harness"
+                .to_string()
+        })?;
     let base_url = env::var("OCTOMUS_AI_BASE_URL")
         .or_else(|_| env::var("OPENAI_BASE_URL"))
         .unwrap_or_else(|_| "https://api.openai.com/v1".to_string());
@@ -480,6 +553,409 @@ fn run_builtin_llm_harness(
 
     emitter.output(TerminalStream::Stdout, format!("{text}\n"))?;
     Ok(())
+}
+
+fn sync_workspace(
+    workspace: &Path,
+    launch: &CloudRunLaunchSpec,
+    patch_snapshot: Option<&WorkspaceSnapshot>,
+    emitter: &mut EventEmitter,
+) -> Result<(), String> {
+    match launch.sync.strategy {
+        CloudSyncStrategy::None => Ok(()),
+        CloudSyncStrategy::Git => sync_workspace_via_git(workspace, launch, emitter),
+        CloudSyncStrategy::Patch => {
+            sync_workspace_via_patch(workspace, launch, patch_snapshot, emitter)
+        }
+    }
+}
+
+fn sync_workspace_via_git(
+    workspace: &Path,
+    launch: &CloudRunLaunchSpec,
+    emitter: &mut EventEmitter,
+) -> Result<(), String> {
+    let git = launch
+        .git
+        .as_ref()
+        .ok_or_else(|| "git sync requires git launch settings".to_string())?;
+
+    let status_output = command_output(workspace, "git", &["status", "--porcelain"])?;
+    let dirty = !String::from_utf8_lossy(&status_output.stdout)
+        .trim()
+        .is_empty();
+    if !dirty {
+        return Ok(());
+    }
+
+    emitter.status(
+        CloudRunStatus::PushingChanges,
+        Some("Collecting and committing workspace changes".to_string()),
+    )?;
+    ensure_git_identity(workspace, emitter)?;
+    run_command(workspace, "git", &["add", "-A"], emitter)?;
+
+    let commit_message = launch
+        .sync
+        .commit_message
+        .clone()
+        .unwrap_or_else(|| format!("Octomus cloud agent update for {}", launch.session_id));
+    run_command(
+        workspace,
+        "git",
+        &["commit", "-m", &commit_message],
+        emitter,
+    )?;
+
+    let rev_parse = command_output(workspace, "git", &["rev-parse", "HEAD"])?;
+    let commit_sha = String::from_utf8_lossy(&rev_parse.stdout)
+        .trim()
+        .to_string();
+    emitter.emit(CloudRunEventKind::GitCommitCreated {
+        branch: git.work_branch.clone(),
+        commit_sha,
+    })?;
+
+    if launch.policy.allow_push {
+        run_command(
+            workspace,
+            "git",
+            &["push", "-u", "origin", &git.work_branch],
+            emitter,
+        )?;
+    }
+
+    if launch.policy.allow_pr_create {
+        maybe_create_pull_request(workspace, git, &commit_message, emitter)?;
+    }
+
+    Ok(())
+}
+
+fn ensure_git_identity(workspace: &Path, emitter: &mut EventEmitter) -> Result<(), String> {
+    let current_name = command_output(workspace, "git", &["config", "--get", "user.name"])
+        .ok()
+        .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_string())
+        .unwrap_or_default();
+    let current_email = command_output(workspace, "git", &["config", "--get", "user.email"])
+        .ok()
+        .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_string())
+        .unwrap_or_default();
+
+    let desired_name = env::var("OCTOMUS_GIT_AUTHOR_NAME")
+        .or_else(|_| env::var("GIT_AUTHOR_NAME"))
+        .or_else(|_| env::var("GIT_COMMITTER_NAME"))
+        .unwrap_or_else(|_| "Octomus Cloud".to_string());
+    let desired_email = env::var("OCTOMUS_GIT_AUTHOR_EMAIL")
+        .or_else(|_| env::var("GIT_AUTHOR_EMAIL"))
+        .or_else(|_| env::var("GIT_COMMITTER_EMAIL"))
+        .unwrap_or_else(|_| "cloud@octomus.dev".to_string());
+
+    if current_name.is_empty() {
+        run_command(
+            workspace,
+            "git",
+            &["config", "user.name", &desired_name],
+            emitter,
+        )?;
+    }
+    if current_email.is_empty() {
+        run_command(
+            workspace,
+            "git",
+            &["config", "user.email", &desired_email],
+            emitter,
+        )?;
+    }
+
+    Ok(())
+}
+
+fn maybe_create_pull_request(
+    workspace: &Path,
+    git: &CloudRunGitSpec,
+    commit_message: &str,
+    emitter: &mut EventEmitter,
+) -> Result<(), String> {
+    let gh_check = Command::new("gh")
+        .arg("--version")
+        .current_dir(workspace)
+        .output();
+    let Ok(gh_check) = gh_check else {
+        emitter.output(
+            TerminalStream::Stderr,
+            "GitHub CLI is not installed in the cloud runtime, skipping PR creation.\n",
+        )?;
+        return Ok(());
+    };
+    if !gh_check.status.success() {
+        emitter.output(
+            TerminalStream::Stderr,
+            "GitHub CLI is unavailable in the cloud runtime, skipping PR creation.\n",
+        )?;
+        return Ok(());
+    }
+
+    emitter.status(
+        CloudRunStatus::CreatingPullRequest,
+        Some("Creating pull request from the cloud workspace".to_string()),
+    )?;
+    let output = command_output(
+        workspace,
+        "gh",
+        &[
+            "pr",
+            "create",
+            "--head",
+            &git.work_branch,
+            "--base",
+            &git.base_branch,
+            "--title",
+            commit_message,
+            "--body",
+            "Created by the Octomus cloud agent runtime.",
+        ],
+    )?;
+    let url = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if !url.is_empty() {
+        emitter.emit(CloudRunEventKind::PullRequestCreated { url })?;
+    }
+    Ok(())
+}
+
+fn sync_workspace_via_patch(
+    workspace: &Path,
+    launch: &CloudRunLaunchSpec,
+    patch_snapshot: Option<&WorkspaceSnapshot>,
+    emitter: &mut EventEmitter,
+) -> Result<(), String> {
+    emitter.status(
+        CloudRunStatus::PushingChanges,
+        Some("Preparing a direct change artifact from the cloud workspace".to_string()),
+    )?;
+
+    let artifact_path = launch
+        .sync
+        .artifact_path
+        .clone()
+        .unwrap_or_else(|| default_artifact_path(workspace, workspace.join(".git").exists()));
+    let artifact_path = workspace.join(artifact_path);
+    if let Some(parent) = artifact_path.parent() {
+        fs::create_dir_all(parent).map_err(|error| {
+            format!(
+                "failed to create artifact directory '{}': {error}",
+                parent.display()
+            )
+        })?;
+    }
+
+    if workspace.join(".git").exists() {
+        let output = command_output(
+            workspace,
+            "git",
+            &["diff", "--binary", "--find-renames", "HEAD"],
+        )?;
+        let patch = output.stdout;
+        fs::write(&artifact_path, &patch).map_err(|error| {
+            format!(
+                "failed to write patch artifact '{}': {error}",
+                artifact_path.display()
+            )
+        })?;
+        let changed_files = git_changed_files(workspace)?;
+        emitter.emit(CloudRunEventKind::SyncArtifactReady {
+            strategy: CloudSyncStrategy::Patch,
+            format: CloudArtifactFormat::UnifiedDiff,
+            path: artifact_path.display().to_string(),
+            changed_files,
+        })?;
+        return Ok(());
+    }
+
+    let baseline = patch_snapshot.ok_or_else(|| {
+        "patch sync for a non-git workspace requires an initial workspace snapshot".to_string()
+    })?;
+    let artifact = build_json_bundle_artifact(workspace, baseline)?;
+    let changed_files = artifact
+        .files
+        .iter()
+        .map(|file| CloudChangedFile {
+            path: file.path.clone(),
+            kind: file.kind.clone(),
+        })
+        .collect::<Vec<_>>();
+    let json = serde_json::to_vec_pretty(&artifact)
+        .map_err(|error| format!("failed to encode patch artifact JSON: {error}"))?;
+    fs::write(&artifact_path, json).map_err(|error| {
+        format!(
+            "failed to write patch artifact '{}': {error}",
+            artifact_path.display()
+        )
+    })?;
+    emitter.emit(CloudRunEventKind::SyncArtifactReady {
+        strategy: CloudSyncStrategy::Patch,
+        format: CloudArtifactFormat::JsonBundle,
+        path: artifact_path.display().to_string(),
+        changed_files,
+    })?;
+    Ok(())
+}
+
+fn default_artifact_path(workspace: &Path, has_git: bool) -> String {
+    let _ = workspace;
+    if has_git {
+        ".octomus-cloud/changes.patch".to_string()
+    } else {
+        ".octomus-cloud/changes.json".to_string()
+    }
+}
+
+fn git_changed_files(workspace: &Path) -> Result<Vec<CloudChangedFile>, String> {
+    let output = command_output(workspace, "git", &["status", "--porcelain"])?;
+    Ok(parse_git_status_porcelain(&String::from_utf8_lossy(
+        &output.stdout,
+    )))
+}
+
+fn parse_git_status_porcelain(output: &str) -> Vec<CloudChangedFile> {
+    output
+        .lines()
+        .filter_map(|line| {
+            if line.len() < 4 {
+                return None;
+            }
+            let status = &line[..2];
+            let path = line[3..].trim();
+            if path.is_empty() {
+                return None;
+            }
+            let kind = if status.contains('D') {
+                CloudChangedFileKind::Deleted
+            } else if status.contains('?') || status.contains('A') {
+                CloudChangedFileKind::Created
+            } else {
+                CloudChangedFileKind::Updated
+            };
+            Some(CloudChangedFile {
+                path: path.to_string(),
+                kind,
+            })
+        })
+        .collect()
+}
+
+fn capture_workspace_snapshot(workspace: &Path) -> Result<WorkspaceSnapshot, String> {
+    let mut files = BTreeMap::new();
+    collect_workspace_files(workspace, workspace, &mut files)?;
+    Ok(WorkspaceSnapshot { files })
+}
+
+fn collect_workspace_files(
+    root: &Path,
+    current: &Path,
+    files: &mut BTreeMap<String, Vec<u8>>,
+) -> Result<(), String> {
+    for entry in fs::read_dir(current).map_err(|error| {
+        format!(
+            "failed to read workspace directory '{}': {error}",
+            current.display()
+        )
+    })? {
+        let entry = entry.map_err(|error| format!("failed to inspect workspace entry: {error}"))?;
+        let path = entry.path();
+        let file_name = path
+            .file_name()
+            .and_then(|value| value.to_str())
+            .unwrap_or_default();
+        if file_name == ".git" || file_name == ".octomus-cloud" {
+            continue;
+        }
+        let file_type = entry.file_type().map_err(|error| {
+            format!("failed to inspect file type '{}': {error}", path.display())
+        })?;
+        if file_type.is_dir() {
+            collect_workspace_files(root, &path, files)?;
+            continue;
+        }
+        if !file_type.is_file() {
+            continue;
+        }
+        let relative_path = path
+            .strip_prefix(root)
+            .map_err(|error| format!("failed to relativize '{}': {error}", path.display()))?
+            .to_string_lossy()
+            .to_string();
+        files.insert(
+            relative_path,
+            fs::read(&path)
+                .map_err(|error| format!("failed to read file '{}': {error}", path.display()))?,
+        );
+    }
+    Ok(())
+}
+
+fn build_json_bundle_artifact(
+    workspace: &Path,
+    baseline: &WorkspaceSnapshot,
+) -> Result<JsonBundleArtifact, String> {
+    let current = capture_workspace_snapshot(workspace)?;
+    let all_paths = baseline
+        .files
+        .keys()
+        .chain(current.files.keys())
+        .cloned()
+        .collect::<BTreeSet<_>>();
+    let mut files = Vec::new();
+
+    for path in all_paths {
+        match (baseline.files.get(&path), current.files.get(&path)) {
+            (None, Some(current_bytes)) => files.push(bundle_file_change(
+                path,
+                CloudChangedFileKind::Created,
+                current_bytes,
+            )),
+            (Some(_), None) => files.push(JsonBundleFileChange {
+                path,
+                kind: CloudChangedFileKind::Deleted,
+                encoding: "utf-8",
+                data: String::new(),
+            }),
+            (Some(previous), Some(current_bytes)) if previous != current_bytes => files.push(
+                bundle_file_change(path, CloudChangedFileKind::Updated, current_bytes),
+            ),
+            _ => {}
+        }
+    }
+
+    Ok(JsonBundleArtifact {
+        format: "octomus-json-bundle/v1",
+        workspace: workspace.display().to_string(),
+        files,
+    })
+}
+
+fn bundle_file_change(
+    path: String,
+    kind: CloudChangedFileKind,
+    bytes: &[u8],
+) -> JsonBundleFileChange {
+    match std::str::from_utf8(bytes) {
+        Ok(text) => JsonBundleFileChange {
+            path,
+            kind,
+            encoding: "utf-8",
+            data: text.to_string(),
+        },
+        Err(_) => JsonBundleFileChange {
+            path,
+            kind,
+            encoding: "base64",
+            data: {
+                use base64::Engine as _;
+                base64::engine::general_purpose::STANDARD.encode(bytes)
+            },
+        },
+    }
 }
 
 fn emit_git_status(
@@ -537,4 +1013,30 @@ fn run_command(
                 .unwrap_or_else(|| "unknown".to_string())
         ))
     }
+}
+
+fn command_output(
+    cwd: &Path,
+    program: &str,
+    args: &[&str],
+) -> Result<std::process::Output, String> {
+    Command::new(program)
+        .args(args)
+        .current_dir(cwd)
+        .output()
+        .map_err(|error| format!("failed to run {program}: {error}"))
+        .and_then(|output| {
+            if output.status.success() {
+                Ok(output)
+            } else {
+                Err(format!(
+                    "{program} exited with status {}",
+                    output
+                        .status
+                        .code()
+                        .map(|code| code.to_string())
+                        .unwrap_or_else(|| "unknown".to_string())
+                ))
+            }
+        })
 }

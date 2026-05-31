@@ -111,7 +111,9 @@ pub(super) async fn run_workspace_exploration(
                         created_at: created_at.clone(),
                     });
 
-                    for (index, matched) in semantic_result.matches.iter().take(max_results).enumerate() {
+                    for (index, matched) in
+                        semantic_result.matches.iter().take(max_results).enumerate()
+                    {
                         files.push(WorkspaceExplorationFile {
                             path: matched.path.clone(),
                             source: matched.source.clone(),
@@ -127,7 +129,10 @@ pub(super) async fn run_workspace_exploration(
                         });
                     }
                 }
-                Ok(_) => warnings.push(format!("No semantic matches found for `{}`.", semantic_query)),
+                Ok(_) => warnings.push(format!(
+                    "No semantic matches found for `{}`.",
+                    semantic_query
+                )),
                 Err(error) => warnings.push(error),
             }
 

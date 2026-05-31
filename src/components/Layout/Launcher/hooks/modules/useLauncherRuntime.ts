@@ -388,7 +388,12 @@ export function useLauncherRuntime(props: LauncherProps, store: any, tray: any) 
         repo: request.repo,
         baseBranch: request.baseBranch,
         workBranch: request.workBranch,
-        profileId: request.profileId
+        profileId: request.profileId,
+        syncStrategy: request.syncStrategy === 'git' || request.syncStrategy === 'patch' || request.syncStrategy === 'none'
+          ? request.syncStrategy
+          : null,
+        commitMessage: request.commitMessage,
+        artifactPath: request.artifactPath
       });
       void chatApiRef.current?.submitToolResult(
         request.toolCallId,

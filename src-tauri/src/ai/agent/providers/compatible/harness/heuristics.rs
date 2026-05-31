@@ -1,139 +1,5 @@
 use crate::ai::agent::harness::AgentHarnessContext;
 
-pub(super) fn prompt_supports_terminal_command(prompt: &str) -> bool {
-    let prompt = prompt.to_lowercase();
-    let terminal_keywords = [
-        "terminal",
-        "shell",
-        "command",
-        "comand",
-        "modal",
-        "cloud",
-        "container",
-        "volume",
-        "deploy",
-        "agent",
-        "workspace",
-        "script",
-        "repo",
-        "repository",
-        "git",
-        "fișier",
-        "fisier",
-        "fișiere",
-        "fisiere",
-        "folder",
-        "director",
-        "directoare",
-        "path",
-        "cale",
-        "build",
-        "test",
-        "testare",
-        "debug",
-        "depan",
-        "rulează",
-        "ruleaza",
-        "run ",
-        "execut",
-        "instal",
-        "inspect",
-        "verific",
-        "list",
-        "liste",
-        "open ",
-        "deschide",
-        "search",
-        "caut",
-        "find",
-    ];
-
-    terminal_keywords
-        .iter()
-        .any(|keyword| prompt.contains(keyword))
-}
-
-pub(super) fn prompt_requires_local_terminal_check(prompt: &str) -> bool {
-    let normalized = prompt.to_lowercase();
-    let intent_keywords = [
-        "instalat",
-        "installed",
-        "versiune",
-        "version",
-        "ce versiune",
-        "what version",
-        "ruleaza",
-        "rulează",
-        "pornit",
-        "pornite",
-        "running",
-        "active",
-        "activ",
-        "verifica",
-        "verifică",
-        "check",
-        "exist",
-        "vreun",
-        "daemon",
-        "container",
-        "containere",
-        "process",
-        "proces",
-        "service",
-        "serviciu",
-    ];
-
-    let disallowed_scopes = [
-        "fișier",
-        "fisier",
-        "folder",
-        "director",
-        "repo",
-        "repository",
-        "workspace",
-        "project",
-        "proiect",
-        "cod",
-        "code",
-    ];
-
-    intent_keywords.iter().any(|keyword| normalized.contains(keyword))
-        && !disallowed_scopes
-            .iter()
-            .any(|keyword| normalized.contains(keyword))
-}
-
-pub(super) fn local_terminal_check_instruction(prompt: &str) -> String {
-    format!(
-        "Cererea utilizatorului este o verificare locală de mediu sau runtime: `{prompt}`. \
-        Nu răspunde din memorie și nu produce răspuns final încă. \
-        Următoarea ta acțiune trebuie să fie `propose_terminal_command` cu exact o comandă read-only, sigură și minimă care verifică local cererea. \
-        Dacă utilizatorul întreabă despre instalare sau versiune, verifică binarul sau versiunea locală. \
-        Dacă întreabă despre procese, servicii sau containere care rulează, verifică starea lor locală. \
-        Nu emite plan, nu cere clarificări dacă o singură comandă de inspecție poate răspunde."
-    )
-}
-
-pub(super) fn context_supports_terminal_command(context: &AgentHarnessContext) -> bool {
-    if surface_supports_terminal_command(context.surface.as_deref()) {
-        return true;
-    }
-
-    if prompt_supports_terminal_command(&context.prompt) {
-        return true;
-    }
-
-    if is_continuation_prompt(&context.prompt) || context.prompt.trim().is_empty() {
-        return recent_context_supports_terminal_command(context);
-    }
-
-    false
-}
-
-fn surface_supports_terminal_command(surface: Option<&str>) -> bool {
-    matches!(surface.map(str::trim), Some("terminal"))
-}
-
 pub(super) fn command_is_low_risk_terminal_inspection(command: &str) -> bool {
     let trimmed = command.trim();
     if trimmed.is_empty() {
@@ -220,32 +86,40 @@ fn read_only_command_looks_safe(command: &str, command_name: &str) -> bool {
     }
 
     match command_name {
-        "git" => normalized.starts_with("git status")
-            || normalized.starts_with("git diff")
-            || normalized.starts_with("git log")
-            || normalized.starts_with("git show")
-            || normalized.starts_with("git branch")
-            || normalized.starts_with("git rev-parse"),
-        "cargo" => normalized == "cargo test"
-            || normalized.starts_with("cargo test ")
-            || normalized == "cargo check"
-            || normalized.starts_with("cargo check ")
-            || normalized == "cargo fmt"
-            || normalized.starts_with("cargo fmt ")
-            || normalized == "cargo clippy"
-            || normalized.starts_with("cargo clippy "),
-        "npm" | "pnpm" | "yarn" | "bun" => normalized.ends_with(" test")
-            || normalized.contains(" test ")
-            || normalized.ends_with(" lint")
-            || normalized.contains(" lint ")
-            || normalized.ends_with(" typecheck")
-            || normalized.contains(" typecheck ")
-            || normalized.ends_with(" run build")
-            || normalized.contains(" run build "),
-        "node" | "python" | "python3" | "go" => normalized.contains(" --help")
-            || normalized.contains(" -h")
-            || normalized.ends_with(" --version")
-            || normalized.ends_with(" version"),
+        "git" => {
+            normalized.starts_with("git status")
+                || normalized.starts_with("git diff")
+                || normalized.starts_with("git log")
+                || normalized.starts_with("git show")
+                || normalized.starts_with("git branch")
+                || normalized.starts_with("git rev-parse")
+        }
+        "cargo" => {
+            normalized == "cargo test"
+                || normalized.starts_with("cargo test ")
+                || normalized == "cargo check"
+                || normalized.starts_with("cargo check ")
+                || normalized == "cargo fmt"
+                || normalized.starts_with("cargo fmt ")
+                || normalized == "cargo clippy"
+                || normalized.starts_with("cargo clippy ")
+        }
+        "npm" | "pnpm" | "yarn" | "bun" => {
+            normalized.ends_with(" test")
+                || normalized.contains(" test ")
+                || normalized.ends_with(" lint")
+                || normalized.contains(" lint ")
+                || normalized.ends_with(" typecheck")
+                || normalized.contains(" typecheck ")
+                || normalized.ends_with(" run build")
+                || normalized.contains(" run build ")
+        }
+        "node" | "python" | "python3" | "go" => {
+            normalized.contains(" --help")
+                || normalized.contains(" -h")
+                || normalized.ends_with(" --version")
+                || normalized.ends_with(" version")
+        }
         _ => true,
     }
 }
@@ -269,31 +143,6 @@ pub(super) fn is_continuation_prompt(prompt: &str) -> bool {
             | "da continua"
             | "da continuă"
     )
-}
-
-fn recent_context_supports_terminal_command(context: &AgentHarnessContext) -> bool {
-    if context.terminal_blocks.iter().rev().take(3).any(|block| {
-        !block.command.trim().is_empty()
-            || block.exit_code.is_some()
-            || block.output.to_lowercase().contains("traceback")
-    }) {
-        return true;
-    }
-
-    context.messages.iter().rev().take(8).any(|message| {
-        let content = message.content.to_lowercase();
-        content.contains("[invisible harness instruction]")
-            || content.contains("propose_terminal_command")
-            || content.contains("applied file changes successfully")
-            || content.contains("file changes")
-            || content.contains("comanda s-a executat")
-            || content.contains("failed")
-            || content.contains("traceback")
-            || content.contains("test")
-            || content.contains("verific")
-            || content.contains("rulez")
-            || content.contains("run")
-    })
 }
 
 pub(super) fn guardian_intent_context(context: &AgentHarnessContext) -> String {

@@ -335,7 +335,9 @@ pub(crate) async fn run_semantic_exploration(
     };
     let launches = discover_language_servers(&root_path, request_file_path)?;
     if launches.is_empty() {
-        return Err("No supported language server was detected in PATH for this workspace.".to_string());
+        return Err(
+            "No supported language server was detected in PATH for this workspace.".to_string(),
+        );
     }
 
     let mut all_matches = Vec::new();
@@ -349,7 +351,8 @@ pub(crate) async fn run_semantic_exploration(
 
         let result = match mode {
             ExplorationMode::Search | ExplorationMode::Symbols => {
-                collect_workspace_symbols(&mut client, semantic_query, max_results, launch.language).await
+                collect_workspace_symbols(&mut client, semantic_query, max_results, launch.language)
+                    .await
             }
             ExplorationMode::Definition => {
                 collect_symbol_navigation(
@@ -402,7 +405,11 @@ pub(crate) async fn run_semantic_exploration(
         client.shutdown().await;
     }
 
-    all_matches.sort_by(|left, right| left.path.cmp(&right.path).then(left.detail.cmp(&right.detail)));
+    all_matches.sort_by(|left, right| {
+        left.path
+            .cmp(&right.path)
+            .then(left.detail.cmp(&right.detail))
+    });
     all_matches.truncate(max_results);
 
     Ok(SemanticExplorationResult {
@@ -494,7 +501,9 @@ async fn collect_symbol_navigation(
             Ok(locations_from_value(definitions)
                 .into_iter()
                 .take(max_results.min(MAX_LSP_RESULTS))
-                .filter_map(|location| semantic_match_from_location(location, "lsp:definition").ok())
+                .filter_map(|location| {
+                    semantic_match_from_location(location, "lsp:definition").ok()
+                })
                 .collect())
         }
         NavigationKind::References => {
@@ -516,7 +525,9 @@ async fn collect_symbol_navigation(
             Ok(references
                 .into_iter()
                 .take(max_results.min(MAX_LSP_RESULTS))
-                .filter_map(|location| semantic_match_from_location(location, "lsp:references").ok())
+                .filter_map(|location| {
+                    semantic_match_from_location(location, "lsp:references").ok()
+                })
                 .collect())
         }
     }
@@ -547,7 +558,9 @@ async fn collect_diagnostics(
             }),
         )
         .await?;
-    let diagnostics = client.collect_diagnostics(&file_uri, MAX_DIAGNOSTIC_WAIT).await?;
+    let diagnostics = client
+        .collect_diagnostics(&file_uri, MAX_DIAGNOSTIC_WAIT)
+        .await?;
 
     Ok(diagnostics
         .into_iter()
@@ -701,7 +714,10 @@ fn should_ignore_walk_entry(path: &Path) -> bool {
         .unwrap_or(false)
 }
 
-fn first_workspace_file_for_language(root_path: &Path, language: WorkspaceLanguage) -> Option<PathBuf> {
+fn first_workspace_file_for_language(
+    root_path: &Path,
+    language: WorkspaceLanguage,
+) -> Option<PathBuf> {
     WalkDir::new(root_path)
         .follow_links(false)
         .into_iter()
@@ -741,7 +757,10 @@ fn semantic_match_from_symbol(
     })
 }
 
-fn semantic_match_from_location(location: LspLocation, source: &str) -> Result<SemanticMatch, String> {
+fn semantic_match_from_location(
+    location: LspLocation,
+    source: &str,
+) -> Result<SemanticMatch, String> {
     let path = file_uri_to_path(&location.uri)?;
     let line_number = location.range.start.line + 1;
     let display_name = path

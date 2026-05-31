@@ -31,12 +31,12 @@ pub(super) struct EvalScenario {
 const SEARCH_WORKSPACE_FILES: &[EvalWorkspaceFile] = &[
     EvalWorkspaceFile {
         path: "src/lib.rs",
-        contents: "pub fn greet_user(name: &str) -> String {\n    format!(\"Hello, {}!\", name)\n}\n",
+        contents:
+            "pub fn greet_user(name: &str) -> String {\n    format!(\"Hello, {}!\", name)\n}\n",
     },
     EvalWorkspaceFile {
         path: "src/main.rs",
-        contents:
-            "fn main() {\n    println!(\"{}\", crate::greet_user(\"Octo\"));\n}\n",
+        contents: "fn main() {\n    println!(\"{}\", crate::greet_user(\"Octo\"));\n}\n",
     },
 ];
 
@@ -97,12 +97,12 @@ pub(super) const LIVE_EVAL_SCENARIOS: &[EvalScenario] = &[
     EvalScenario {
         id: "multi-file-edit",
         description: "The agent should propose a multi-file change instead of dumping code inline.",
-        prompt: "Creează `format_name`, folosește-l în `greet_user` și adaugă un test nou, fără dependențe noi.",
+        prompt: "Creează `format_name`, folosește-l în `greet_user` și adaugă un test nou, fără dependențe noi. Nu propune comenzi de terminal; folosește direct un diff de fișiere.",
         goal: "The user should end up with a concrete multi-file change proposal for `format_name` without introducing new dependencies.",
         workspace_files: MULTI_FILE_EDIT_WORKSPACE_FILES,
         skill_fixtures: &[],
         required_tools: &["propose_file_change"],
-        forbidden_tools: &["lookup_web"],
+        forbidden_tools: &["lookup_web", "propose_terminal_command"],
         final_answer_must_contain: &["format_name"],
         changed_files_must_include: &["src/lib.rs"],
         minimum_changed_files: 2,
@@ -133,12 +133,12 @@ pub(super) const LIVE_EVAL_SCENARIOS: &[EvalScenario] = &[
     EvalScenario {
         id: "cloud-agent-launch",
         description: "The agent should delegate explicit cloud work through the cloud-launch tool.",
-        prompt: "Rulează asta în cloud pe Modal și pornește un agent care să investigheze bugul din repo.",
+        prompt: "Rulează asta în cloud pe Modal și pornește imediat un agent care să investigheze bugul din repo. Nu face planuri intermediare și nu propune comenzi de terminal; lansează direct `launch_cloud_agent`.",
         goal: "The user should see the agent explicitly delegate the task to a Modal cloud run.",
         workspace_files: CLOUD_WORKSPACE_FILES,
         skill_fixtures: &[],
         required_tools: &["launch_cloud_agent"],
-        forbidden_tools: &["lookup_web"],
+        forbidden_tools: &["lookup_web", "propose_terminal_command"],
         final_answer_must_contain: &["cloud"],
         changed_files_must_include: &[],
         minimum_changed_files: 0,

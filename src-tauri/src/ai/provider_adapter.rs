@@ -2,8 +2,8 @@ use reqwest::header::{HeaderMap, HeaderValue, CONTENT_TYPE};
 use serde_json::{json, Map, Value};
 use std::error::Error as _;
 
-use crate::ai::agent::{OpenAiCompatibleConfig, OpenAiCompatibleProvider};
 use crate::ai::agent::types::AgentUsage;
+use crate::ai::agent::{OpenAiCompatibleConfig, OpenAiCompatibleProvider};
 
 #[derive(Debug, Clone)]
 pub struct ProviderCompletionRequest {
@@ -28,6 +28,34 @@ pub struct ProviderCompletionResponse {
     pub text: String,
     pub function_calls: Vec<ProviderFunctionCall>,
     pub usage: Option<AgentUsage>,
+}
+
+pub fn normalize_tool_call_name(name: &str) -> String {
+    let trimmed = name.trim();
+    if trimmed.is_empty() {
+        return String::new();
+    }
+
+    if let Some((_, suffix)) = trimmed.split_once(':') {
+        let normalized_suffix = suffix.trim();
+        if !normalized_suffix.is_empty() {
+            return normalized_suffix.to_string();
+        }
+    }
+
+    trimmed.to_string()
+}
+
+fn normalize_tool_call_arguments(value: Option<&Value>) -> Value {
+    let Some(value) = value else {
+        return json!({});
+    };
+
+    match value {
+        Value::Null => json!({}),
+        Value::String(raw) => serde_json::from_str::<Value>(raw).unwrap_or_else(|_| json!({})),
+        Value::Object(_) | Value::Array(_) | Value::Bool(_) | Value::Number(_) => value.clone(),
+    }
 }
 
 pub async fn generate_completion(
@@ -61,14 +89,12 @@ fn openai_text_from_message(message: &Value) -> String {
         .into_iter()
         .flatten()
         .filter_map(|part| {
-            part.get("text")
-                .and_then(Value::as_str)
-                .or_else(|| {
-                    part.get("type")
-                        .and_then(Value::as_str)
-                        .filter(|kind| *kind == "text")
-                        .and_then(|_| part.get("text").and_then(Value::as_str))
-                })
+            part.get("text").and_then(Value::as_str).or_else(|| {
+                part.get("type")
+                    .and_then(Value::as_str)
+                    .filter(|kind| *kind == "text")
+                    .and_then(|_| part.get("text").and_then(Value::as_str))
+            })
         })
         .collect::<Vec<_>>()
         .join("")
@@ -82,15 +108,14 @@ fn parse_openai_tool_calls(message: &Value) -> Vec<ProviderFunctionCall> {
         .flatten()
         .filter_map(|tool_call| {
             let function = tool_call.get("function")?;
-            let name = function.get("name")?.as_str()?.to_string();
-            let arguments = function
-                .get("arguments")
-                .and_then(Value::as_str)
-                .and_then(|raw| serde_json::from_str::<Value>(raw).ok())
-                .unwrap_or_else(|| json!({}));
+            let name = normalize_tool_call_name(function.get("name")?.as_str()?);
+            let arguments = normalize_tool_call_arguments(function.get("arguments"));
 
             Some(ProviderFunctionCall {
-                id: tool_call.get("id").and_then(Value::as_str).map(|value| value.to_string()),
+                id: tool_call
+                    .get("id")
+                    .and_then(Value::as_str)
+                    .map(|value| value.to_string()),
                 name,
                 arguments,
                 thought_signature: tool_call
@@ -179,7 +204,10 @@ async fn generate_openai_compatible_completion(
         .map_err(|error| format!("failed to parse provider response: {error}"))?;
 
     if !status.is_success() {
-        return Err(format!("provider returned HTTP {status}: {}", trim_error_value(&value)));
+        return Err(format!(
+            "provider returned HTTP {status}: {}",
+            trim_error_value(&value)
+        ));
     }
 
     let message = value
@@ -243,11 +271,12 @@ fn extract_google_text_and_calls(value: &Value) -> (String, Vec<ProviderFunction
         }
 
         if let Some(function_call) = part.get("functionCall") {
-            let name = function_call
-                .get("name")
-                .and_then(Value::as_str)
-                .unwrap_or_default()
-                .to_string();
+            let name = normalize_tool_call_name(
+                function_call
+                    .get("name")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default(),
+            );
             if !name.trim().is_empty() {
                 function_calls.push(ProviderFunctionCall {
                     id: function_call
@@ -255,10 +284,7 @@ fn extract_google_text_and_calls(value: &Value) -> (String, Vec<ProviderFunction
                         .and_then(Value::as_str)
                         .map(|value| value.to_string()),
                     name,
-                    arguments: function_call
-                        .get("args")
-                        .cloned()
-                        .unwrap_or_else(|| json!({})),
+                    arguments: normalize_tool_call_arguments(function_call.get("args")),
                     thought_signature: part
                         .get("thoughtSignature")
                         .or_else(|| part.get("thought_signature"))
@@ -272,15 +298,17 @@ fn extract_google_text_and_calls(value: &Value) -> (String, Vec<ProviderFunction
     (text, function_calls)
 }
 
-fn convert_openai_messages_to_google(
-    messages: &[Value],
-) -> (Option<Value>, Vec<Value>) {
+fn convert_openai_messages_to_google(messages: &[Value]) -> (Option<Value>, Vec<Value>) {
     let mut system_chunks = Vec::new();
     let mut contents = Vec::new();
-    let mut tool_name_by_id: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    let mut tool_name_by_id: std::collections::HashMap<String, String> =
+        std::collections::HashMap::new();
 
     for message in messages {
-        let role = message.get("role").and_then(Value::as_str).unwrap_or("user");
+        let role = message
+            .get("role")
+            .and_then(Value::as_str)
+            .unwrap_or("user");
 
         if role == "system" {
             let content = openai_text_from_message(message);
@@ -417,18 +445,15 @@ fn sanitize_google_schema(value: &Value) -> Value {
             }
             Value::Object(sanitized)
         }
-        Value::Array(items) => Value::Array(
-            items
-                .iter()
-                .map(sanitize_google_schema)
-                .collect::<Vec<_>>(),
-        ),
+        Value::Array(items) => {
+            Value::Array(items.iter().map(sanitize_google_schema).collect::<Vec<_>>())
+        }
         _ => value.clone(),
     }
 }
 
 async fn generate_google_completion(
-    client: &reqwest::Client,
+    _client: &reqwest::Client,
     config: &OpenAiCompatibleConfig,
     request: ProviderCompletionRequest,
 ) -> Result<ProviderCompletionResponse, String> {
@@ -473,7 +498,10 @@ async fn generate_google_completion(
         generation_config.insert("responseMimeType".to_string(), json!(response_mime_type));
     }
     if !generation_config.is_empty() {
-        body.insert("generationConfig".to_string(), Value::Object(generation_config));
+        body.insert(
+            "generationConfig".to_string(),
+            Value::Object(generation_config),
+        );
     }
 
     let debug_google_request = std::env::var("OCTOMUS_DEBUG_GOOGLE_REQUEST")
@@ -513,8 +541,7 @@ async fn generate_google_completion(
                 last_error = Some(rendered.clone());
                 if attempt + 1 < max_attempts {
                     let backoff_ms = 500_u64.saturating_mul(1_u64 << attempt);
-                    tokio::time::sleep(std::time::Duration::from_millis(backoff_ms))
-                        .await;
+                    tokio::time::sleep(std::time::Duration::from_millis(backoff_ms)).await;
                     continue;
                 }
                 return Err(rendered);
@@ -536,12 +563,14 @@ async fn generate_google_completion(
             });
         }
 
-        let rendered = format!("provider returned HTTP {status}: {}", trim_error_value(&value));
+        let rendered = format!(
+            "provider returned HTTP {status}: {}",
+            trim_error_value(&value)
+        );
         last_error = Some(rendered.clone());
         if matches!(status.as_u16(), 429 | 500 | 502 | 503 | 504) && attempt + 1 < max_attempts {
             let backoff_ms = 500_u64.saturating_mul(1_u64 << attempt);
-            tokio::time::sleep(std::time::Duration::from_millis(backoff_ms))
-                .await;
+            tokio::time::sleep(std::time::Duration::from_millis(backoff_ms)).await;
             continue;
         }
 
@@ -589,7 +618,7 @@ fn trim_error_value(value: &Value) -> String {
 mod tests {
     use super::{
         convert_openai_messages_to_google, convert_openai_tools_to_google,
-        sanitize_google_schema,
+        normalize_tool_call_name, parse_openai_tool_calls, sanitize_google_schema,
     };
     use serde_json::json;
 
@@ -631,7 +660,10 @@ mod tests {
 
         let converted = convert_openai_tools_to_google(&tools);
         assert_eq!(converted.len(), 1);
-        assert_eq!(converted[0]["functionDeclarations"][0]["name"], "lookup_web");
+        assert_eq!(
+            converted[0]["functionDeclarations"][0]["name"],
+            "lookup_web"
+        );
     }
 
     #[test]
@@ -667,5 +699,59 @@ mod tests {
             sanitized["properties"]["nested"]["items"]["properties"]["name"]["type"],
             "string"
         );
+    }
+
+    #[test]
+    fn normalizes_namespaced_tool_names() {
+        assert_eq!(
+            normalize_tool_call_name("octomus:propose_terminal_command"),
+            "propose_terminal_command"
+        );
+    }
+
+    #[test]
+    fn parses_namespaced_openai_tool_calls() {
+        let message = json!({
+            "tool_calls": [
+                {
+                    "id": "call-1",
+                    "type": "function",
+                    "function": {
+                        "name": "octomus:propose_terminal_command",
+                        "arguments": "{\"command\":\"docker ps\"}"
+                    }
+                }
+            ]
+        });
+
+        let calls = parse_openai_tool_calls(&message);
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].name, "propose_terminal_command");
+        assert_eq!(calls[0].arguments["command"], "docker ps");
+    }
+
+    #[test]
+    fn parses_object_openai_tool_calls() {
+        let message = json!({
+            "tool_calls": [
+                {
+                    "id": "call-1",
+                    "type": "function",
+                    "function": {
+                        "name": "propose_terminal_command",
+                        "arguments": {
+                            "command": "docker ps",
+                            "requiresApproval": true
+                        }
+                    }
+                }
+            ]
+        });
+
+        let calls = parse_openai_tool_calls(&message);
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].name, "propose_terminal_command");
+        assert_eq!(calls[0].arguments["command"], "docker ps");
+        assert_eq!(calls[0].arguments["requiresApproval"], true);
     }
 }

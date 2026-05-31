@@ -69,8 +69,25 @@ pub(crate) fn snippet_for_file_line(path: &Path, zero_based_line: u32) -> Result
 
 pub(crate) fn build_workspace_search_queries(query: &str, max_queries: usize) -> Vec<String> {
     const STOP_WORDS: &[&str] = &[
-        "the", "for", "with", "from", "into", "care", "este", "sunt", "despre", "this", "that",
-        "and", "sau", "din", "fisier", "folder", "directory", "function", "class",
+        "the",
+        "for",
+        "with",
+        "from",
+        "into",
+        "care",
+        "este",
+        "sunt",
+        "despre",
+        "this",
+        "that",
+        "and",
+        "sau",
+        "din",
+        "fisier",
+        "folder",
+        "directory",
+        "function",
+        "class",
     ];
 
     let normalized_query = query.split_whitespace().collect::<Vec<_>>().join(" ");
@@ -112,7 +129,11 @@ pub(crate) fn build_workspace_search_queries(query: &str, max_queries: usize) ->
     }
 
     if tokens.len() >= 2 {
-        push_workspace_query(&mut queries, &mut seen, format!("{} {}", tokens[0], tokens[1]));
+        push_workspace_query(
+            &mut queries,
+            &mut seen,
+            format!("{} {}", tokens[0], tokens[1]),
+        );
     }
 
     if queries.is_empty() && !normalized_query.is_empty() {

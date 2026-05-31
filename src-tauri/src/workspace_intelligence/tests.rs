@@ -1,5 +1,7 @@
 use super::{
-    formatting::{build_workspace_search_queries, display_workspace_path, summarize_workspace_exploration},
+    formatting::{
+        build_workspace_search_queries, display_workspace_path, summarize_workspace_exploration,
+    },
     lsp::collect_workspace_languages,
     service::run_workspace_exploration,
     types::{ExplorationMode, WorkspaceExplorationRequest, WorkspaceLanguage},
@@ -12,8 +14,12 @@ use std::{
 #[test]
 fn build_workspace_queries_generates_symbol_friendly_variants() {
     let queries = build_workspace_search_queries("refactorizarea AgentExecutionState", 4);
-    assert!(queries.iter().any(|query| query == "refactorizarea AgentExecutionState"));
-    assert!(queries.iter().any(|query| query.to_lowercase().contains("agentexecutionstate")));
+    assert!(queries
+        .iter()
+        .any(|query| query == "refactorizarea AgentExecutionState"));
+    assert!(queries
+        .iter()
+        .any(|query| query.to_lowercase().contains("agentexecutionstate")));
 }
 
 #[test]

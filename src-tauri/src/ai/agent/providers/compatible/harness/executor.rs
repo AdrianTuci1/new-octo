@@ -3,22 +3,20 @@ use crate::ai::agent::harness::{
 };
 use crate::ai::agent::runtime::{
     EVENT_CONTINUE_TO_PLANNING, EVENT_DECLINE_PLAN, EVENT_PLAN_TOOL_FINISHED,
-    EVENT_PREPARE_CONTEXT, EVENT_SKIP_PLANNING,
-    STAGE_AWAITING_APPROVAL, STAGE_EXECUTING, STAGE_PLANNING, STAGE_PREPARING, STAGE_REASONING,
-    STAGE_VERIFYING,
+    EVENT_PREPARE_CONTEXT, EVENT_SKIP_PLANNING, STAGE_AWAITING_APPROVAL, STAGE_EXECUTING,
+    STAGE_PLANNING, STAGE_PREPARING, STAGE_REASONING, STAGE_VERIFYING,
 };
 use crate::ai::agent::types::AgentRunStatus;
 
-use super::actions::{emit_final_answer, handle_action_stage_response};
 use super::super::config::OpenAiCompatibleConfig;
+use super::actions::{emit_final_answer, handle_action_stage_response};
 use super::control::{
-    parse_stage_control, planning_stage_instruction, reasoning_stage_instruction,
-    tool_selection_stage_instructions, verifying_stage_instruction, MAX_STAGE_PASSES,
+    parse_stage_control, planning_stage_instruction, tool_selection_stage_instructions,
+    verifying_stage_instruction, MAX_STAGE_PASSES,
 };
-use super::heuristics::{local_terminal_check_instruction, prompt_requires_local_terminal_check, prompt_supports_plan};
+use super::heuristics::prompt_supports_plan;
 use super::messages::{
-    emit_internal_tool_call, rejected_tool_result_message, summarize_internal_tool_result,
-    system_message, tool_result_message,
+    emit_internal_tool_call, summarize_internal_tool_result, system_message, tool_result_message,
 };
 use super::outcomes::{cancelled_outcome, done_outcome, waiting_outcome};
 use super::provider::run_stage_model_pass;
@@ -50,7 +48,6 @@ pub(super) async fn stream_chat_completion(
         .resume_execution_state
         .as_ref()
         .and_then(|state| state.last_error.clone());
-    let local_terminal_check_requested = prompt_requires_local_terminal_check(&context.prompt);
     let mut latest_usage = None;
 
     sync_execution_state(
@@ -90,71 +87,10 @@ pub(super) async fn stream_chat_completion(
                 apply_runtime_event(&mut runtime, EVENT_PREPARE_CONTEXT)?;
             }
             STAGE_REASONING => {
-                let mut extra_system_messages = vec![reasoning_stage_instruction(
-                    prompt_supports_plan(&context.prompt),
-                    local_terminal_check_requested,
-                )];
-                if local_terminal_check_requested {
-                    extra_system_messages.push(local_terminal_check_instruction(&context.prompt));
-                }
-
-                let response = run_stage_model_pass(
-                    &config,
-                    &context,
-                    &sink,
-                    &cancellation,
-                    &runtime,
-                    &negotiation_messages,
-                    StagePassOptions {
-                        emit_visible_tokens: false,
-                        emit_reasoning_tokens: true,
-                    },
-                    extra_system_messages,
-                )
-                .await?;
-                latest_usage = response.usage.clone().or(latest_usage);
-
-                if response.tool_call.is_some() {
-                    let tool_call = response.tool_call.as_ref().expect("checked above");
-                    emit_internal_tool_call(&sink, &mut negotiation_messages, tool_call);
-                    negotiation_messages.push(rejected_tool_result_message(
-                        &tool_call.id,
-                        "Stage-ul `reasoning` nu permite tool calls. Reia acest pas și răspunde numai cu un marker de control valid.",
-                    ));
-                    negotiation_messages.push(system_message(
-                        "Stage-ul `reasoning` nu permite tool calls. Reia acest pas și răspunde numai cu un marker de control valid.",
-                    ));
-                    pass_index += 1;
-                    continue;
-                }
-
-                match parse_stage_control(&response.visible_text) {
-                    Some(StageControlDecision::ContinueToPlanning) => {
-                        apply_runtime_event(&mut runtime, EVENT_CONTINUE_TO_PLANNING)?;
-                    }
-                    Some(StageControlDecision::SkipPlanning) => {
-                        apply_runtime_event(&mut runtime, EVENT_SKIP_PLANNING)?;
-                    }
-                    Some(StageControlDecision::EmitFinalAnswer(answer)) => {
-                        emit_final_answer(
-                            &sink,
-                            &mut runtime,
-                            pass_index,
-                            &mut pending_resolution,
-                            &mut pending_tool_call,
-                            &mut last_runtime_error,
-                            &answer,
-                        )?;
-                        return Ok(done_outcome(&context.prompt, &answer, latest_usage));
-                    }
-                    Some(StageControlDecision::DeclinePlan) | None => {
-                        let fallback_event = if prompt_supports_plan(&context.prompt) {
-                            EVENT_CONTINUE_TO_PLANNING
-                        } else {
-                            EVENT_SKIP_PLANNING
-                        };
-                        apply_runtime_event(&mut runtime, fallback_event)?;
-                    }
+                if prompt_supports_plan(&context.prompt) {
+                    apply_runtime_event(&mut runtime, EVENT_CONTINUE_TO_PLANNING)?;
+                } else {
+                    apply_runtime_event(&mut runtime, EVENT_SKIP_PLANNING)?;
                 }
             }
             STAGE_PLANNING => {
@@ -209,6 +145,7 @@ pub(super) async fn stream_chat_completion(
                                 &mut pending_tool_call,
                                 &mut last_runtime_error,
                                 &answer,
+                                true,
                             )?;
                             return Ok(done_outcome(&context.prompt, &answer, latest_usage));
                         }
@@ -230,11 +167,7 @@ pub(super) async fn stream_chat_completion(
                         emit_visible_tokens: true,
                         emit_reasoning_tokens: true,
                     },
-                    tool_selection_stage_instructions(
-                        &context,
-                        local_terminal_check_requested,
-                        pass_index,
-                    ),
+                    tool_selection_stage_instructions(pass_index),
                 )
                 .await?;
                 latest_usage = response.usage.clone().or(latest_usage);
@@ -249,11 +182,11 @@ pub(super) async fn stream_chat_completion(
                     &mut pending_tool_call,
                     &mut last_runtime_error,
                     pass_index,
-                    local_terminal_check_requested,
                     response,
                     false,
                 )
-                .await? {
+                .await?
+                {
                     ActionStageOutcome::Continue => {}
                     ActionStageOutcome::Waiting(streamed) => {
                         return Ok(waiting_outcome(&context.prompt, &streamed, latest_usage));
@@ -320,11 +253,11 @@ pub(super) async fn stream_chat_completion(
                     &mut pending_tool_call,
                     &mut last_runtime_error,
                     pass_index,
-                    local_terminal_check_requested,
                     response,
                     true,
                 )
-                .await? {
+                .await?
+                {
                     ActionStageOutcome::Continue => {}
                     ActionStageOutcome::Waiting(streamed) => {
                         return Ok(waiting_outcome(&context.prompt, &streamed, latest_usage));
@@ -366,6 +299,7 @@ pub(super) async fn stream_chat_completion(
         &mut pending_tool_call,
         &mut last_runtime_error,
         fallback,
+        true,
     )?;
     Ok(done_outcome(&context.prompt, fallback, latest_usage))
 }

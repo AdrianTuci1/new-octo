@@ -69,17 +69,19 @@ function rejectedFileChangeBody(diffs: FileDiff[]) {
   return `Request canceled. Changes were not applied to ${diffs.length} files.`;
 }
 
-function agentContinuationInstruction(kind: 'command' | 'file-change') {
+function agentContinuationInstruction(kind: 'command' | 'file-change', failed = false) {
   if (kind === 'file-change') {
     return [
       '[Invisible harness instruction]',
-      'Continue toward the original user goal. If the user asked to run, test, or verify the created/edited file, immediately propose the next verification command with propose_terminal_command. Do not ask whether to rerun it.'
+      'Continue toward the original user goal. If the user asked to run, test, or verify the created/edited file, immediately propose the next verification command with propose_terminal_command. If verification fails, use the exact output to repair the file or choose a more targeted verification command. Do not stop after a summary and do not ask whether to rerun it.'
     ].join('\n');
   }
 
   return [
     '[Invisible harness instruction]',
-    'Continue toward the original user goal. If this command failed and you can fix it, propose_file_change. If you just fixed something and need to confirm it, propose_terminal_command for the verification step. Do not ask whether to continue or rerun unless a real ambiguity blocks progress.'
+    failed
+      ? 'The command failed. Read the exact output and choose the next concrete step: another read-only diagnostic command, a file repair, or a narrowly targeted install/fix command if that is the only path forward. Do not stop at a summary-only response. Only ask for clarification if there is truly no concrete next step.'
+      : 'Continue toward the original user goal. If this command failed and you can fix it, propose_file_change. If you just fixed something and need to confirm it, propose_terminal_command for the verification step. Do not ask whether to continue or rerun unless a real ambiguity blocks progress.'
   ].join('\n');
 }
 
@@ -101,7 +103,7 @@ function commandFailureInstruction(command: string, output: string, exitCode: nu
   if (exitCode !== null && exitCode !== 0) {
     return [
       '[Invisible harness instruction]',
-      'The command failed. Summarize the failure concretely using the output. Only ask for clarification if the error truly leaves multiple plausible next actions.'
+      'The command failed. Read the exact output and use it to pick the next concrete action instead of ending with a summary-only response. If the output points to a fix you can make, propose_file_change. If it points to a different safe diagnostic, propose a new read-only command. Only ask for clarification if the error truly leaves multiple plausible next actions.'
     ].join('\n');
   }
 
@@ -123,7 +125,7 @@ function terminalToolResult(command: string, result: { output?: string; block?: 
     `OUTPUT:`,
     output,
     failureInstruction,
-    agentContinuationInstruction('command')
+    agentContinuationInstruction('command', failed)
   ].join('\n');
 }
 

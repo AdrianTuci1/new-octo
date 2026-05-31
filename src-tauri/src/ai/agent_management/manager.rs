@@ -10,8 +10,8 @@ use chrono::Utc;
 use serde_json::Value;
 
 use crate::ai::agent::{
-    OpenAiCompatibleConfig,
     types::{AgentExecutionState, AgentRunSnapshot, AgentRunStatus},
+    OpenAiCompatibleConfig,
 };
 use crate::octomus_paths::OctomusPaths;
 use crate::secure_store;

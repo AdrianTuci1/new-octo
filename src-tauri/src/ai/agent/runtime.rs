@@ -101,12 +101,13 @@ impl AgentLoopRuntime {
     }
 
     pub fn apply_event(&mut self, event_id: &str) -> Result<(), AgentLoopRuntimeError> {
-        let transition = resolve_stage_transition(&self.current_stage_id, event_id).ok_or_else(|| {
-            AgentLoopRuntimeError::new(format!(
-                "Stage '{}' does not allow event '{}'",
-                self.current_stage_id, event_id
-            ))
-        })?;
+        let transition =
+            resolve_stage_transition(&self.current_stage_id, event_id).ok_or_else(|| {
+                AgentLoopRuntimeError::new(format!(
+                    "Stage '{}' does not allow event '{}'",
+                    self.current_stage_id, event_id
+                ))
+            })?;
 
         self.transition_to(&transition.target_stage_id)
     }

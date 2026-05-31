@@ -255,6 +255,105 @@
   word-break: normal;
 }
 
+.message-content p {
+  margin: 0 0 0.45em;
+}
+
+.message-content p:last-child {
+  margin-bottom: 0;
+}
+
+.message-content h1,
+.message-content h2,
+.message-content h3,
+.message-content h4,
+.message-content h5,
+.message-content h6 {
+  margin: 0.75em 0 0.35em;
+  color: inherit;
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  font-weight: 700;
+}
+
+.message-content h1:first-child,
+.message-content h2:first-child,
+.message-content h3:first-child,
+.message-content h4:first-child,
+.message-content h5:first-child,
+.message-content h6:first-child {
+  margin-top: 0;
+}
+
+.message-content ul,
+.message-content ol {
+  margin: 0.25em 0 0.45em;
+  padding-left: 1.1em;
+}
+
+.message-content ul {
+  list-style: disc outside;
+}
+
+.message-content ol {
+  list-style: decimal outside;
+}
+
+.message-content li {
+  margin: 0;
+}
+
+.message-content li > p {
+  margin: 0;
+}
+
+.message-content blockquote {
+  margin: 0 0 0.45em;
+  padding-left: 0.8em;
+  border-left: 1px solid rgba(255, 255, 255, 0.1);
+  color: inherit;
+}
+
+.message-content hr {
+  margin: 0.45em 0;
+  border: 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.message-content table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  margin: 0.35em 0 0.55em;
+  font-size: inherit;
+  border-collapse: collapse;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
+}
+
+.message-content th,
+.message-content td {
+  padding: 4px 8px;
+  border-right: 1px solid rgba(255, 255, 255, 0.14);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+  overflow-wrap: break-word;
+  word-break: normal;
+}
+
+.message-content th:last-child,
+.message-content td:last-child {
+  border-right: 0;
+}
+
+.message-content tr:last-child td {
+  border-bottom: 0;
+}
+
+.message-content th {
+  background: rgba(255, 255, 255, 0.04);
+}
+
 .message-content .chat-action-link {
   color: #10b981;
   /* text verde */
@@ -335,16 +434,15 @@
 }
 
 .tool-output-raw {
-  font-family: var(--font-mono, 'JetBrains Mono', monospace);
-  font-size: 13px;
-  white-space: pre-wrap;
-  color: var(--text-soft, #a3a6a5);
-  background: rgba(0, 0, 0, 0.15);
-  padding: 12px 16px;
-  border-radius: 6px;
+  font-family: inherit;
+  font-size: inherit;
+  white-space: normal;
+  color: inherit;
+  background: transparent;
+  padding: 0;
+  border-radius: 0;
   margin-top: 4px;
 }
-
 
 .terminal-inline-error {
   flex: 1;
@@ -391,18 +489,6 @@
 .code-block-container pre {
   max-width: 100%;
   overflow-x: auto !important;
-}
-
-.message-content table {
-  display: block;
-  max-width: 100%;
-  overflow-x: auto;
-}
-
-.message-content th,
-.message-content td {
-  overflow-wrap: break-word;
-  word-break: normal;
 }
 
 .code-block-footer {
@@ -463,14 +549,6 @@
 .suggestion-chip:hover {
   border-color: var(--accent-main);
   color: var(--text-main);
-}
-
-.message-content p {
-  margin: 0 0 12px 0;
-}
-
-.message-content p:last-child {
-  margin-bottom: 0;
 }
 
 /* Finder Overlay Style */

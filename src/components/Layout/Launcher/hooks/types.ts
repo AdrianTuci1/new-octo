@@ -28,6 +28,9 @@ export type LauncherProps = {
     baseBranch?: string | null;
     workBranch?: string | null;
     profileId?: string | null;
+    syncStrategy?: 'git' | 'patch' | 'none' | null;
+    commitMessage?: string | null;
+    artifactPath?: string | null;
   }) => Promise<unknown> | unknown;
   onExitAgentToTerminal?: () => void;
   onPendingApprovalChange?: (approval: CommandApproval | null) => void;

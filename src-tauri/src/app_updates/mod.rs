@@ -398,7 +398,10 @@ mod tests {
         );
 
         assert_eq!(endpoints.len(), 1);
-        assert_eq!(endpoints[0].as_str(), "https://updates.example.com/latest.json");
+        assert_eq!(
+            endpoints[0].as_str(),
+            "https://updates.example.com/latest.json"
+        );
     }
 
     #[test]

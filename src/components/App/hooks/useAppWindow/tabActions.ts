@@ -294,6 +294,9 @@ export function useAppWindowTabActions({
     baseBranch?: string | null;
     workBranch?: string | null;
     profileId?: string | null;
+    syncStrategy?: 'git' | 'patch' | 'none' | null;
+    commitMessage?: string | null;
+    artifactPath?: string | null;
   } = {}) => {
     const profiles = getDefaultReadyCloudProfile(memorySettingsValues)
       ? [getDefaultReadyCloudProfile(memorySettingsValues)!]
@@ -329,6 +332,9 @@ export function useAppWindowTabActions({
         repo: options.repo?.trim() || null,
         baseBranch: options.baseBranch?.trim() || 'main',
         workBranch: options.workBranch?.trim() || null,
+        syncStrategy: options.syncStrategy ?? (options.repo?.trim() ? 'git' : 'patch'),
+        commitMessage: options.commitMessage?.trim() || null,
+        artifactPath: options.artifactPath?.trim() || null,
         includeLlmCredentials: true,
         target
       }

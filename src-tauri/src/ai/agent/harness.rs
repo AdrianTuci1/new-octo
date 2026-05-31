@@ -10,9 +10,9 @@ use std::{
 use tauri::{AppHandle, Emitter};
 
 use super::types::{
-    AgentDoneEvent, AgentErrorEvent, AgentExecutionState, AgentInputMessage,
-    AgentReasoningEvent, AgentRunStatus, AgentRunStatusEvent, AgentTokenEvent, AgentToolCall,
-    AgentToolCallEvent, AgentToolResultEvent, AgentUsage, TerminalBlockContext,
+    AgentDoneEvent, AgentErrorEvent, AgentExecutionState, AgentInputMessage, AgentReasoningEvent,
+    AgentRunStatus, AgentRunStatusEvent, AgentTokenEvent, AgentToolCall, AgentToolCallEvent,
+    AgentToolResultEvent, AgentUsage, TerminalBlockContext,
 };
 use crate::ai::agent_management::AgentHarnessManager;
 #[cfg(test)]

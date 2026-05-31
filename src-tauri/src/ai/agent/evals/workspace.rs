@@ -25,7 +25,10 @@ impl EvalWorkspace {
         } else {
             let octomus_home = root.join(".octomus-eval");
             write_skill_fixtures(&octomus_home, scenario.skill_fixtures)?;
-            Some(ScopedEnvOverride::set("OCTOMUS_HOME", octomus_home.as_os_str())?)
+            Some(ScopedEnvOverride::set(
+                "OCTOMUS_HOME",
+                octomus_home.as_os_str(),
+            )?)
         };
 
         Ok(Self {
@@ -75,9 +78,8 @@ fn write_skill_fixtures(octomus_home: &Path, skills: &[EvalSkillFixture]) -> Res
             "---\nname: {}\ndescription: {}\n---\n\n{}\n",
             skill.name, skill.description, skill.instructions
         );
-        std::fs::write(skill_dir.join("SKILL.md"), skill_md).map_err(|error| {
-            format!("failed to write SKILL.md for '{}': {error}", skill.name)
-        })?;
+        std::fs::write(skill_dir.join("SKILL.md"), skill_md)
+            .map_err(|error| format!("failed to write SKILL.md for '{}': {error}", skill.name))?;
     }
 
     Ok(())
@@ -120,4 +122,3 @@ impl Drop for ScopedEnvOverride {
         }
     }
 }
-

@@ -100,26 +100,37 @@ export function useChatState() {
   }, []);
 
   const addMessage = useCallback((message: ChatMessage) => {
-    setMessages((currentMessages) => [...currentMessages, message]);
+    setMessages((currentMessages) => {
+      if (currentMessages.some((currentMessage) => currentMessage.id === message.id)) {
+        return currentMessages;
+      }
+
+      return [...currentMessages, message];
+    });
   }, [setMessages]);
 
   const updateMessage = useCallback((messageId: string, updater: (message: ChatMessage) => ChatMessage) => {
-    let didUpdate = false;
+    const hasMessage = messagesRef.current.some((message) => message.id === messageId);
+    if (!hasMessage) {
+      return false;
+    }
 
     setMessages((currentMessages) => currentMessages.map((message) => {
       if (message.id !== messageId) {
         return message;
       }
 
-      didUpdate = true;
       return updater(message);
     }));
 
-    return didUpdate;
-  }, [setMessages]);
+    return true;
+  }, [messagesRef, setMessages]);
 
   const appendToMessage = useCallback((messageId: string, text: string) => {
-    let didAppend = false;
+    const hasMessage = messagesRef.current.some((message) => message.id === messageId);
+    if (!hasMessage) {
+      return false;
+    }
 
     setMessages((currentMessages) => {
       const messageIndex = currentMessages.findIndex((message) => message.id === messageId);
@@ -127,13 +138,37 @@ export function useChatState() {
         return currentMessages;
       }
 
-      didAppend = true;
-
       const nextMessages = [...currentMessages];
       const currentMessage = nextMessages[messageIndex];
       const bufferedPlan = pendingInlinePlanPayloads[messageId] ?? '';
       const bufferedFollowUp = pendingFollowUpPayloads[messageId] ?? '';
-      const combinedRaw = `${currentMessage.body}${bufferedPlan}${bufferedFollowUp}${text}`;
+      const isDuplicateFullToken = text.length > 40
+        && !bufferedPlan
+        && !bufferedFollowUp
+        && currentMessage.body.endsWith(text);
+      if (isDuplicateFullToken) {
+        return currentMessages;
+      }
+
+      const existingRaw = `${currentMessage.body}${bufferedPlan}${bufferedFollowUp}`;
+      let incomingText = text;
+      if (incomingText.length > 0 && incomingText.startsWith(existingRaw)) {
+        incomingText = incomingText.slice(existingRaw.length);
+      }
+
+      const normalizedExistingRaw = existingRaw.replace(/\r\n/g, '\n').trim();
+      const normalizedIncomingText = incomingText.replace(/\r\n/g, '\n').trim();
+      const isDuplicateToken = incomingText.length === 0
+        || (
+          incomingText.length > 40
+          && normalizedExistingRaw.length > 0
+          && normalizedExistingRaw === normalizedIncomingText
+        );
+      if (isDuplicateToken) {
+        return currentMessages;
+      }
+
+      const combinedRaw = `${existingRaw}${incomingText}`;
 
       const extractedFollowUp = extractFollowUpSuggestion(combinedRaw);
       if (extractedFollowUp.pendingPayload) {
@@ -185,8 +220,8 @@ export function useChatState() {
       return nextMessages;
     });
 
-    return didAppend;
-  }, [setMessages]);
+    return true;
+  }, [messagesRef, setMessages]);
 
   const upsertReasoningMessage = useCallback((
     assistantMessageId: string,

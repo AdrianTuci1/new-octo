@@ -15,6 +15,9 @@ type UseAppWindowLauncherPropsParams = {
     baseBranch?: string | null;
     workBranch?: string | null;
     profileId?: string | null;
+    syncStrategy?: 'git' | 'patch' | 'none' | null;
+    commitMessage?: string | null;
+    artifactPath?: string | null;
   }) => Promise<unknown>;
   getLauncherSessionForPane: (paneId: string | null) => ReturnType<typeof Utils.createEmptyTerminalSession> | null;
   handleAgentTerminalBlockMetaChange: (paneId: string, terminalBlockMetaById: Record<string, TerminalBlockSharedMeta>) => void;

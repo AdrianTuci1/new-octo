@@ -12,15 +12,13 @@ use crate::{
     ai::provider_adapter::{generate_completion, ProviderCompletionRequest},
 };
 
-use super::super::config::{
-    OpenAiCompatibleConfig, OpenAiCompatibleProvider, OPENROUTER_URL,
-};
+use super::super::config::{OpenAiCompatibleConfig, OpenAiCompatibleProvider, OPENROUTER_URL};
+use super::super::{tools, utils};
 use super::context::build_chat_messages;
 use super::parser::handle_stream_payload;
 use super::resume::apply_low_reasoning_effort;
 use super::thinking::ThinkingStreamState;
 use super::types::{CollectedToolCall, StageModelResponse, StagePassOptions};
-use super::super::{tools, utils};
 
 #[allow(clippy::too_many_arguments)]
 pub(super) async fn run_stage_model_pass(
@@ -37,7 +35,9 @@ pub(super) async fn run_stage_model_pass(
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(180))
         .build()
-        .map_err(|error| AgentHarnessError::new(format!("Failed to create HTTP client: {error}")))?;
+        .map_err(|error| {
+            AgentHarnessError::new(format!("Failed to create HTTP client: {error}"))
+        })?;
 
     let endpoint = utils::resolve_chat_endpoint(&config.base_url);
     let headers = build_headers(config)?;
@@ -197,17 +197,20 @@ async fn run_google_pass(
         );
     }
 
-    let tool_call = response.function_calls.first().map(|function_call| CollectedToolCall {
-        id: function_call
-            .id
-            .clone()
-            .unwrap_or_else(|| "google-tool-call".to_string()),
-        name: function_call.name.clone(),
-        args: function_call.arguments.clone(),
-        raw_args: serde_json::to_string(&function_call.arguments)
-            .unwrap_or_else(|_| "{}".to_string()),
-        google_thought_signature: function_call.thought_signature.clone(),
-    });
+    let tool_call = response
+        .function_calls
+        .first()
+        .map(|function_call| CollectedToolCall {
+            id: function_call
+                .id
+                .clone()
+                .unwrap_or_else(|| "google-tool-call".to_string()),
+            name: function_call.name.clone(),
+            args: function_call.arguments.clone(),
+            raw_args: serde_json::to_string(&function_call.arguments)
+                .unwrap_or_else(|_| "{}".to_string()),
+            google_thought_signature: function_call.thought_signature.clone(),
+        });
 
     Ok(StageModelResponse {
         visible_text,
@@ -270,11 +273,13 @@ async fn run_streaming_pass(
 
     while let Some(next_chunk) = byte_stream.next().await {
         if cancellation.is_cancelled() {
-            return Err(AgentHarnessError::new("Agent run cancelled during provider stream."));
+            return Err(AgentHarnessError::new(
+                "Agent run cancelled during provider stream.",
+            ));
         }
 
-        let bytes =
-            next_chunk.map_err(|error| AgentHarnessError::new(format!("Stream interrupted: {error}")))?;
+        let bytes = next_chunk
+            .map_err(|error| AgentHarnessError::new(format!("Stream interrupted: {error}")))?;
         let text = String::from_utf8_lossy(&bytes);
         sse_buffer.push_str(&text);
 
@@ -292,21 +297,9 @@ async fn run_streaming_pass(
                     break;
                 }
 
-                let _ = process_payload(
-                    data,
-                    sink,
-                    &mut pass,
-                    options,
-                    use_synthetic_thinking,
-                );
+                let _ = process_payload(data, sink, &mut pass, options, use_synthetic_thinking);
             } else if line.starts_with('{') && line.ends_with('}') {
-                let _ = process_payload(
-                    &line,
-                    sink,
-                    &mut pass,
-                    options,
-                    use_synthetic_thinking,
-                );
+                let _ = process_payload(&line, sink, &mut pass, options, use_synthetic_thinking);
             }
         }
 
@@ -390,7 +383,11 @@ async fn run_streaming_pass(
 
     Ok(StageModelResponse {
         visible_text: pass.visible_text,
-        tool_call: collect_tool_call(pass.current_tool_call_id, pass.current_tool_name, pass.current_tool_args),
+        tool_call: collect_tool_call(
+            pass.current_tool_call_id,
+            pass.current_tool_name,
+            pass.current_tool_args,
+        ),
         usage: pass.usage,
     })
 }

@@ -77,7 +77,10 @@ pub(super) fn summarize_internal_tool_result(tool_call: &CollectedToolCall) -> S
             "Follow-up suggestion metadata captured by the runtime: {}",
             tool_call.raw_args
         ),
-        _ => format!("Internal tool `{}` acknowledged: {}", tool_call.name, tool_call.raw_args),
+        _ => format!(
+            "Internal tool `{}` acknowledged: {}",
+            tool_call.name, tool_call.raw_args
+        ),
     }
 }
 

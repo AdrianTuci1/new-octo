@@ -118,8 +118,18 @@ impl ExplorationMode {
             Some("diagnostics") => Self::Diagnostics,
             Some("search") => Self::Search,
             _ => {
-                if request.query.as_deref().unwrap_or_default().trim().is_empty()
-                    && !request.path.as_deref().unwrap_or_default().trim().is_empty()
+                if request
+                    .query
+                    .as_deref()
+                    .unwrap_or_default()
+                    .trim()
+                    .is_empty()
+                    && !request
+                        .path
+                        .as_deref()
+                        .unwrap_or_default()
+                        .trim()
+                        .is_empty()
                 {
                     Self::List
                 } else {

@@ -1,8 +1,6 @@
 use std::process::Command;
 
-use super::types::{
-    AgentModelSourceConnectRequest, AgentModelSourceStatus, AgentSourceModel,
-};
+use super::types::{AgentModelSourceConnectRequest, AgentModelSourceStatus, AgentSourceModel};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AgentModelSourceKind {
@@ -35,7 +33,9 @@ pub fn list_model_sources() -> Vec<AgentModelSourceStatus> {
     vec![codex_status(), claude_status()]
 }
 
-pub fn connect_model_source(request: AgentModelSourceConnectRequest) -> Result<AgentModelSourceStatus, String> {
+pub fn connect_model_source(
+    request: AgentModelSourceConnectRequest,
+) -> Result<AgentModelSourceStatus, String> {
     match request.kind.trim() {
         "codex" => {
             let status = codex_status();
@@ -102,8 +102,8 @@ fn codex_status() -> AgentModelSourceStatus {
     match output {
         Ok(output) => {
             let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            let connected = output.status.success()
-                && stdout.to_ascii_lowercase().contains("logged in");
+            let connected =
+                output.status.success() && stdout.to_ascii_lowercase().contains("logged in");
             AgentModelSourceStatus {
                 kind: "codex".to_string(),
                 label: "Codex".to_string(),
@@ -124,7 +124,8 @@ fn codex_status() -> AgentModelSourceStatus {
                         provider: "Codex".to_string(),
                         provider_id: "custom".to_string(),
                         model_id: "codex:default".to_string(),
-                        note: "Uses the local Codex account and its default model routing.".to_string(),
+                        note: "Uses the local Codex account and its default model routing."
+                            .to_string(),
                         supports_attachments: true,
                     }]
                 } else {

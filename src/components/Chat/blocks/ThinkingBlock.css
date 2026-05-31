@@ -42,6 +42,55 @@
   line-height: 1.6;
   color: rgba(255, 255, 255, 0.4); /* Dimmer text */
   font-family: var(--font-mono, 'JetBrains Mono', monospace);
-  white-space: pre-wrap;
   padding-left: 2px;
+}
+
+.thinking-simple-body h1,
+.thinking-simple-body h2,
+.thinking-simple-body h3,
+.thinking-simple-body h4,
+.thinking-simple-body h5,
+.thinking-simple-body h6 {
+  margin: 0 0 0.55em;
+  line-height: 1.25;
+}
+
+.thinking-simple-body p {
+  margin: 0 0 10px;
+}
+
+.thinking-simple-body p:last-child {
+  margin-bottom: 0;
+}
+
+.thinking-simple-body ul,
+.thinking-simple-body ol {
+  margin: 0.4em 0 0.8em;
+  padding-left: 1.2em;
+}
+
+.thinking-simple-body li {
+  margin: 0.2em 0;
+}
+
+.thinking-simple-body blockquote {
+  margin: 0 0 0.8em;
+  padding-left: 0.8em;
+  border-left: 2px solid rgba(255, 255, 255, 0.1);
+}
+
+.thinking-simple-body table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  margin: 0.35em 0 0.55em;
+  font-size: inherit;
+  border-collapse: collapse;
+}
+
+.thinking-simple-body th,
+.thinking-simple-body td {
+  padding: 4px 8px;
+  overflow-wrap: break-word;
+  word-break: normal;
 }
