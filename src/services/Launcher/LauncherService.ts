@@ -2,6 +2,8 @@ import type { StoreApi } from 'zustand/vanilla';
 import type { LauncherStoreState } from '../../stores/launcherStore';
 import type { ChatStoreState } from '../../stores/chatStore';
 import type { MemoryStoreState } from '../../stores/memoryStore';
+import type { RuntimeStoreState } from '../../stores/RuntimeStore';
+import { useRuntimeStore } from '../../stores/RuntimeStore';
 import { LauncherAppStateService } from './LauncherAppStateService';
 import { LauncherChatService } from './LauncherChatService';
 import { LauncherComposerService } from './LauncherComposerService';
@@ -41,7 +43,10 @@ export class LauncherService {
     this.effects = new LauncherEffectsService(launcherStore, chatStore);
     this.history = new LauncherHistoryService(launcherStore, memoryStore);
     this.keyboard = new LauncherKeyboardService(launcherStore, chatStore);
-    this.runtime = new LauncherRuntimeService(launcherStore, memoryStore);
+    this.runtime = new LauncherRuntimeService(
+      useRuntimeStore as unknown as StoreApi<RuntimeStoreState>,
+      memoryStore,
+    );
     this.tray = new LauncherTrayService(launcherStore);
     this.approval = new LauncherApprovalService(chatStore);
     this.terminal = new LauncherTerminalService(launcherStore);
