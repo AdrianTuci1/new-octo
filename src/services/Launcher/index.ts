@@ -1,11 +1,13 @@
-export * from './LauncherAppStateService';
-export * from './LauncherApprovalService';
-export * from './LauncherChatService';
-export * from './LauncherComposerService';
-export * from './LauncherEffectsService';
-export * from './LauncherHistoryService';
-export * from './LauncherKeyboardService';
-export * from './LauncherRuntimeService';
-export * from './LauncherService';
-export * from './LauncherTerminalService';
-export * from './LauncherTrayService';
+export type { AgentModelEntry, AgentModelSelection } from './LauncherAppStateService'; // re-exported types only
+// Classes (explicit re-exports to avoid interface duplicates like ChatStoreState)
+export { LauncherAppStateService } from './LauncherAppStateService';
+export { LauncherApprovalService } from './LauncherApprovalService';
+export { LauncherChatService } from './LauncherChatService';
+export { LauncherComposerService } from './LauncherComposerService';
+export { LauncherEffectsService } from './LauncherEffectsService';
+export { LauncherHistoryService } from './LauncherHistoryService';
+export { LauncherKeyboardService } from './LauncherKeyboardService';
+export { LauncherRuntimeService } from './LauncherRuntimeService';
+export { LauncherService } from './LauncherService';
+export { LauncherTerminalService } from './LauncherTerminalService';
+export { LauncherTrayService } from './LauncherTrayService';

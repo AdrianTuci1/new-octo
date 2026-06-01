@@ -120,10 +120,11 @@ export class LauncherTerminalService {
       this.activeBlockId = response.block.finishedAt ? null : response.block.id;
       this.commandInFlight = false;
 
+      const status: TerminalCommandBlock['status'] = response.block.finishedAt ? 'exited' : 'running';
       const existingIndex = this.commandBlocks.findIndex((b) => b.id === response.block.id);
       const nextBlocks = existingIndex >= 0
-        ? this.commandBlocks.map((b) => (b.id === response.block.id ? { ...b, ...response.block } : b))
-        : [...this.commandBlocks, { ...response.block, output: '', status: (response.block.finishedAt ? 'finished' : 'running') as TerminalCommandBlock['status'] }].slice(-80);
+        ? this.commandBlocks.map((b) => (b.id === response.block.id ? { ...b, ...response.block, status } : b))
+        : [...this.commandBlocks, { ...response.block, output: '', status }].slice(-80);
 
       this.commandBlocks = nextBlocks;
       return response;
@@ -154,10 +155,11 @@ export class LauncherTerminalService {
       listen<TerminalBlockEvent>('terminal:block', (event) => {
         if (this.session?.id !== event.payload.sessionId) return;
         const block = event.payload.block;
+        const status: TerminalCommandBlock['status'] = block.finishedAt ? 'exited' : 'running';
         const existingIndex = this.commandBlocks.findIndex((b) => b.id === block.id);
         const nextBlocks = existingIndex >= 0
-          ? this.commandBlocks.map((b) => (b.id === block.id ? { ...b, ...block, output: b.output } : b))
-          : [...this.commandBlocks, { ...block, output: '' }].slice(-80);
+          ? this.commandBlocks.map((b) => (b.id === block.id ? { ...b, ...block, status, output: b.output } : b))
+          : [...this.commandBlocks, { ...block, status, output: '' }].slice(-80);
         this.commandBlocks = nextBlocks;
       }),
       listen<TerminalBlockOutputEvent>('terminal:block-output', (event) => {

@@ -62,7 +62,7 @@ export class LauncherRuntimeService {
     const listing = await invoke<FilesystemDirectoryListing>('list_directory', { path });
     this.store.getState().setWorkingDirectory((prev) => ({
       ...prev,
-      listing: listing.items,
+      listing: listing.entries,
     }));
     return listing;
   }
