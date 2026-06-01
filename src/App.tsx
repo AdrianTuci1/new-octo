@@ -1,5 +1,5 @@
 import './App.css';
-import { Launcher } from './components/Layout/Launcher';
+import { AgentPanel } from './views/Agent/AgentPanel';
 import { ShellWindow } from './views/Shell/ShellWindow';
 import { Onboarding } from './components/Onboarding/Onboarding';
 import { useLauncherAppState } from './hooks/useLauncherAppState';
@@ -15,7 +15,7 @@ export function App() {
     return <ShellWindow />;
   }
 
-  return <Launcher {...app.launcherProps} />;
+  return <AgentPanel />;
 }
 
 export default App;

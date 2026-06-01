@@ -17,7 +17,7 @@ import type {
 
 type MemoryStoreStatus = 'idle' | 'loading' | 'ready' | 'failed';
 
-type MemoryStoreState = {
+export type MemoryStoreState = {
   status: MemoryStoreStatus;
   rootPath: string | null;
   bootstrapData: OctomusMemoryBootstrap | null;

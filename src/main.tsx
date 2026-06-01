@@ -16,10 +16,11 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { App } from './App';
 import { ServiceLocator } from './services/ServiceLocator';
+import { useMemoryStore } from './stores/memoryStore';
 import './styles.css';
 
 // Initialize the DI container before rendering
-ServiceLocator.init();
+ServiceLocator.init(useMemoryStore);
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
