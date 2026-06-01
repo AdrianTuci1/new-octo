@@ -119,6 +119,19 @@ function resolveWorkspacePath(path: string, cwd?: string | null) {
   return `${isAbsolute ? '/' : ''}${stack.join('/')}`;
 }
 
+function appendHiddenContinuationInstruction(body: string, instruction: string) {
+  if (!body.trim()) {
+    return body;
+  }
+
+  return [
+    body,
+    '',
+    '[Invisible harness instruction]',
+    instruction
+  ].join('\n');
+}
+
 export function useLauncherRuntime(props: LauncherProps, store: any, tray: any) {
   const {
     initialWorkingDirectory = null,
@@ -359,10 +372,16 @@ export function useLauncherRuntime(props: LauncherProps, store: any, tray: any) 
             ].filter(Boolean).join('\n'))
           ].join('\n\n')
         : `No web results found for "${response.query}".`;
+      const resultBody = response.results.length > 0
+        ? appendHiddenContinuationInstruction(
+            formattedResults,
+            'Use these search results to continue toward the original user goal. If the task was informational, answer with a concise synthesis instead of stopping at the raw result list. If more work is needed, take the next concrete step now.'
+          )
+        : formattedResults;
 
       void chatApiRef.current?.submitToolResult(
         request.toolCallId,
-        formattedResults,
+        resultBody,
         'web-search',
         response.query,
         response.results,
@@ -479,7 +498,10 @@ export function useLauncherRuntime(props: LauncherProps, store: any, tray: any) 
 
       void chatApiRef.current?.submitToolResult(
         request.toolCallId,
-        response.formatted,
+        appendHiddenContinuationInstruction(
+          response.formatted,
+          'Use this workspace context to continue toward the original user goal. Do not stop at the raw exploration output; either read the most relevant file, propose a concrete edit, or answer directly if the task is now resolved.'
+        ),
         'workspace-exploration',
         query || symbol || filePath || request.path || mode,
         [],
@@ -499,7 +521,10 @@ export function useLauncherRuntime(props: LauncherProps, store: any, tray: any) 
       };
       void chatApiRef.current?.submitToolResult(
         request.toolCallId,
-        `Workspace exploration failed for "${explorationLabel}": ${error}`,
+        appendHiddenContinuationInstruction(
+          `Workspace exploration failed for "${explorationLabel}": ${error}`,
+          'The exploration attempt failed. Use the exact failure to choose the next concrete step: retry with a narrower path or query, read a known file directly, or answer clearly if the failure itself resolves the user question.'
+        ),
         'workspace-exploration',
         explorationLabel,
         [],
@@ -715,7 +740,9 @@ export function useLauncherRuntime(props: LauncherProps, store: any, tray: any) 
     chatRaw.attachFiles,
     chatRaw.addAttachments,
     chatRaw.removeAttachment,
-    chatRaw.clearAttachments
+    chatRaw.clearAttachments,
+    chatRaw.activeRunId,
+    chatRaw.setActiveRunId
   ]);
 
   const { consumed: hasShellActivator, value: queryWithoutActivator } = consumeShellModeActivator(chat.query);
@@ -727,6 +754,7 @@ export function useLauncherRuntime(props: LauncherProps, store: any, tray: any) 
   return useMemo(() => ({
     memoryStore,
     agentSettings,
+    activeAgentProfile,
     codeSettings,
     workingDirectory,
     gitContext,
@@ -754,6 +782,7 @@ export function useLauncherRuntime(props: LauncherProps, store: any, tray: any) 
   }), [
     memoryStore,
     agentSettings,
+    activeAgentProfile,
     codeSettings,
     workingDirectory,
     gitContext,

@@ -214,42 +214,6 @@ fn truncate_for_guardian(value: &str, max_chars: usize) -> String {
     }
 }
 
-pub(super) fn prompt_supports_plan(prompt: &str) -> bool {
-    let prompt = prompt.to_lowercase();
-    let plan_keywords = [
-        "implement",
-        "implementation",
-        "debug",
-        "debugging",
-        "fix",
-        "bug",
-        "refactor",
-        "migrate",
-        "migration",
-        "architecture",
-        "architectură",
-        "arhitectură",
-        "research",
-        "investigate",
-        "investiga",
-        "task",
-        "project",
-        "feature",
-        "roadmap",
-        "plan",
-        "workstream",
-        "steps",
-        "paș",
-        "pas",
-        "cerinț",
-        "cerint",
-        "specifica",
-        "specification",
-    ];
-
-    plan_keywords.iter().any(|keyword| prompt.contains(keyword))
-}
-
 pub(super) fn prompt_requests_file_change(prompt: &str) -> bool {
     let prompt = prompt.to_lowercase();
     let creation_keywords = [

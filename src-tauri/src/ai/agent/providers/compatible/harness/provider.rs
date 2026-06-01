@@ -2,11 +2,11 @@ use futures_util::StreamExt;
 use reqwest::header::{HeaderMap, HeaderValue, CONTENT_TYPE};
 use serde_json::{json, Value};
 use std::time::Duration;
+use uuid::Uuid;
 
 use crate::ai::agent::harness::{
     AgentCancellation, AgentEventSink, AgentHarnessContext, AgentHarnessError,
 };
-use crate::ai::agent::runtime::AgentLoopRuntime;
 use crate::{
     ai::mcp,
     ai::provider_adapter::{generate_completion, ProviderCompletionRequest},
@@ -20,13 +20,16 @@ use super::resume::apply_low_reasoning_effort;
 use super::thinking::ThinkingStreamState;
 use super::types::{CollectedToolCall, StageModelResponse, StagePassOptions};
 
+fn generate_tool_call_id(prefix: &str) -> String {
+    format!("{prefix}-{}", Uuid::new_v4())
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(super) async fn run_stage_model_pass(
     config: &OpenAiCompatibleConfig,
     context: &AgentHarnessContext,
     sink: &AgentEventSink,
     cancellation: &AgentCancellation,
-    runtime: &AgentLoopRuntime,
     negotiation_messages: &[crate::ai::agent::types::AgentInputMessage],
     options: StagePassOptions,
     extra_system_messages: Vec<String>,
@@ -41,9 +44,10 @@ pub(super) async fn run_stage_model_pass(
 
     let endpoint = utils::resolve_chat_endpoint(&config.base_url);
     let headers = build_headers(config)?;
-    let filtered_tools = build_filtered_tools(runtime).await;
+    let filtered_tools = build_filtered_tools().await;
 
-    let mut stage_messages = negotiation_messages.to_vec();
+    let mut stage_messages = context.messages.clone();
+    stage_messages.extend_from_slice(negotiation_messages);
     for instruction in extra_system_messages {
         stage_messages.push(crate::ai::agent::types::AgentInputMessage {
             role: "system".to_string(),
@@ -55,7 +59,15 @@ pub(super) async fn run_stage_model_pass(
 
     let mut updated_context = context.clone();
     updated_context.messages = stage_messages;
-    let request_messages = build_chat_messages(&updated_context, runtime);
+    if updated_context
+        .messages
+        .last()
+        .map(|message| message.role == "user" && message.content == context.prompt)
+        .unwrap_or(false)
+    {
+        updated_context.prompt.clear();
+    }
+    let request_messages = build_chat_messages(&updated_context);
     let tools_for_provider_request = filtered_tools
         .as_array()
         .filter(|items| !items.is_empty())
@@ -107,36 +119,22 @@ fn build_headers(config: &OpenAiCompatibleConfig) -> Result<HeaderMap, AgentHarn
     Ok(headers)
 }
 
-async fn build_filtered_tools(runtime: &AgentLoopRuntime) -> Value {
-    let builtin_tools = tools::build_tool_definitions();
-    let allowed_tool_names = builtin_tools
-        .as_array()
-        .into_iter()
-        .flatten()
-        .filter_map(|tool| {
-            tool.get("function")
-                .and_then(|value| value.get("name"))
-                .and_then(Value::as_str)
-        })
-        .filter(|name| runtime.allows_tool(name))
-        .collect::<Vec<_>>();
-    let mut filtered_tools =
-        tools::filter_tool_definitions(builtin_tools.clone(), &allowed_tool_names);
+async fn build_filtered_tools() -> Value {
+    // All tools are always allowed. No stage-based filtering.
+    let mut all_tools = tools::build_tool_definitions();
 
-    if runtime.allows_mcp_tools() {
-        match mcp::mcp_build_openai_tool_definitions().await {
-            Ok(mcp_tools) => {
-                if let Some(tool_array) = filtered_tools.as_array_mut() {
-                    tool_array.extend(mcp_tools);
-                }
+    match mcp::mcp_build_openai_tool_definitions().await {
+        Ok(mcp_tools) => {
+            if let Some(tool_array) = all_tools.as_array_mut() {
+                tool_array.extend(mcp_tools);
             }
-            Err(error) => {
-                eprintln!("[MCP] Failed to build MCP tool definitions: {error}");
-            }
+        }
+        Err(error) => {
+            eprintln!("[MCP] Failed to build MCP tool definitions: {error}");
         }
     }
 
-    filtered_tools
+    all_tools
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -146,7 +144,7 @@ async fn run_google_pass(
     context: &AgentHarnessContext,
     sink: &AgentEventSink,
     options: StagePassOptions,
-    use_synthetic_thinking: bool,
+    _use_synthetic_thinking: bool,
     request_messages: Vec<Value>,
     tools_for_provider_request: Option<Value>,
 ) -> Result<StageModelResponse, AgentHarnessError> {
@@ -170,25 +168,8 @@ async fn run_google_pass(
     .map_err(AgentHarnessError::new)?;
 
     if !response.text.is_empty() {
-        if use_synthetic_thinking {
-            visible_text.push_str(&response.text);
-            if options.emit_visible_tokens {
-                sink.token(&response.text);
-            }
-        } else {
-            thinking_state.push_content(
-                &response.text,
-                sink,
-                &mut visible_text,
-                &mut reasoning_text,
-                options.emit_visible_tokens,
-                options.emit_reasoning_tokens,
-            );
-        }
-    }
-
-    if !use_synthetic_thinking {
-        thinking_state.finish(
+        thinking_state.push_content(
+            &response.text,
             sink,
             &mut visible_text,
             &mut reasoning_text,
@@ -197,6 +178,14 @@ async fn run_google_pass(
         );
     }
 
+    thinking_state.finish(
+        sink,
+        &mut visible_text,
+        &mut reasoning_text,
+        options.emit_visible_tokens,
+        options.emit_reasoning_tokens,
+    );
+
     let tool_call = response
         .function_calls
         .first()
@@ -204,7 +193,7 @@ async fn run_google_pass(
             id: function_call
                 .id
                 .clone()
-                .unwrap_or_else(|| "google-tool-call".to_string()),
+                .unwrap_or_else(|| generate_tool_call_id("google-tool-call")),
             name: function_call.name.clone(),
             args: function_call.arguments.clone(),
             raw_args: serde_json::to_string(&function_call.arguments)
@@ -270,6 +259,7 @@ async fn run_streaming_pass(
     let mut pass = StreamingPassState::default();
     let mut sse_buffer = String::new();
     let mut byte_stream = response.bytes_stream();
+    let mut saw_done = false;
 
     while let Some(next_chunk) = byte_stream.next().await {
         if cancellation.is_cancelled() {
@@ -283,36 +273,25 @@ async fn run_streaming_pass(
         let text = String::from_utf8_lossy(&bytes);
         sse_buffer.push_str(&text);
 
-        while let Some(newline_index) = sse_buffer.find('\n') {
-            let line = sse_buffer[..newline_index].trim().to_string();
-            sse_buffer.drain(..=newline_index);
-
-            if line.is_empty() {
-                continue;
-            }
-
-            if let Some(data) = line.strip_prefix("data:") {
-                let data = data.trim();
-                if data == "[DONE]" {
-                    break;
-                }
-
-                let _ = process_payload(data, sink, &mut pass, options, use_synthetic_thinking);
-            } else if line.starts_with('{') && line.ends_with('}') {
-                let _ = process_payload(&line, sink, &mut pass, options, use_synthetic_thinking);
-            }
-        }
-
-        if pass.current_tool_call_id.is_some() && !pass.current_tool_args.is_empty() {
+        if drain_sse_buffer(
+            &mut sse_buffer,
+            sink,
+            &mut pass,
+            options,
+            use_synthetic_thinking,
+        )? {
+            saw_done = true;
             break;
         }
     }
 
-    let remaining = sse_buffer.trim();
-    if !remaining.is_empty() {
-        let data = remaining.strip_prefix("data:").unwrap_or(remaining).trim();
-        if data != "[DONE]" {
-            let _ = process_payload(data, sink, &mut pass, options, use_synthetic_thinking);
+    if !saw_done {
+        let remaining = sse_buffer.trim();
+        if !remaining.is_empty() {
+            let data = remaining.strip_prefix("data:").unwrap_or(remaining).trim();
+            if data != "[DONE]" {
+                let _ = process_payload(data, sink, &mut pass, options, use_synthetic_thinking);
+            }
         }
     }
 
@@ -341,21 +320,14 @@ async fn run_streaming_pass(
         }
 
         if !response.text.is_empty() {
-            if use_synthetic_thinking {
-                pass.visible_text.push_str(&response.text);
-                if options.emit_visible_tokens {
-                    sink.token(&response.text);
-                }
-            } else {
-                pass.thinking_state.push_content(
-                    &response.text,
-                    sink,
-                    &mut pass.visible_text,
-                    &mut pass.reasoning_text,
-                    options.emit_visible_tokens,
-                    options.emit_reasoning_tokens,
-                );
-            }
+            pass.thinking_state.push_content(
+                &response.text,
+                sink,
+                &mut pass.visible_text,
+                &mut pass.reasoning_text,
+                options.emit_visible_tokens,
+                options.emit_reasoning_tokens,
+            );
         }
 
         if let Some(function_call) = response.function_calls.first() {
@@ -363,7 +335,7 @@ async fn run_streaming_pass(
                 function_call
                     .id
                     .clone()
-                    .unwrap_or_else(|| "fallback-tool-call".to_string()),
+                    .unwrap_or_else(|| generate_tool_call_id("fallback-tool-call")),
             );
             pass.current_tool_name = function_call.name.clone();
             pass.current_tool_args = serde_json::to_string(&function_call.arguments)
@@ -371,15 +343,13 @@ async fn run_streaming_pass(
         }
     }
 
-    if !use_synthetic_thinking {
-        pass.thinking_state.finish(
-            sink,
-            &mut pass.visible_text,
-            &mut pass.reasoning_text,
-            options.emit_visible_tokens,
-            options.emit_reasoning_tokens,
-        );
-    }
+    pass.thinking_state.finish(
+        sink,
+        &mut pass.visible_text,
+        &mut pass.reasoning_text,
+        options.emit_visible_tokens,
+        options.emit_reasoning_tokens,
+    );
 
     Ok(StageModelResponse {
         visible_text: pass.visible_text,
@@ -401,6 +371,39 @@ struct StreamingPassState {
     current_tool_name: String,
     current_tool_args: String,
     usage: Option<crate::ai::agent::types::AgentUsage>,
+}
+
+fn drain_sse_buffer(
+    sse_buffer: &mut String,
+    sink: &AgentEventSink,
+    pass: &mut StreamingPassState,
+    options: StagePassOptions,
+    use_synthetic_thinking: bool,
+) -> Result<bool, AgentHarnessError> {
+    let mut saw_done = false;
+
+    while let Some(newline_index) = sse_buffer.find('\n') {
+        let line = sse_buffer[..newline_index].trim().to_string();
+        sse_buffer.drain(..=newline_index);
+
+        if line.is_empty() {
+            continue;
+        }
+
+        if let Some(data) = line.strip_prefix("data:") {
+            let data = data.trim();
+            if data == "[DONE]" {
+                saw_done = true;
+                continue;
+            }
+
+            let _ = process_payload(data, sink, pass, options, use_synthetic_thinking);
+        } else if line.starts_with('{') && line.ends_with('}') {
+            let _ = process_payload(&line, sink, pass, options, use_synthetic_thinking);
+        }
+    }
+
+    Ok(saw_done)
 }
 
 fn process_payload(
@@ -446,10 +449,10 @@ fn collect_tool_call(
     current_tool_name: String,
     current_tool_args: String,
 ) -> Option<CollectedToolCall> {
-    let id = current_tool_call_id?;
     if current_tool_name.trim().is_empty() || current_tool_args.trim().is_empty() {
         return None;
     }
+    let id = current_tool_call_id.unwrap_or_else(|| generate_tool_call_id("stream-tool-call"));
 
     serde_json::from_str::<Value>(&current_tool_args)
         .ok()
@@ -460,4 +463,240 @@ fn collect_tool_call(
             raw_args: current_tool_args,
             google_thought_signature: None,
         })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{collect_tool_call, drain_sse_buffer, StagePassOptions, StreamingPassState};
+    use crate::ai::agent::harness::{AgentEventSink, AgentHarnessContext};
+    use crate::ai::agent::types::{AgentExecutionState, AgentRunSnapshot, AgentRunStatus};
+    use crate::ai::agent_management::AgentHarnessManager;
+    use chrono::Utc;
+    use serde_json::json;
+    use std::sync::{atomic::AtomicBool, Arc};
+
+    #[test]
+    fn sse_drain_collects_fragmented_terminal_tool_name_and_args() {
+        let (sink, _events) = test_sink("terminal-stream");
+        let mut pass = StreamingPassState::default();
+        let mut buffer = concat!(
+            "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"id\":\"call_docker\",\"function\":{\"name\":\"propose_\",\"arguments\":\"{\\\"command\\\":\\\"docker ps\\\"}\"}}]}}]}\n\n",
+            "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"function\":{\"name\":\"terminal_command\"}}]}}]}\n\n",
+            "data: [DONE]\n\n"
+        )
+        .to_string();
+
+        let saw_done = drain_sse_buffer(
+            &mut buffer,
+            &sink,
+            &mut pass,
+            StagePassOptions {
+                emit_visible_tokens: false,
+                emit_reasoning_tokens: false,
+            },
+            false,
+        )
+        .expect("SSE drain should succeed");
+
+        assert!(saw_done);
+        let tool_call = collect_tool_call(
+            pass.current_tool_call_id,
+            pass.current_tool_name,
+            pass.current_tool_args,
+        )
+        .expect("fragmented terminal tool call should be reconstructed");
+        assert_eq!(tool_call.name, "propose_terminal_command");
+        assert_eq!(tool_call.args, json!({ "command": "docker ps" }));
+    }
+
+    #[test]
+    fn sse_drain_collects_fragmented_planning_tool_name() {
+        let (sink, _events) = test_sink("planning-stream");
+        let mut pass = StreamingPassState::default();
+        let mut buffer = concat!(
+            "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"id\":\"call_plan\",\"function\":{\"name\":\"propose_\",\"arguments\":\"{\\\"title\\\":\\\"Plan investigatie\\\",\\\"steps\\\":[{\\\"label\\\":\\\"Inspecteaza harness-ul\\\"}]}\"}}]}}]}\n\n",
+            "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"function\":{\"name\":\"plan\"}}]}}]}\n\n",
+            "data: [DONE]\n\n"
+        )
+        .to_string();
+
+        let saw_done = drain_sse_buffer(
+            &mut buffer,
+            &sink,
+            &mut pass,
+            StagePassOptions {
+                emit_visible_tokens: false,
+                emit_reasoning_tokens: false,
+            },
+            false,
+        )
+        .expect("SSE drain should succeed");
+
+        assert!(saw_done);
+        let tool_call = collect_tool_call(
+            pass.current_tool_call_id,
+            pass.current_tool_name,
+            pass.current_tool_args,
+        )
+        .expect("fragmented planning tool call should be reconstructed");
+        assert_eq!(tool_call.name, "propose_plan");
+        assert_eq!(
+            tool_call.args,
+            json!({
+                "title": "Plan investigatie",
+                "steps": [{ "label": "Inspecteaza harness-ul" }]
+            })
+        );
+    }
+
+    #[test]
+    fn streaming_tool_call_without_id_gets_unique_fallback_id() {
+        let (sink, _events) = test_sink("streaming-tool-without-id");
+        let mut pass = StreamingPassState::default();
+        let mut buffer = concat!(
+            "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"function\":{\"name\":\"propose_terminal_command\",\"arguments\":\"{\\\"command\\\":\\\"docker ps\\\"}\"}}]}}]}\n\n",
+            "data: [DONE]\n\n"
+        )
+        .to_string();
+
+        let saw_done = drain_sse_buffer(
+            &mut buffer,
+            &sink,
+            &mut pass,
+            StagePassOptions {
+                emit_visible_tokens: false,
+                emit_reasoning_tokens: false,
+            },
+            false,
+        )
+        .expect("SSE drain should succeed");
+
+        assert!(saw_done);
+        let first_tool_call = collect_tool_call(
+            pass.current_tool_call_id.clone(),
+            pass.current_tool_name.clone(),
+            pass.current_tool_args.clone(),
+        )
+        .expect("streaming tool call without id should be reconstructed");
+        let second_tool_call = collect_tool_call(
+            None,
+            pass.current_tool_name,
+            pass.current_tool_args,
+        )
+        .expect("fallback ids should remain available for later tool calls");
+
+        assert!(first_tool_call.id.starts_with("stream-tool-call-"));
+        assert!(second_tool_call.id.starts_with("stream-tool-call-"));
+        assert_ne!(first_tool_call.id, second_tool_call.id);
+        assert_eq!(first_tool_call.name, "propose_terminal_command");
+        assert_eq!(first_tool_call.args, json!({ "command": "docker ps" }));
+    }
+
+    #[test]
+    fn synthetic_thinking_stream_is_emitted_as_reasoning_preview() {
+        let (sink, events) = test_sink("synthetic-thinking-stream");
+        let mut pass = StreamingPassState::default();
+        let mut buffer = concat!(
+            "data: {\"choices\":[{\"delta\":{\"content\":\"<thinking>Verific daca Docker raspunde local. Daca daemon-ul nu este pornit, voi spune asta clar.</thinking>Docker nu pare pornit acum.\"}}]}\n\n",
+            "data: [DONE]\n\n"
+        )
+        .to_string();
+
+        let saw_done = drain_sse_buffer(
+            &mut buffer,
+            &sink,
+            &mut pass,
+            StagePassOptions {
+                emit_visible_tokens: true,
+                emit_reasoning_tokens: true,
+            },
+            true,
+        )
+        .expect("SSE drain should succeed");
+
+        assert!(saw_done);
+        pass.thinking_state.finish(
+            &sink,
+            &mut pass.visible_text,
+            &mut pass.reasoning_text,
+            true,
+            true,
+        );
+
+        assert_eq!(pass.visible_text, "Docker nu pare pornit acum.");
+        assert!(pass.reasoning_text.contains("Verific daca Docker raspunde local."));
+
+        let recorded_events = events.lock().expect("events should lock");
+        let reasoning_events = recorded_events
+            .iter()
+            .filter_map(|event| match event {
+                crate::ai::agent::harness::TestAgentEvent::Reasoning(text, is_complete) => {
+                    Some((text.clone(), *is_complete))
+                }
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        let token_text = recorded_events
+            .iter()
+            .filter_map(|event| match event {
+                crate::ai::agent::harness::TestAgentEvent::Token(text) => Some(text.clone()),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+            .join("");
+
+        assert!(
+            reasoning_events
+                .iter()
+                .any(|(text, is_complete)| *is_complete
+                    && text.contains("Daca daemon-ul nu este pornit"))
+        );
+        assert_eq!(token_text, "Docker nu pare pornit acum.");
+    }
+
+    fn test_sink(
+        run_id: &str,
+    ) -> (
+        AgentEventSink,
+        Arc<std::sync::Mutex<Vec<crate::ai::agent::harness::TestAgentEvent>>>,
+    ) {
+        let manager = AgentHarnessManager::default();
+        let context = AgentHarnessContext {
+            run_id: run_id.to_string(),
+            conversation_id: "conv-test".to_string(),
+            assistant_message_id: "assistant-test".to_string(),
+            prompt: "test".to_string(),
+            surface: Some("agent".to_string()),
+            messages: vec![],
+            terminal_blocks: vec![],
+            cwd: Some("/tmp".to_string()),
+            target_os: "macos".to_string(),
+            target_arch: "arm64".to_string(),
+            model_id: "test-model".to_string(),
+            terminal_model_id: None,
+            resume_execution_state: None,
+        };
+
+        manager
+            .insert(
+                AgentRunSnapshot {
+                    run_id: run_id.to_string(),
+                    conversation_id: "conv-test".to_string(),
+                    assistant_message_id: "assistant-test".to_string(),
+                    prompt: "test".to_string(),
+                    status: AgentRunStatus::Queued,
+                    status_message: Some("Queued".to_string()),
+                    model_id: "test-model".to_string(),
+                    cwd: Some("/tmp".to_string()),
+                    error: None,
+                    execution_state: AgentExecutionState::new("tool-selection"),
+                    started_at: Utc::now(),
+                    finished_at: None,
+                },
+                Arc::new(AtomicBool::new(false)),
+            )
+            .expect("snapshot should insert");
+
+        AgentEventSink::for_tests(manager, &context)
+    }
 }

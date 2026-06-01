@@ -17,6 +17,7 @@ import { useMemo } from 'react';
 import { ChatPanel } from '../../Chat';
 import { ComposerBar, ModelSetupOverlay, TerminalComposer } from '../../Composer';
 import { TrayPanel } from '../../Tray';
+import { AgentStatusBar } from './AgentStatusBar';
 import { useLauncher, type LauncherProps } from './hooks';
 import { COMPOSER_PLACEHOLDERS } from '../../../lib';
 
@@ -28,6 +29,14 @@ export function Launcher(props: LauncherProps) {
     return COMPOSER_PLACEHOLDERS[randomIndex];
   }, [launcher.ui.resolvedConversationId]);
   const showComposerInputHint = launcher.ui.agentSettings?.input?.showInputHintText !== false;
+
+  // The agent is active if there's an active run ID and any assistant message is currently streaming/running,
+  // but only when the composer is not hidden (i.e. not during pending approvals)
+  const isAgentActive = Boolean(
+    !launcher.ui.resolvedPendingApproval &&
+    launcher.chat.activeRunId &&
+    launcher.chat.messages.some((message: any) => message.role === 'assistant' && message.isStreaming)
+  );
 
   return (
     <main className={launcher.ui.launcherRootClassName}>
@@ -42,6 +51,8 @@ export function Launcher(props: LauncherProps) {
         )}
 
         <div ref={launcher.ui.dockRef} className="dock-stack">
+          {isAgentActive && <AgentStatusBar launcher={launcher} />}
+
           {!modelSetupRequired && !launcher.ui.resolvedPendingApproval && (!launcher.ui.isTerminalSurface || launcher.ui.isTerminalTrayOpen) && (
             <TrayPanel view={launcher.views.trayPanel} />
           )}

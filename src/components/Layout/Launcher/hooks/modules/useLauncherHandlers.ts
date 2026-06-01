@@ -69,6 +69,23 @@ function rejectedFileChangeBody(diffs: FileDiff[]) {
   return `Request canceled. Changes were not applied to ${diffs.length} files.`;
 }
 
+function rejectedFileChangeSummary(diffs: FileDiff[]) {
+  if (diffs.length === 1) {
+    const diff = diffs[0];
+    if (diff.diffType.kind === 'create') {
+      return `Nu am putut crea fișierul \`${diff.filePath}\` pentru că ai anulat propunerea.`;
+    }
+
+    if (diff.diffType.kind === 'delete') {
+      return `Nu am putut șterge fișierul \`${diff.filePath}\` pentru că ai anulat propunerea.`;
+    }
+
+    return `Nu am putut aplica modificările pentru \`${diff.filePath}\` pentru că ai anulat propunerea.`;
+  }
+
+  return `Nu am putut aplica modificările propuse pentru ${diffs.length} fișiere deoarece ai anulat propunerea.`;
+}
+
 function agentContinuationInstruction(kind: 'command' | 'file-change', failed = false) {
   if (kind === 'file-change') {
     return [
@@ -81,7 +98,7 @@ function agentContinuationInstruction(kind: 'command' | 'file-change', failed = 
     '[Invisible harness instruction]',
     failed
       ? 'The command failed. Read the exact output and choose the next concrete step: another read-only diagnostic command, a file repair, or a narrowly targeted install/fix command if that is the only path forward. Do not stop at a summary-only response. Only ask for clarification if there is truly no concrete next step.'
-      : 'Continue toward the original user goal. If this command failed and you can fix it, propose_file_change. If you just fixed something and need to confirm it, propose_terminal_command for the verification step. Do not ask whether to continue or rerun unless a real ambiguity blocks progress.'
+      : 'Continue toward the original user goal. If this command only gathered information or prepared the workspace, use that result for the next required step instead of stopping: summarize the finding if the task was purely informational, or continue with read_workspace_file, propose_file_change, or another targeted tool call until the request is actually complete. If you just fixed something and need to confirm it, propose_terminal_command for the verification step. Do not ask whether to continue or rerun unless a real ambiguity blocks progress.'
   ].join('\n');
 }
 
@@ -127,6 +144,10 @@ function terminalToolResult(command: string, result: { output?: string; block?: 
     failureInstruction,
     agentContinuationInstruction('command', failed)
   ].join('\n');
+}
+
+function rejectedCommandSummary(command: string) {
+  return `Nu am rulat comanda \`${command}\` pentru că ai anulat propunerea.`;
 }
 
 function isAbsolutePath(path: string) {
@@ -407,6 +428,7 @@ export function useLauncherHandlers({
       startedAt: new Date().toISOString()
     };
     store.setLocalConversationId(nextConversationId);
+    store.setAutoApproveAgentLoop(false);
     chat.clearMessages();
     chat.setQuery('');
     store.setComposerSurface('agent');
@@ -417,6 +439,7 @@ export function useLauncherHandlers({
     chat.setQuery,
     props.onNewConversation,
     setResolvedPendingApproval,
+    store.setAutoApproveAgentLoop,
     store.setComposerSurface,
     store.setConversationSearchQuery,
     store.setLocalConversationId,
@@ -451,6 +474,7 @@ export function useLauncherHandlers({
   }, [setResolvedPendingApproval, store.setComposerSurface, store.setModeLock]);
 
   const handlePendingApprovalReject = useCallback((approval: CommandApproval) => {
+    store.setAutoApproveAgentLoop(false);
     setResolvedPendingApproval(null);
     store.setComposerSurface('agent');
     store.setModeLock(null);
@@ -480,19 +504,29 @@ export function useLauncherHandlers({
         ? {
             fileDiffs: approval.fileDiffs,
             fileChangeStatus: 'rejected',
-            deferFollowUp: !toolCallId
+            deferFollowUp: !toolCallId,
+            localAssistantSummary: rejectedFileChangeSummary(approval.fileDiffs),
+            originatingAssistantStatus: 'cancelled'
           }
-        : undefined
+        : {
+            localAssistantSummary: label ? rejectedCommandSummary(label) : 'Nu am rulat comanda propusă pentru că ai anulat-o.',
+            originatingAssistantStatus: 'cancelled'
+          }
     );
   }, [
     chat.submitToolResult,
     resolvedPendingApproval?.toolCallId,
     setResolvedPendingApproval,
+    store.setAutoApproveAgentLoop,
     store.setComposerSurface,
     store.setModeLock
   ]);
 
   const handlePendingApprovalAccept = useCallback(async (approval: CommandApproval) => {
+    if (approval.kind !== 'topic-change') {
+      store.setAutoApproveAgentLoop(true);
+    }
+
     if (approval.kind === 'file-change') {
       try {
         for (const diff of approval.fileDiffs) {
@@ -570,12 +604,13 @@ export function useLauncherHandlers({
     resolvedPendingApproval?.toolCallId,
     runtime.workingDirectory.currentPath,
     setResolvedPendingApproval,
+    store.setAutoApproveAgentLoop,
     store.setComposerSurface,
     store.setModeLock,
     terminal
   ]);
 
-  const handlePendingApprovalAutoApprove = useCallback((approval: CommandApproval) => {
+  const handlePendingApprovalAutoApprove = useCallback(async (approval: CommandApproval) => {
     if ('command' in approval) {
       const agentSettings = normalizeAgentSettings(memoryStore.settings?.values);
       const activeProfile = agentSettings.profiles.find((profile: any) => profile.id === agentSettings.activeProfileId)
@@ -595,7 +630,7 @@ export function useLauncherHandlers({
       }
     }
 
-    void handlePendingApprovalAccept(approval);
+    await handlePendingApprovalAccept(approval);
   }, [handlePendingApprovalAccept, memoryStore.settings?.values, saveSettings]);
 
   const handleTerminalQueryChange = useCallback((value: string) => {

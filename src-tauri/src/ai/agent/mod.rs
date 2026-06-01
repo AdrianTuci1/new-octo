@@ -2,7 +2,6 @@ pub mod actions;
 mod cli_harness;
 mod commands;
 mod continuation;
-pub mod contract;
 pub mod conversation;
 pub mod decision;
 #[cfg(test)]
@@ -23,4 +22,3 @@ pub use commands::{
     agent_provider_status, agent_start,
 };
 pub use continuation::agent_continue;
-pub use contract::agent_get_loop_contract;

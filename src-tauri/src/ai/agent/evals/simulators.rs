@@ -17,6 +17,7 @@ impl EvalToolSimulator {
         tool_call: &AgentToolCall,
     ) -> Result<String, String> {
         match tool_call.name.as_str() {
+            "lookup_web" => simulate_web_lookup(&tool_call.args),
             "explore_workspace" => simulate_explore_workspace(workspace.root(), &tool_call.args),
             "read_workspace_file" => {
                 simulate_read_workspace_file(workspace.root(), &tool_call.args)
@@ -44,14 +45,17 @@ impl EvalToolSimulator {
                 .get("filePath")
                 .and_then(Value::as_str)
                 .ok_or_else(|| "fileDiff is missing filePath".to_string())?;
-            let kind = diff
-                .get("diffType")
-                .and_then(|value| value.get("kind"))
-                .and_then(Value::as_str)
-                .ok_or_else(|| "fileDiff is missing diffType.kind".to_string())?;
             let path = root.join(file_path);
+            let diff_type = diff
+                .get("diffType")
+                .ok_or_else(|| "fileDiff is missing diffType".to_string())?;
+            let kind = diff_type
+                .get("kind")
+                .and_then(Value::as_str)
+                .map(ToString::to_string)
+                .unwrap_or_else(|| infer_diff_kind(&path, diff_type));
 
-            match kind {
+            match kind.as_str() {
                 "create" => {
                     let insertion = diff
                         .get("diffType")
@@ -98,6 +102,19 @@ impl EvalToolSimulator {
             applied.join("\n")
         ))
     }
+}
+
+fn infer_diff_kind(path: &Path, diff_type: &Value) -> String {
+    if diff_type.get("rename").is_some() {
+        return "update".to_string();
+    }
+    if path.exists() {
+        return "update".to_string();
+    }
+    if diff_type.get("deltas").is_some() || diff_type.get("delta").is_some() {
+        return "create".to_string();
+    }
+    "update".to_string()
 }
 
 fn simulate_explore_workspace(root: &Path, args: &Value) -> Result<String, String> {
@@ -227,22 +244,57 @@ fn simulate_cloud_launch(args: &Value) -> Result<String, String> {
     ))
 }
 
+fn simulate_web_lookup(args: &Value) -> Result<String, String> {
+    let query = args
+        .get("query")
+        .and_then(Value::as_str)
+        .ok_or_else(|| "lookup_web is missing query".to_string())?;
+
+    let results = if query.to_ascii_lowercase().contains("rust") {
+        [
+            "- Rust 1.90 release coverage emphasized language polish and standard library improvements.",
+            "- Tokio maintainers highlighted compatibility guidance for the latest Rust release.",
+            "- Ecosystem summaries focused on performance tooling and async ergonomics.",
+        ]
+        .join("\n")
+    } else if query.to_ascii_lowercase().contains("docker") {
+        [
+            "- Docker community posts discussed Desktop updates and Compose workflow improvements.",
+            "- Public release notes focused on developer experience and security fixes.",
+        ]
+        .join("\n")
+    } else {
+        [
+            "- Fresh public sources were found for the requested topic.",
+            "- The top results converged on a short, actionable summary.",
+        ]
+        .join("\n")
+    };
+
+    Ok(format!("Fresh web results for `{query}`:\n{results}"))
+}
+
 fn simulate_terminal_command(args: &Value) -> Result<String, String> {
     let command = args
         .get("command")
         .and_then(Value::as_str)
         .ok_or_else(|| "propose_terminal_command is missing command".to_string())?;
-    let requires_approval = args
-        .get("requiresApproval")
-        .and_then(Value::as_bool)
-        .unwrap_or(true);
-    let reason = args
-        .get("reason")
-        .and_then(Value::as_str)
-        .unwrap_or("Terminal command proposed for local inspection.");
+    let normalized = command.trim().to_ascii_lowercase();
+    let output = match normalized.as_str() {
+        "python3 --version" | "python --version" => "Python 3.12.0".to_string(),
+        "docker ps" => {
+            "CONTAINER ID   IMAGE   STATUS\n8f3f9c2d1a4b   postgres:16   Up 3 hours".to_string()
+        }
+        "cargo test" => {
+            "running 2 tests\ntest greet_smoke ... ok\ntest ping_smoke ... ok\n\ntest result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out".to_string()
+        }
+        "pwd" => "/tmp/eval-workspace".to_string(),
+        _ if normalized.starts_with("ls") => "src\nCargo.toml\nREADME.md".to_string(),
+        _ => "Command completed successfully with no critical findings.".to_string(),
+    };
 
     Ok(format!(
-        "Terminal command proposal accepted. requiresApproval={requires_approval}; command={command}; reason={reason}"
+        "Approved terminal command executed.\nCommand: {command}\nExit code: 0\nOutput:\n{output}"
     ))
 }
 
@@ -336,8 +388,12 @@ fn relativize(root: &Path, path: &Path) -> String {
 #[cfg(test)]
 mod tests {
     use serde_json::json;
+    use std::{fs, path::PathBuf};
 
-    use super::{apply_update_deltas, simulate_plan_artifact, simulate_terminal_command};
+    use super::{
+        apply_update_deltas, infer_diff_kind, simulate_plan_artifact, simulate_terminal_command,
+        simulate_web_lookup,
+    };
 
     #[test]
     fn update_deltas_replace_requested_lines() {
@@ -365,7 +421,18 @@ mod tests {
         .expect("terminal command simulation should succeed");
 
         assert!(response.contains("ls -la"));
-        assert!(response.contains("requiresApproval=true"));
+        assert!(response.contains("Exit code: 0"));
+    }
+
+    #[test]
+    fn web_lookup_simulation_returns_fresh_results_summary() {
+        let response = simulate_web_lookup(&json!({
+            "query": "Rust 1.90 release"
+        }))
+        .expect("web lookup simulation should succeed");
+
+        assert!(response.contains("Fresh web results"));
+        assert!(response.contains("Rust 1.90"));
     }
 
     #[test]
@@ -381,5 +448,25 @@ mod tests {
 
         assert!(response.contains("propose_plan"));
         assert!(response.contains("Investigate bug"));
+    }
+
+    #[test]
+    fn infer_diff_kind_treats_existing_file_with_deltas_as_update() {
+        let temp_path = PathBuf::from(std::env::temp_dir())
+            .join(format!("octomus-infer-kind-{}.rs", std::process::id()));
+        fs::write(&temp_path, "fn original() {}\n").expect("temp file should write");
+
+        let inferred = infer_diff_kind(
+            &temp_path,
+            &json!({
+                "deltas": [{
+                    "replacement_line_range": { "start": 1, "end": 1 },
+                    "insertion": "fn updated() {}\n"
+                }]
+            }),
+        );
+
+        assert_eq!(inferred, "update");
+        let _ = fs::remove_file(temp_path);
     }
 }

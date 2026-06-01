@@ -1,6 +1,7 @@
 import type { ChatMessage, WorkspaceExplorationArtifact } from '../../../types/chat';
 import type { TerminalCommandBlock } from '../../../types/terminal';
-import { extractInlineFileChangeApproval, visibleChatMessageBody } from '../../../hooks/useChat';
+import { extractInlineFileChangeApproval, visibleChatMessageBody } from '../../../hooks/useChat/parsers';
+import { timelineMessageTime } from './timelineMessageTime';
 
 export type TimelineItem =
   | { id: string; kind: 'message'; at: number; order: number; message: ChatMessage }
@@ -9,14 +10,7 @@ export type TimelineItem =
   | { id: string; kind: 'terminal-error'; at: number; order: number; error: string };
 
 export function timeFromMessage(message: ChatMessage) {
-  if (message.createdAt) {
-    const createdAt = Date.parse(message.createdAt);
-    if (Number.isFinite(createdAt)) return createdAt;
-  }
-
-  const idParts = message.id.split('-');
-  const timestamp = Number(idParts[idParts.length - 1]);
-  return Number.isFinite(timestamp) ? timestamp : 0;
+  return timelineMessageTime(message);
 }
 
 export function timeFromBlock(block: TerminalCommandBlock) {
@@ -44,7 +38,6 @@ export function buildTimelineItems(
   terminalError?: string | null
 ): TimelineItem[] {
   const messageOrderById = new Map(messages.map((message, index) => [message.id, index]));
-  const messageById = new Map(messages.map((message) => [message.id, message]));
   const toolCommandFallbacks = messages
     .map((message, order) => {
       if (message.role !== 'tool' || message.toolKind !== 'command') {
@@ -119,22 +112,6 @@ export function buildTimelineItems(
     })
     .map((message, order) => {
       const messageIndex = messageOrderById.get(message.id) ?? order;
-
-      if (message.messageKind === 'reasoning' && message.parentMessageId) {
-        const parentOrder = messageOrderById.get(message.parentMessageId) ?? messageIndex;
-        const parentMessage = messageById.get(message.parentMessageId);
-        const parentAt = parentMessage ? timeFromMessage(parentMessage) : timeFromMessage(message);
-        const isBeforeParent = messageIndex < parentOrder;
-        const positionOffset = messageIndex / 1_000_000;
-
-        return {
-          id: message.id,
-          kind: 'message' as const,
-          at: parentAt + (isBeforeParent ? -1 : 1) + positionOffset,
-          order: messageIndex,
-          message
-        };
-      }
 
       return {
         id: message.id,

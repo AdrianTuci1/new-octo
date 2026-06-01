@@ -23,13 +23,6 @@ pub(super) struct StagePassOptions {
     pub(super) emit_reasoning_tokens: bool,
 }
 
-pub(super) enum StageControlDecision {
-    ContinueToPlanning,
-    SkipPlanning,
-    DeclinePlan,
-    EmitFinalAnswer(String),
-}
-
 pub(super) enum ActionStageOutcome {
     Continue,
     Waiting(String),

@@ -6,14 +6,14 @@ use super::{
         should_retry_follow_up_only,
     },
     parser::handle_stream_payload,
-    resume::{apply_runtime_event, initial_runtime_for_context},
+    resume::initial_runtime_for_context,
     thinking::longest_tag_suffix_len,
     types::{ActionStageOutcome, CollectedToolCall, StageModelResponse},
 };
 use crate::ai::agent::harness::{AgentEventSink, AgentHarnessContext, TestAgentEvent};
 use crate::ai::agent::providers::{OpenAiCompatibleConfig, OpenAiCompatibleProvider};
 use crate::ai::agent::runtime::{
-    EVENT_SKIP_PLANNING, STAGE_AWAITING_APPROVAL, STAGE_EXECUTING, STAGE_REASONING, STAGE_VERIFYING,
+    PHASE_COMPLETED, PHASE_RUNNING, PHASE_WAITING_FOR_TOOL,
 };
 use crate::ai::agent::types::{
     AgentExecutionState, AgentInputMessage, AgentPendingResolutionKind, AgentPendingToolCall,
@@ -124,12 +124,8 @@ fn stream_parser_preserves_whitespace_only_markdown_tokens() {
         .build()
         .expect("tokio runtime should build");
     runtime.block_on(async {
-        let test_runtime = TestHarnessRuntime::new(
-            "run-markdown-whitespace",
-            "format markdown",
-            vec![],
-            None,
-        );
+        let test_runtime =
+            TestHarnessRuntime::new("run-markdown-whitespace", "format markdown", vec![], None);
         let mut streamed = String::new();
         let mut reasoning = String::new();
         let mut thinking_state = super::thinking::ThinkingStreamState::default();
@@ -174,7 +170,7 @@ fn new_runs_start_in_reasoning_stage() {
     let context = harness_context("analizeaza asta", vec![], vec![]);
     let runtime = initial_runtime_for_context(&context).expect("new runtime should initialize");
 
-    assert_eq!(runtime.current_stage_id(), STAGE_REASONING);
+    assert_eq!(runtime.current_stage_id(), PHASE_RUNNING);
 }
 
 #[test]
@@ -190,7 +186,7 @@ fn continuation_with_pending_tool_result_resumes_in_verifying() {
         vec![],
     );
     context.resume_execution_state = Some(AgentExecutionState {
-        current_stage_id: STAGE_EXECUTING.to_string(),
+        current_stage_id: "executing".to_string(),
         negotiation_attempt: 1,
         pending_resolution: Some(AgentPendingResolutionKind::ExternalToolResult),
         pending_tool_call: Some(AgentPendingToolCall {
@@ -203,7 +199,7 @@ fn continuation_with_pending_tool_result_resumes_in_verifying() {
     let runtime =
         initial_runtime_for_context(&context).expect("continuation runtime should resume");
 
-    assert_eq!(runtime.current_stage_id(), STAGE_VERIFYING);
+    assert_eq!(runtime.current_stage_id(), PHASE_WAITING_FOR_TOOL);
 }
 
 #[test]
@@ -219,7 +215,7 @@ fn continuation_without_new_tool_result_stays_in_previous_stage() {
         vec![],
     );
     context.resume_execution_state = Some(AgentExecutionState {
-        current_stage_id: STAGE_EXECUTING.to_string(),
+        current_stage_id: "executing".to_string(),
         negotiation_attempt: 1,
         pending_resolution: Some(AgentPendingResolutionKind::ExternalToolResult),
         pending_tool_call: Some(AgentPendingToolCall {
@@ -232,7 +228,7 @@ fn continuation_without_new_tool_result_stays_in_previous_stage() {
     let runtime =
         initial_runtime_for_context(&context).expect("continuation runtime should resume");
 
-    assert_eq!(runtime.current_stage_id(), STAGE_EXECUTING);
+    assert_eq!(runtime.current_stage_id(), PHASE_WAITING_FOR_TOOL);
 }
 
 #[test]
@@ -248,7 +244,7 @@ fn approval_stage_with_tool_result_resumes_in_verifying() {
         vec![],
     );
     context.resume_execution_state = Some(AgentExecutionState {
-        current_stage_id: STAGE_AWAITING_APPROVAL.to_string(),
+        current_stage_id: "awaiting-approval".to_string(),
         negotiation_attempt: 0,
         pending_resolution: Some(AgentPendingResolutionKind::Approval),
         pending_tool_call: Some(AgentPendingToolCall {
@@ -261,7 +257,7 @@ fn approval_stage_with_tool_result_resumes_in_verifying() {
     let runtime =
         initial_runtime_for_context(&context).expect("continuation runtime should resume");
 
-    assert_eq!(runtime.current_stage_id(), STAGE_VERIFYING);
+    assert_eq!(runtime.current_stage_id(), PHASE_WAITING_FOR_TOOL);
 }
 
 #[test]
@@ -296,9 +292,6 @@ fn terminal_tool_missing_command_requests_repair() {
         let config = test_config();
         let mut loop_runtime =
             initial_runtime_for_context(&test_runtime.context).expect("runtime should initialize");
-        apply_runtime_event(&mut loop_runtime, EVENT_SKIP_PLANNING)
-            .expect("reasoning -> tool-selection should be valid");
-
         let mut negotiation_messages = test_runtime.context.messages.clone();
         let outcome = handle_action_stage_response(
             &config,
@@ -321,7 +314,6 @@ fn terminal_tool_missing_command_requests_repair() {
                 }),
                 usage: None,
             },
-            false,
         )
         .await
         .expect("action handling should succeed");
@@ -358,9 +350,6 @@ fn namespaced_terminal_tool_calls_are_normalized() {
         let config = test_config();
         let mut loop_runtime =
             initial_runtime_for_context(&test_runtime.context).expect("runtime should initialize");
-        apply_runtime_event(&mut loop_runtime, EVENT_SKIP_PLANNING)
-            .expect("reasoning -> tool-selection should be valid");
-
         let outcome = handle_action_stage_response(
             &config,
             &test_runtime.context,
@@ -382,7 +371,6 @@ fn namespaced_terminal_tool_calls_are_normalized() {
                 }),
                 usage: None,
             },
-            false,
         )
         .await
         .expect("action handling should succeed");
@@ -404,6 +392,133 @@ fn namespaced_terminal_tool_calls_are_normalized() {
                 .map(|tool| tool.name.as_str()),
             Some("propose_terminal_command")
         );
+    });
+}
+
+#[test]
+fn suggest_follow_up_is_rejected_during_active_execution_loop() {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("tokio runtime should build");
+    runtime.block_on(async {
+        let test_runtime = TestHarnessRuntime::new(
+            "run-follow-up-not-allowed",
+            "creeaza un api simplu in nodejs si continua pana este implementat",
+            vec![],
+            None,
+        );
+        let config = test_config();
+        let mut loop_runtime =
+            initial_runtime_for_context(&test_runtime.context).expect("runtime should initialize");
+        let mut negotiation_messages = test_runtime.context.messages.clone();
+        let outcome = handle_action_stage_response(
+            &config,
+            &test_runtime.context,
+            &test_runtime.sink,
+            &mut loop_runtime,
+            &mut negotiation_messages,
+            &mut None,
+            &mut None,
+            &mut None,
+            0,
+            StageModelResponse {
+                visible_text: "Am creat structura de directoare.".to_string(),
+                tool_call: Some(CollectedToolCall {
+                    id: "call_follow_up".to_string(),
+                    name: "suggest_follow_up".to_string(),
+                    args: json!({
+                        "prompt": "Genereaza acum continutul fisierelor"
+                    }),
+                    raw_args: "{\"prompt\":\"Genereaza acum continutul fisierelor\"}".to_string(),
+                    google_thought_signature: None,
+                }),
+                usage: None,
+            },
+        )
+        .await
+        .expect("action handling should succeed");
+
+        match outcome {
+            ActionStageOutcome::Continue => {}
+            _ => panic!("expected retry instead of completing on suggest_follow_up"),
+        }
+
+        let latest_system_message = negotiation_messages
+            .iter()
+            .rev()
+            .find(|message| message.role == "system")
+            .map(|message| message.content.clone())
+            .unwrap_or_default();
+        assert!(latest_system_message.contains("nu este permis"));
+        assert!(latest_system_message.contains("suggest_follow_up"));
+    });
+}
+
+#[test]
+fn file_change_without_explicit_paths_requests_repair() {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("tokio runtime should build");
+    runtime.block_on(async {
+        let test_runtime = TestHarnessRuntime::new(
+            "run-file-change-missing-path",
+            "creeaza fisierele proiectului",
+            vec![],
+            None,
+        );
+        let config = test_config();
+        let mut loop_runtime =
+            initial_runtime_for_context(&test_runtime.context).expect("runtime should initialize");
+        let mut negotiation_messages = test_runtime.context.messages.clone();
+        let outcome = handle_action_stage_response(
+            &config,
+            &test_runtime.context,
+            &test_runtime.sink,
+            &mut loop_runtime,
+            &mut negotiation_messages,
+            &mut None,
+            &mut None,
+            &mut None,
+            0,
+            StageModelResponse {
+                visible_text: String::new(),
+                tool_call: Some(CollectedToolCall {
+                    id: "call_missing_path".to_string(),
+                    name: "propose_file_change".to_string(),
+                    args: json!({
+                        "fileDiffs": [{
+                            "diffType": {
+                                "kind": "create",
+                                "delta": {
+                                    "replacement_line_range": { "start": 1, "end": 1 },
+                                    "insertion": "class Product {}"
+                                }
+                            }
+                        }]
+                    }),
+                    raw_args: "{\"fileDiffs\":[{\"diffType\":{\"kind\":\"create\",\"delta\":{\"replacement_line_range\":{\"start\":1,\"end\":1},\"insertion\":\"class Product {}\"}}}]}".to_string(),
+                    google_thought_signature: None,
+                }),
+                usage: None,
+            },
+        )
+        .await
+        .expect("action handling should succeed");
+
+        match outcome {
+            ActionStageOutcome::Continue => {}
+            _ => panic!("expected repair retry when filePath is missing"),
+        }
+
+        let latest_system_message = negotiation_messages
+            .iter()
+            .rev()
+            .find(|message| message.role == "system")
+            .map(|message| message.content.clone())
+            .unwrap_or_default();
+        assert!(latest_system_message.contains("must include an explicit non-empty `filePath`"));
     });
 }
 
@@ -480,9 +595,6 @@ fn local_runtime_check_first_turn_enters_waiting_for_approval() {
         let config = test_config();
         let mut loop_runtime =
             initial_runtime_for_context(&test_runtime.context).expect("runtime should initialize");
-        apply_runtime_event(&mut loop_runtime, EVENT_SKIP_PLANNING)
-            .expect("reasoning -> tool-selection should be valid");
-
         let outcome = handle_action_stage_response(
             &config,
             &test_runtime.context,
@@ -504,7 +616,6 @@ fn local_runtime_check_first_turn_enters_waiting_for_approval() {
                 }),
                 usage: None,
             },
-            false,
         )
         .await
         .expect("action handling should succeed");
@@ -518,9 +629,11 @@ fn local_runtime_check_first_turn_enters_waiting_for_approval() {
             .manager
             .get("run-python-turn-1")
             .expect("snapshot should exist");
+        // python3 --version is low-risk, so it auto-approves via dispatch
+        // instead of first waiting for user approval
         assert_eq!(
             snapshot.execution_state.current_stage_id,
-            STAGE_AWAITING_APPROVAL
+            PHASE_WAITING_FOR_TOOL
         );
         assert_eq!(
             snapshot
@@ -559,7 +672,7 @@ fn local_runtime_check_resume_produces_non_fallback_answer() {
             "",
             continuation_messages,
             Some(AgentExecutionState {
-                current_stage_id: STAGE_AWAITING_APPROVAL.to_string(),
+                current_stage_id: "awaiting-approval".to_string(),
                 negotiation_attempt: 0,
                 pending_resolution: Some(AgentPendingResolutionKind::Approval),
                 pending_tool_call: Some(AgentPendingToolCall {
@@ -572,7 +685,7 @@ fn local_runtime_check_resume_produces_non_fallback_answer() {
         let config = test_config();
         let mut loop_runtime =
             initial_runtime_for_context(&second_turn.context).expect("runtime should resume");
-        assert_eq!(loop_runtime.current_stage_id(), STAGE_VERIFYING);
+        assert_eq!(loop_runtime.current_stage_id(), PHASE_WAITING_FOR_TOOL);
 
         let outcome = handle_action_stage_response(
             &config,
@@ -591,7 +704,6 @@ fn local_runtime_check_resume_produces_non_fallback_answer() {
                 tool_call: None,
                 usage: None,
             },
-            true,
         )
         .await
         .expect("verification stage should succeed");
@@ -603,9 +715,75 @@ fn local_runtime_check_resume_produces_non_fallback_answer() {
             _ => panic!("expected completed outcome after verification"),
         }
 
-        let final_tokens = extract_tokens(&second_turn.events.lock().expect("event lock")).join("");
-        assert!(final_tokens.contains("Python este instalat"));
-        assert!(!final_tokens.contains("Nu pot continua automat"));
+        let snapshot = second_turn
+            .manager
+            .get("run-python-turn-2")
+            .expect("snapshot should exist");
+        assert_eq!(snapshot.execution_state.current_stage_id, PHASE_COMPLETED);
+        assert!(snapshot.execution_state.pending_tool_call.is_none());
+    });
+}
+
+#[test]
+fn plan_tool_with_visible_text_keeps_the_loop_running() {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("tokio runtime should build");
+    runtime.block_on(async {
+        let test_runtime = TestHarnessRuntime::new(
+            "run-plan-continue",
+            "implementeaza un API simplu si continua pana este gata",
+            vec![],
+            None,
+        );
+        let config = test_config();
+        let mut loop_runtime =
+            initial_runtime_for_context(&test_runtime.context).expect("runtime should initialize");
+        let mut negotiation_messages = test_runtime.context.messages.clone();
+        let outcome = handle_action_stage_response(
+            &config,
+            &test_runtime.context,
+            &test_runtime.sink,
+            &mut loop_runtime,
+            &mut negotiation_messages,
+            &mut None,
+            &mut None,
+            &mut None,
+            0,
+            StageModelResponse {
+                visible_text: "Am schițat pașii și continui direct cu execuția.".to_string(),
+                tool_call: Some(CollectedToolCall {
+                    id: "call_plan".to_string(),
+                    name: "propose_plan".to_string(),
+                    args: json!({
+                        "title": "Implementare API",
+                        "steps": [
+                            { "label": "Creez fisierele" },
+                            { "label": "Adaug continutul" },
+                            { "label": "Rulez testele" }
+                        ]
+                    }),
+                    raw_args: "{\"title\":\"Implementare API\",\"steps\":[{\"label\":\"Creez fisierele\"},{\"label\":\"Adaug continutul\"},{\"label\":\"Rulez testele\"}]}".to_string(),
+                    google_thought_signature: None,
+                }),
+                usage: None,
+            },
+        )
+        .await
+        .expect("plan handling should succeed");
+
+        match outcome {
+            ActionStageOutcome::Continue => {}
+            _ => panic!("expected the harness loop to continue after internal plan progress"),
+        }
+
+        assert!(negotiation_messages.iter().any(|message| {
+            message.role == "assistant"
+                && message.content.contains("continui direct cu execuția")
+        }));
+
+        assert_eq!(loop_runtime.current_stage_id(), PHASE_RUNNING);
     });
 }
 

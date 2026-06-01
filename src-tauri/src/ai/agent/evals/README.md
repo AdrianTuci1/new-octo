@@ -5,8 +5,11 @@ This submodule contains model-backed evals for the agent harness. It exists sepa
 - multi-turn harness execution
 - multi-turn user conversation toward a goal
 - external tool proposals and continuations
+- local terminal inspections
 - workspace search and file reads
-- multi-file change proposals
+- single-file creation and multi-file edit proposals
+- freshness-sensitive web searches
+- visible planning flows
 - cloud-agent launch requests
 - skill-influenced behavior
 
@@ -46,13 +49,13 @@ npm run test:agent-evals:live
 To enable the optional second-LLM judge on top of the deterministic assertions:
 
 ```bash
-OCTOMUS_EVAL_USE_JUDGE=1 npm run test:model-env -- cargo test --manifest-path src-tauri/Cargo.toml ai::agent::evals::live -- --ignored --nocapture
+OCTOMUS_EVAL_USE_JUDGE=1 npm run test:model-env -- cargo test --manifest-path src-tauri/Cargo.toml ai::agent::evals::live -- --ignored --nocapture --test-threads=1
 ```
 
 Optionally override the judge model:
 
 ```bash
-OCTOMUS_EVAL_USE_JUDGE=1 OCTOMUS_EVAL_JUDGE_MODEL=gpt-4o-mini npm run test:model-env -- cargo test --manifest-path src-tauri/Cargo.toml ai::agent::evals::live -- --ignored --nocapture
+OCTOMUS_EVAL_USE_JUDGE=1 OCTOMUS_EVAL_JUDGE_MODEL=gpt-4o-mini npm run test:model-env -- cargo test --manifest-path src-tauri/Cargo.toml ai::agent::evals::live -- --ignored --nocapture --test-threads=1
 ```
 
 ## Notes

@@ -57,6 +57,13 @@ export function ThinkingBlock({ body, isStreaming = false, durationSeconds }: Th
     return null;
   }
 
+  const previewText = body
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 220)
+    .trim();
+  const hasClippedPreview = previewText.length < body.replace(/\s+/g, ' ').trim().length;
+
   const getTitle = () => {
     if (isStreaming) return 'Thinking...';
     if (typeof durationSeconds === 'number') {
@@ -85,6 +92,13 @@ export function ThinkingBlock({ body, isStreaming = false, durationSeconds }: Th
           <ReactMarkdown remarkPlugins={[remarkGfm]}>
             {prepareMarkdownBody(body)}
           </ReactMarkdown>
+        </div>
+      )}
+
+      {!isExpanded && previewText && (
+        <div className="thinking-simple-preview">
+          {previewText}
+          {hasClippedPreview ? '…' : ''}
         </div>
       )}
     </div>

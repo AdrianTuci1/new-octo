@@ -2,6 +2,7 @@
 import { useMemo } from 'react';
 import { buildConversationBranchLabel } from '../../utils';
 import type { LauncherProps } from '../types';
+import { useUIStore } from '../../../../../stores';
 
 export function useLauncherUIState({
   store, tray, props, runtime
@@ -26,6 +27,7 @@ export function useLauncherUIState({
   const isTerminalSurface = store.composerSurface === 'terminal';
   const activeMessages = isTerminalSurface ? [] : chat.messages;
   const activeTimelineBlocks = isTerminalSurface ? terminal.blocks : agentTerminal.blocks;
+  const isChatHidden = useUIStore((state) => state.isChatHidden);
 
   const visibleModels = useMemo(() => {
     if (store.modelTab !== 'saved') {
@@ -55,9 +57,9 @@ export function useLauncherUIState({
 
   const isTraySuppressed = Boolean(resolvedPendingApproval);
   const hasChatContent = activeMessages.length > 0 || activeTimelineBlocks.length > 0 || Boolean(activeTimelineError) || isTraySuppressed;
-  const isChatOpen = chatMode === 'always-open' ? true : hasChatContent;
-  const isChatVisible = chatMode === 'always-open' ? true : hasChatContent && (!tray.isTrayOpen || isTraySuppressed);
-  const isExpanded = chatMode === 'always-open' ? true : (tray.isTrayOpen && !isTraySuppressed) || hasChatContent;
+  const isChatOpen = isChatHidden ? false : (chatMode === 'always-open' ? true : hasChatContent);
+  const isChatVisible = isChatHidden ? false : (chatMode === 'always-open' ? true : hasChatContent && (!tray.isTrayOpen || isTraySuppressed));
+  const isExpanded = isChatHidden ? false : (chatMode === 'always-open' ? true : (tray.isTrayOpen && !isTraySuppressed) || hasChatContent);
 
   const launcherRootClassName = props.variant === 'workspace' ? 'launcher-workspace-root' : 'prototype-root';
   const launcherShellClassName = [

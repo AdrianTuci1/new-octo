@@ -20,6 +20,7 @@ export interface LauncherState {
   conversationSearchQuery: string;
   savedPromptEntries: HistoryEntry[];
   localPendingApproval: CommandApproval | null;
+  autoApproveAgentLoop: boolean;
 
   // Actions
   setComposerSurface: (surface: 'agent' | 'terminal') => void;
@@ -36,6 +37,7 @@ export interface LauncherState {
   setConversationSearchQuery: (query: string) => void;
   setSavedPromptEntries: (entries: HistoryEntry[]) => void;
   setLocalPendingApproval: (approval: CommandApproval | null) => void;
+  setAutoApproveAgentLoop: (enabled: boolean) => void;
 
   reset: (initialComposerSurface: 'agent' | 'terminal') => void;
 }
@@ -57,7 +59,8 @@ function buildInitialState(initialComposerSurface: 'agent' | 'terminal' = 'termi
     localConversationId: null,
     conversationSearchQuery: '',
     savedPromptEntries: [],
-    localPendingApproval: null
+    localPendingApproval: null,
+    autoApproveAgentLoop: false
   };
 }
 
@@ -91,6 +94,7 @@ export function createLauncherStore(
     setConversationSearchQuery: (query) => set({ conversationSearchQuery: query }),
     setSavedPromptEntries: (entries) => set({ savedPromptEntries: entries }),
     setLocalPendingApproval: (approval) => set({ localPendingApproval: approval }),
+    setAutoApproveAgentLoop: (enabled) => set({ autoApproveAgentLoop: enabled }),
 
     reset: (nextComposerSurface) => set({
       ...buildInitialState(nextComposerSurface)

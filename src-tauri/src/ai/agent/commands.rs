@@ -299,7 +299,20 @@ pub(super) async fn run_harness<H: AgentHarness>(
 
     match harness.run_async(context, sink.clone(), cancellation).await {
         Ok(outcome) => {
-            println!("[AI] Harness run completed successfully");
+            match outcome.status {
+                AgentRunStatus::WaitingForTool => {
+                    println!("[AI] Harness run paused while waiting for tool resolution");
+                }
+                AgentRunStatus::Completed => {
+                    println!("[AI] Harness run completed successfully");
+                }
+                AgentRunStatus::Cancelled => {
+                    println!("[AI] Harness run was cancelled");
+                }
+                other => {
+                    println!("[AI] Harness run finished with status: {:?}", other);
+                }
+            }
             sink.done(outcome.status, outcome.usage);
         }
         Err(error) => {

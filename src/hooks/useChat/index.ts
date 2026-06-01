@@ -50,7 +50,9 @@ export function useChat(options: UseChatOptions = {}) {
     submitToolResult: actions.submitToolResult,
     attachFiles: actions.attachFiles,
     clearMessages: state.clearMessages,
-    saveCurrentConversation: actions.saveCurrentConversation
+    saveCurrentConversation: actions.saveCurrentConversation,
+    activeRunId: state.activeRunId,
+    setActiveRunId: state.setActiveRunId
   }), [
     actions.attachFiles,
     actions.saveCurrentConversation,
@@ -62,6 +64,8 @@ export function useChat(options: UseChatOptions = {}) {
     state.clearMessages,
     state.messages,
     state.query,
-    state.removeAttachment
+    state.removeAttachment,
+    state.activeRunId,
+    state.setActiveRunId
   ]);
 }

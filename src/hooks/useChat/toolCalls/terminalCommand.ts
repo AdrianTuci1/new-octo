@@ -110,7 +110,10 @@ export const terminalCommandToolCallHandler: ToolCallHandler = {
 
       registration.update((message) => ({
         ...message,
-        body: message.body.trim().length > 0 ? message.body : reason
+        body: message.body.trim().length > 0 ? message.body : reason,
+        createdAt: message.body.trim().length > 0 || !reason.trim()
+          ? message.createdAt
+          : new Date().toISOString()
       }));
 
       if (command && registration.onCommandApproval) {

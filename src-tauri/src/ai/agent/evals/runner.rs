@@ -265,7 +265,13 @@ async fn run_single_user_turn(
                     scenario.id, pending_tool_call.id
                 )
             })?;
-        let tool_result = simulator.execute(workspace, &tool_call)?;
+        let tool_result = match simulator.execute(workspace, &tool_call) {
+            Ok(result) => result,
+            Err(error) => format!(
+                "[Tool execution error]\nTool: {}\nError: {}\nContinue by correcting the path, refining the arguments, or choosing a different concrete tool.",
+                tool_call.name, error
+            ),
+        };
         all_tool_results.push(tool_result.clone());
 
         if !user_message_recorded {

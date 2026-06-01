@@ -256,7 +256,7 @@ export function AppWindow() {
     const paneIds = app.workspace.paneLayout ? Utils.collectPaneIdsFromLayout(app.workspace.paneLayout) : [];
     const hasMultiplePanes = paneIds.length > 1;
 
-    const renderPaneNode = (node: WorkspacePaneNode, depth = 0): JSX.Element => {
+    const renderPaneNode = (node: WorkspacePaneNode, path = ''): JSX.Element => {
       if (node.type === 'leaf') {
         return (
           <WorkspacePaneSlot
@@ -275,23 +275,24 @@ export function AppWindow() {
 
       const splitRef = { current: null as HTMLDivElement | null };
       const isHorizontal = node.direction === 'horizontal';
-      const prefix = `${isHorizontal ? 'col' : 'row'}_d${depth}`;
+      const prefix = `${isHorizontal ? 'col' : 'row'}_${path}`;
 
       return (
         <div
-          key={`${node.direction}-${node.children.length}`}
+          key={`split-${path}`}
           ref={(el) => { splitRef.current = el; }}
           className={`app-window-workspace-split ${node.direction}`}
           style={{ flex: 1, minWidth: 0, minHeight: 0, display: 'flex' }}
         >
           {node.children.map((child, index) => {
             const isLast = index === node.children.length - 1;
+            const childPath = path ? `${path}/${index}` : `${index}`;
             const sizeKey = `${prefix}_${index}`;
             const size = paneSizes[sizeKey] ?? 1;
 
             return (
               <div
-                key={index}
+                key={childPath}
                 style={{
                   flexGrow: size,
                   flexBasis: 0,
@@ -302,7 +303,7 @@ export function AppWindow() {
                 }}
               >
                 <div style={{ flex: 1, minWidth: 0, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-                  {renderPaneNode(child, depth + 1)}
+                  {renderPaneNode(child, childPath)}
                 </div>
                 {!isLast && (
                   <div

@@ -45,6 +45,16 @@
   padding-left: 2px;
 }
 
+.thinking-simple-preview {
+  margin-top: 6px;
+  max-width: min(72ch, 100%);
+  color: rgba(255, 255, 255, 0.32);
+  font-family: var(--font-mono, 'JetBrains Mono', monospace);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: normal;
+}
+
 .thinking-simple-body h1,
 .thinking-simple-body h2,
 .thinking-simple-body h3,

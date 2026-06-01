@@ -13,6 +13,7 @@ interface UIState {
   activeProfileName: string;
   selectedModelIdForEdit: string | null;
   selectedCloudProfileIdForEdit: string | null;
+  isChatHidden: boolean;
   
   // Actions
   setTrayMode: (mode: TrayMode) => void;
@@ -37,6 +38,7 @@ interface UIState {
   closeCodeReviewDrawer: () => void;
   toggleCodeReviewDrawer: () => void;
   setActiveProfileName: (name: string) => void;
+  setIsChatHidden: (hidden: boolean) => void;
 }
 
 export const useUIStore = create<UIState>((set) => ({
@@ -51,6 +53,7 @@ export const useUIStore = create<UIState>((set) => ({
   activeProfileName: 'Default',
   selectedModelIdForEdit: null,
   selectedCloudProfileIdForEdit: null,
+  isChatHidden: false,
 
   setTrayMode: (mode) => set((state) => {
     if (state.trayMode === mode) {
@@ -91,5 +94,6 @@ export const useUIStore = create<UIState>((set) => ({
   openCodeReviewDrawer: () => set({ isCodeReviewDrawerOpen: true }),
   closeCodeReviewDrawer: () => set({ isCodeReviewDrawerOpen: false }),
   toggleCodeReviewDrawer: () => set((state) => ({ isCodeReviewDrawerOpen: !state.isCodeReviewDrawerOpen })),
-  setActiveProfileName: (name) => set({ activeProfileName: name })
+  setActiveProfileName: (name) => set({ activeProfileName: name }),
+  setIsChatHidden: (hidden) => set({ isChatHidden: hidden })
 }));

@@ -3,8 +3,10 @@ import * as Hooks from '../../../../../hooks';
 import * as Utils from '../../utils';
 import { applyShellActivatorToPrediction, isImmediateShellCommandCandidate } from '../../../../../lib';
 import type { ShellModeSource } from '../../../../../types';
-
-const FOLLOW_UP_MIN_CONFIDENCE = 0.7;
+import {
+  assistantMessageCanSurfaceFollowUp,
+  isFollowUpSuggestionEligible
+} from './followUpEligibility';
 
 export type ComposerStateParams = {
   store: any;
@@ -182,8 +184,7 @@ export function useLauncherComposer(params: ComposerStateParams) {
     for (let index = activeMessages.length - 1; index >= 0; index -= 1) {
       const message = activeMessages[index];
       if (
-        message?.role === 'assistant' &&
-        !message.isError &&
+        assistantMessageCanSurfaceFollowUp(message) &&
         (isFollowUpSuggestionEligible(message.followUpSuggestion) || isFollowUpSuggestionEligible(Hooks.followUpSuggestionFromMessageBody(message.body)))
       ) {
         const followUpSuggestion = isFollowUpSuggestionEligible(message.followUpSuggestion)
@@ -292,15 +293,6 @@ export function useLauncherComposer(params: ComposerStateParams) {
     composerIntelligence,
   };
 }
-
-function isFollowUpSuggestionEligible(
-  suggestion: { value?: string; confidence?: number } | null | undefined
-) {
-  if (!suggestion?.value?.trim()) return false;
-  if (typeof suggestion.confidence !== 'number') return true;
-  return suggestion.confidence >= FOLLOW_UP_MIN_CONFIDENCE;
-}
-
 function isNaturalLanguageDenylisted(query: string, denylist?: string) {
   const trimmedQuery = query.trim().toLowerCase();
   if (!trimmedQuery || !denylist?.trim()) return false;

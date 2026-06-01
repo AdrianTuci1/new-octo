@@ -2,31 +2,9 @@ import { useCallback, useRef, useState } from 'react';
 import type { ChatAttachment, ChatMessage } from '../../../types/chat';
 import { extractFollowUpSuggestion, extractInlinePlanArtifact, visibleChatMessageBody } from '../parsers';
 import { pendingFollowUpPayloads } from '../bridge';
+import { summarizeReasoningText } from '../reasoningSummary';
 
 const pendingInlinePlanPayloads: Record<string, string> = {};
-
-function summarizeReasoningText(text: string) {
-  const normalized = text.replace(/\s+/g, ' ').trim();
-  if (!normalized) {
-    return '';
-  }
-
-  const sentences = normalized
-    .split(/(?<=[.!?])\s+/)
-    .map((sentence) => sentence.trim())
-    .filter(Boolean);
-
-  const summary = sentences.length > 0
-    ? sentences.slice(0, 2).join(' ')
-    : normalized;
-
-  if (summary.length <= 180) {
-    return summary;
-  }
-
-  const clipped = summary.slice(0, 177).replace(/\s+\S*$/, '');
-  return `${clipped}...`;
-}
 
 function formatPlanBody(message: ChatMessage) {
   const plan = message.executionPlan;
@@ -55,14 +33,6 @@ function findLatestReasoningIndex(messages: ChatMessage[], assistantMessageId: s
   }
 
   return -1;
-}
-
-function shouldInsertReasoningAfterAssistant(assistantMessage: ChatMessage | null) {
-  if (!assistantMessage) {
-    return false;
-  }
-
-  return visibleChatMessageBody(assistantMessage.body).trim().length > 0;
 }
 
 export function useChatState() {
@@ -187,6 +157,11 @@ export function useChatState() {
       nextMessages[messageIndex] = {
         ...currentMessage,
         body: extractedPlan.visibleBody,
+        createdAt: currentMessage.role === 'assistant'
+          && !visibleChatMessageBody(currentMessage.body).trim()
+          && incomingText.trim().length > 0
+          ? new Date().toISOString()
+          : currentMessage.createdAt,
         followUpSuggestion: extractedFollowUp.suggestion ?? currentMessage.followUpSuggestion
       };
 
@@ -261,8 +236,6 @@ export function useChatState() {
         }
 
         const assistantIndex = currentMessages.findIndex((message) => message.id === assistantMessageId);
-        const assistantMessage = assistantIndex >= 0 ? currentMessages[assistantIndex] : null;
-        const insertAfterAssistant = shouldInsertReasoningAfterAssistant(assistantMessage);
         const createdAt = new Date().toISOString();
         const segmentIndex = currentMessages.filter((message) => (
           message.messageKind === 'reasoning' && message.parentMessageId === assistantMessageId
@@ -291,14 +264,12 @@ export function useChatState() {
           ...nextMessages[assistantIndex],
           hasNativeThinking: true
         };
-        nextMessages.splice(insertAfterAssistant ? assistantIndex + 1 : assistantIndex, 0, reasoningMessage);
+        nextMessages.push(reasoningMessage);
         return nextMessages;
       }
 
       const assistantIndex = currentMessages.findIndex((message) => message.id === assistantMessageId);
-      const assistantMessage = assistantIndex >= 0 ? currentMessages[assistantIndex] : null;
-      const insertAfterAssistant = shouldInsertReasoningAfterAssistant(assistantMessage);
-      const createdAt = assistantMessage?.createdAt ?? new Date().toISOString();
+      const createdAt = new Date().toISOString();
       const segmentIndex = currentMessages.filter((message) => (
         message.messageKind === 'reasoning' && message.parentMessageId === assistantMessageId
       )).length + 1;
@@ -330,16 +301,22 @@ export function useChatState() {
           hasNativeThinking: true
         };
       }
-      nextMessages.splice(insertAfterAssistant ? assistantIndex + 1 : assistantIndex, 0, reasoningMessage);
+      nextMessages.push(reasoningMessage);
       return nextMessages;
     });
   }, [calculateThinkingDurationSeconds, setMessages]);
 
   const finalizeReasoningMessage = useCallback((assistantMessageId: string) => {
     setMessages((currentMessages) => {
-      const reasoningIndex = findLatestReasoningIndex(currentMessages, assistantMessageId);
+      const reasoningIndexes = currentMessages
+        .map((message, index) => (
+          message.messageKind === 'reasoning' && message.parentMessageId === assistantMessageId
+            ? index
+            : -1
+        ))
+        .filter((index) => index >= 0);
 
-      if (reasoningIndex < 0) {
+      if (reasoningIndexes.length === 0) {
         return currentMessages.map((message) => (
           message.id === assistantMessageId
             ? { ...message, hasNativeThinking: true }
@@ -347,12 +324,10 @@ export function useChatState() {
         ));
       }
 
-      const reasoningMessage = currentMessages[reasoningIndex];
-      const duration = reasoningMessage.thinkingDurationSeconds
-        ?? calculateThinkingDurationSeconds(reasoningMessage.createdAt);
-
       return currentMessages.map((message, index) => {
-        if (index === reasoningIndex) {
+        if (reasoningIndexes.includes(index)) {
+          const duration = message.thinkingDurationSeconds
+            ?? calculateThinkingDurationSeconds(message.createdAt);
           return {
             ...message,
             isStreaming: false,

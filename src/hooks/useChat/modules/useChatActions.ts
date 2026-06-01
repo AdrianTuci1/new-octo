@@ -19,20 +19,7 @@ import { buildAttachmentContextText, buildAttachmentsFromFiles } from '../attach
 import { buildComposerContextSummary, parseComposerContextMentions } from '../../../components/Composer/contextMentions';
 import type { useChatState } from './useChatState';
 import { resolveAgentPrompt } from './agentPrompt';
-
-function usesSyntheticThinking(modelId?: string | null) {
-  return typeof modelId === 'string' && modelId.trim().toLowerCase().includes('gemma');
-}
-
-function buildSyntheticThinkingSummary(prompt: string) {
-  const cleaned = prompt.replace(/\s+/g, ' ').trim();
-  if (!cleaned) {
-    return 'The user wants me to respond directly and keep the answer concise.';
-  }
-
-  const shortPrompt = cleaned.length > 140 ? `${cleaned.slice(0, 137).trimEnd()}...` : cleaned;
-  return `The user is asking: "${shortPrompt}". I should keep the response focused and handle the requested skill or tool path if needed.`;
-}
+import { settleAssistantMessagesForResolvedTool } from '../toolResultResolution';
 
 type UseChatActionsProps = {
   options: UseChatOptions;
@@ -368,26 +355,8 @@ export function useChatActions({
       runId,
       status: 'queued',
       isStreaming: true,
-      hasNativeThinking: usesSyntheticThinking(options.modelId),
       createdAt: assistantCreatedAt
     });
-
-    if (usesSyntheticThinking(options.modelId)) {
-      state.addMessage({
-        id: `${assistantMessageId}::reasoning`,
-        role: 'assistant',
-        title: 'Thinking',
-        body: buildSyntheticThinkingSummary(trimmed || 'Review the attached files.'),
-        conversationId,
-        runId,
-        messageKind: 'reasoning',
-        parentMessageId: assistantMessageId,
-        isStreaming: true,
-        status: 'running',
-        hasNativeThinking: false,
-        createdAt: assistantCreatedAt
-      });
-    }
 
     state.setQuery('');
     state.clearAttachments();
@@ -470,6 +439,7 @@ export function useChatActions({
       fileDiffs?: import('../../../types/diff').FileDiff[];
       fileChangeStatus?: FileDiffPreviewStatus;
       localAssistantSummary?: string;
+      originatingAssistantStatus?: 'completed' | 'cancelled' | 'failed';
       workspaceExploration?: WorkspaceExplorationArtifact;
       workspaceFileRead?: WorkspaceFileReadArtifact;
     }
@@ -479,6 +449,12 @@ export function useChatActions({
     const runId = state.activeRunIdRef.current;
 
     if (!conversationId || !runId) return;
+
+    state.setMessages((currentMessages) => settleAssistantMessagesForResolvedTool(currentMessages, {
+      toolCallId,
+      assistantStatus: toolResultOptions?.originatingAssistantStatus ?? 'completed',
+      nowMs: ts
+    }));
 
     if (kind === 'file-read' && toolResultOptions?.workspaceFileRead) {
       const latestExplorationMessage = [...state.messagesRef.current]
@@ -574,20 +550,21 @@ export function useChatActions({
       });
     }
 
+    if (toolResultOptions?.localAssistantSummary?.trim()) {
+      state.addMessage({
+        id: `assistant-local-summary-${ts}`,
+        role: 'assistant',
+        title: 'Octomus',
+        body: toolResultOptions.localAssistantSummary.trim(),
+        conversationId,
+        runId,
+        status: 'completed',
+        isStreaming: false,
+        createdAt: new Date().toISOString()
+      });
+    }
+
     if (toolResultOptions?.deferFollowUp) {
-      if (toolResultOptions.localAssistantSummary?.trim()) {
-        state.addMessage({
-          id: `assistant-local-summary-${ts}`,
-          role: 'assistant',
-          title: 'Octomus',
-          body: toolResultOptions.localAssistantSummary.trim(),
-          conversationId,
-          runId,
-          status: 'completed',
-          isStreaming: false,
-          createdAt: new Date().toISOString()
-        });
-      }
       return;
     }
 

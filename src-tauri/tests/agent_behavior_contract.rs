@@ -1,7 +1,4 @@
-use octomus_launcher_prototype::ai::agent::runtime::{
-    AgentLoopRuntime, EVENT_AWAIT_USER_APPROVAL, EVENT_CAPTURE_TOOL_RESULT, EVENT_DISPATCH_TOOL,
-    EVENT_PREPARE_CONTEXT, EVENT_SKIP_PLANNING,
-};
+use octomus_launcher_prototype::ai::agent::runtime::AgentLoopRuntime;
 use serde::Deserialize;
 use std::{fs, path::PathBuf};
 
@@ -13,8 +10,6 @@ struct BehaviorScenario {
     expected_tool: String,
     requires_approval: bool,
     requires_external_result: bool,
-    expected_stage_after_dispatch: Option<String>,
-    expected_stage_after_result: Option<String>,
 }
 
 fn load_behavior_scenarios() -> Vec<BehaviorScenario> {
@@ -29,40 +24,17 @@ fn load_behavior_scenarios() -> Vec<BehaviorScenario> {
         .unwrap_or_else(|error| panic!("failed to parse {}: {error}", path.display()))
 }
 
-fn tool_selection_runtime() -> AgentLoopRuntime {
-    let mut runtime = AgentLoopRuntime::new();
-    runtime
-        .apply_event(EVENT_PREPARE_CONTEXT)
-        .expect("preparing -> reasoning should be valid");
-    runtime
-        .apply_event(EVENT_SKIP_PLANNING)
-        .expect("reasoning -> tool-selection should be valid");
-    runtime
-}
-
-fn simulate_dispatch(runtime: &mut AgentLoopRuntime, scenario: &BehaviorScenario) {
-    if scenario.requires_approval {
-        runtime
-            .apply_event(EVENT_AWAIT_USER_APPROVAL)
-            .expect("tool-selection -> awaiting-approval should be valid");
-    } else if scenario.requires_external_result {
-        runtime
-            .apply_event(EVENT_DISPATCH_TOOL)
-            .expect("tool-selection -> executing should be valid");
-    }
-}
-
 #[test]
-fn behavior_scenarios_match_contract_rules() {
+fn behavior_scenarios_match_tool_policies() {
     let scenarios = load_behavior_scenarios();
     assert!(
         !scenarios.is_empty(),
         "behavior fixture set should contain at least one scenario"
     );
 
-    for scenario in scenarios {
-        let mut runtime = tool_selection_runtime();
+    let runtime = AgentLoopRuntime::new();
 
+    for scenario in scenarios {
         assert!(
             runtime.allows_tool(&scenario.expected_tool),
             "scenario `{}` expected tool `{}` to be allowed for prompt `{}`",
@@ -82,36 +54,13 @@ fn behavior_scenarios_match_contract_rules() {
             "scenario `{}` has mismatched external-result policy",
             scenario.id
         );
-
-        simulate_dispatch(&mut runtime, &scenario);
-
-        if let Some(expected_stage) = &scenario.expected_stage_after_dispatch {
-            assert_eq!(
-                runtime.current_stage_id(),
-                expected_stage,
-                "scenario `{}` landed in unexpected stage after dispatch",
-                scenario.id
-            );
-        }
-
-        if let Some(expected_stage) = &scenario.expected_stage_after_result {
-            runtime
-                .apply_event(EVENT_CAPTURE_TOOL_RESULT)
-                .expect("executing -> verifying should be valid");
-            assert_eq!(
-                runtime.current_stage_id(),
-                expected_stage,
-                "scenario `{}` landed in unexpected stage after result",
-                scenario.id
-            );
-        }
     }
 }
 
 #[test]
-fn mcp_scenario_is_allowed_during_verifying_too() {
-    let runtime =
-        AgentLoopRuntime::resume("verifying").expect("verifying stage should exist in contract");
+fn all_mcp_tools_are_always_allowed() {
+    let runtime = AgentLoopRuntime::new();
 
     assert!(runtime.allows_tool("mcp__github__search"));
+    assert!(runtime.allows_tool("mcp__unknown__tool"));
 }

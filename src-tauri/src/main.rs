@@ -49,17 +49,28 @@ struct OpenCloudProfileDrawerPayload {
 #[derive(Default)]
 struct PendingCloudProfileDrawerRequest(Mutex<Option<OpenCloudProfileDrawerPayload>>);
 
+fn resolve_launcher_monitor<R: Runtime>(
+    window: &tauri::WebviewWindow<R>,
+) -> Option<tauri::Monitor> {
+    if let Ok(cursor_position) = window.cursor_position() {
+        if let Ok(Some(monitor)) = window.monitor_from_point(cursor_position.x, cursor_position.y) {
+            return Some(monitor);
+        }
+    }
+
+    window
+        .current_monitor()
+        .ok()
+        .flatten()
+        .or_else(|| window.primary_monitor().ok().flatten())
+}
+
 fn anchor_launcher_to_bottom<R: Runtime>(app: &AppHandle<R>) {
     let Some(window) = app.get_webview_window(MAIN_WINDOW_LABEL) else {
         return;
     };
 
-    let Some(monitor) = window
-        .current_monitor()
-        .ok()
-        .flatten()
-        .or_else(|| window.primary_monitor().ok().flatten())
-    else {
+    let Some(monitor) = resolve_launcher_monitor(&window) else {
         return;
     };
 
@@ -326,7 +337,6 @@ fn main() {
             ai::agent_get_run,
             ai::agent_list_runs,
             ai::agent_list_skills,
-            ai::agent_get_loop_contract,
             ai::agent_configure_openai_compatible,
             ai::agent_clear_openai_compatible,
             ai::agent_provider_status,
@@ -420,7 +430,6 @@ fn main() {
             octomus_paths::OctomusPaths::default()
                 .ensure_layout()
                 .map_err(|error| -> Box<dyn std::error::Error> { error.into() })?;
-            let _ = ai::agent::contract::get_loop_contract();
 
             #[cfg(target_os = "macos")]
             {

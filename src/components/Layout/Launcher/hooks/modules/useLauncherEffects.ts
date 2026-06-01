@@ -4,6 +4,7 @@
 import { useEffect, useRef } from 'react';
 import { buildConversationLinkTitle } from '../helpers';
 import type { LauncherProps } from '../types';
+import { shouldAutoApprovePendingApproval } from './approvalAutoApprove';
 
 export type LauncherEffectsParams = {
   store: any;
@@ -14,6 +15,7 @@ export type LauncherEffectsParams = {
   tray: any;
   refs: any;
   actions: any;
+  handlers: any;
   clearTerminalSurface: () => void;
 };
 
@@ -26,6 +28,7 @@ type LauncherEffectContext = {
   tray: any;
   refs: any;
   actions: any;
+  handlers: any;
   clearTerminalSurface: () => void;
   initialComposerSurface: 'agent' | 'terminal';
   resetOnMount: boolean;
@@ -51,6 +54,7 @@ export function useLauncherEffects(params: LauncherEffectsParams) {
     tray,
     refs,
     actions,
+    handlers,
     clearTerminalSurface
   } = params;
   const {
@@ -78,6 +82,7 @@ export function useLauncherEffects(params: LauncherEffectsParams) {
     tray,
     refs,
     actions,
+    handlers,
     clearTerminalSurface,
     initialComposerSurface,
     resetOnMount,
@@ -97,6 +102,7 @@ export function useLauncherEffects(params: LauncherEffectsParams) {
   useVisibleModelSelectionSync(context);
   useInitialComposerSurfaceSync(context);
   usePendingAutoSubmit(context);
+  usePendingApprovalAutoAccept(context);
   useTerminalAutoDetectSettingSync(context);
   useComposerSurfaceReporter(context);
   useWorkingDirectoryReporter(context);
@@ -166,6 +172,101 @@ function usePendingAutoSubmit({
       void runtime.chat.submitQuery();
     });
   }, [refs.pendingAutoSubmitPromptRef, runtime.chat.query, runtime.chat.submitQuery, store.composerSurface]);
+}
+
+function usePendingApprovalAutoAccept({
+  handlers,
+  runtime,
+  store
+}: LauncherEffectContext) {
+  const lastAutoApprovedKeyRef = useRef<string | null>(null);
+  const clearAutoApproveTimeoutRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    const approval = runtime.resolvedPendingApproval;
+    const activeProfile = runtime.activeAgentProfile;
+    const shouldAutoApprove = shouldAutoApprovePendingApproval({
+      approval,
+      activeProfile,
+      autoApproveAgentLoop: store.autoApproveAgentLoop
+    });
+
+    if (!approval) {
+      lastAutoApprovedKeyRef.current = null;
+      return;
+    }
+
+    const approvalKey = approval.kind === 'file-change'
+      ? `file:${approval.toolCallId ?? ''}:${approval.fileDiffs.map((diff: any) => diff.filePath).join('|')}`
+      : approval.kind === 'topic-change'
+        ? `topic:${approval.reason ?? ''}`
+        : `command:${approval.toolCallId ?? ''}:${approval.command}`;
+
+    if (!shouldAutoApprove) {
+      lastAutoApprovedKeyRef.current = null;
+      return;
+    }
+
+    if (lastAutoApprovedKeyRef.current === approvalKey) {
+      return;
+    }
+
+    lastAutoApprovedKeyRef.current = approvalKey;
+    window.requestAnimationFrame(() => {
+      void handlers.handlePendingApprovalAccept(approval);
+    });
+  }, [
+    handlers.handlePendingApprovalAccept,
+    runtime.activeAgentProfile,
+    runtime.resolvedPendingApproval,
+    store.autoApproveAgentLoop
+  ]);
+
+  useEffect(() => {
+    if (!store.autoApproveAgentLoop) {
+      if (clearAutoApproveTimeoutRef.current !== null) {
+        window.clearTimeout(clearAutoApproveTimeoutRef.current);
+        clearAutoApproveTimeoutRef.current = null;
+      }
+      return;
+    }
+
+    const hasStreamingAssistant = runtime.chat.messages.some((message: any) => (
+      message.role === 'assistant' && message.isStreaming
+    ));
+    const hasNonTerminalAssistant = runtime.chat.messages.some((message: any) => (
+      message.role === 'assistant'
+      && ['queued', 'running'].includes(message.status ?? '')
+    ));
+    if (runtime.resolvedPendingApproval || hasStreamingAssistant || hasNonTerminalAssistant) {
+      if (clearAutoApproveTimeoutRef.current !== null) {
+        window.clearTimeout(clearAutoApproveTimeoutRef.current);
+        clearAutoApproveTimeoutRef.current = null;
+      }
+      return;
+    }
+
+    if (clearAutoApproveTimeoutRef.current !== null) {
+      return;
+    }
+
+    clearAutoApproveTimeoutRef.current = window.setTimeout(() => {
+      clearAutoApproveTimeoutRef.current = null;
+      store.setAutoApproveAgentLoop(false);
+    }, 1500);
+
+    return () => {
+      if (clearAutoApproveTimeoutRef.current !== null) {
+        window.clearTimeout(clearAutoApproveTimeoutRef.current);
+        clearAutoApproveTimeoutRef.current = null;
+      }
+    };
+  }, [
+    runtime.chat.messages,
+    runtime.resolvedPendingApproval,
+    store.autoApproveAgentLoop,
+    store.setAutoApproveAgentLoop
+  ]);
 }
 
 function useTerminalAutoDetectSettingSync({

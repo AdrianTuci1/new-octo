@@ -1,5 +1,3 @@
-use crate::ai::agent::contract::AgentLoopStage;
-
 pub(super) fn build_identity_prompt(cwd: &str, target_os: &str, target_arch: &str) -> String {
     format!(
         "You are Octomus, an elite software engineer embedded in a smart launcher. \
@@ -22,62 +20,10 @@ pub(super) fn build_identity_prompt(cwd: &str, target_os: &str, target_arch: &st
         - For MCP setup, never invent tokens, URLs, commands, or headers. Ask briefly for missing critical configuration details, then use `propose_mcp_server` once the configuration is concrete. \
         - Use internal reasoning only when the decision is ambiguous or risky. For simple routing, act directly. \
         - If the user asks about the local machine, installed binaries, versions, services, processes, or other runtime state, decide yourself whether a single read-only terminal inspection is the best next step. If it is, use the exact tool name `propose_terminal_command` with a concrete `command`. Do not invent aliases like `shell:execute`. \
-        - If you emit `suggest_follow_up`, it is metadata only. Do not replace the actual answer with it, and do not mention labels or prompt metadata in visible text.",
+        - Follow-up suggestion chips are attached separately after a run is truly complete. While solving the current task, do not stop early just to suggest the next user message, and do not mention labels or prompt metadata in visible text.",
         cwd,
         target_os,
         target_arch
     )
 }
 
-pub(super) fn build_stage_prompt(stage: &AgentLoopStage) -> String {
-    let allowed_tools = if stage.allowed_tools.is_empty() {
-        "none".to_string()
-    } else {
-        stage.allowed_tools.join(", ")
-    };
-
-    let allowed_decisions = stage
-        .allowed_decisions
-        .iter()
-        .map(|decision| {
-            let tool_suffix = decision
-                .tool
-                .as_deref()
-                .map(|tool| format!(" via `{tool}`"))
-                .unwrap_or_default();
-            format!(
-                "- {} [{}{}]: {}",
-                decision.id, decision.decision_type, tool_suffix, decision.description
-            )
-        })
-        .collect::<Vec<_>>()
-        .join("\n");
-
-    let next_stages = if stage.next_stages.is_empty() {
-        "none".to_string()
-    } else {
-        stage.next_stages.join(", ")
-    };
-
-    format!(
-        "RUNTIME STAGE CONTRACT: \
-        You are currently in stage `{}` ({}) owned by `{}`. \
-        Purpose: {}. \
-        Allowed tools in this stage: {}. \
-        Next stages: {}. \
-        Hard rules: \
-        - Do not call tools outside the allowed list for this stage. \
-        - If the stage has no allowed tools, do not emit tool calls. \
-        - Use the smallest valid action that advances the run. \
-        - If you need another tool after inspecting results, do it only if that transition is valid for this stage. \
-        - If the task is complete, produce the final visible answer instead of more analysis. \
-        Allowed decisions:\n{}",
-        stage.id,
-        stage.display_name,
-        stage.primary_actor,
-        stage.purpose,
-        allowed_tools,
-        next_stages,
-        allowed_decisions
-    )
-}

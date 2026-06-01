@@ -39,7 +39,7 @@ export function useLauncher(props: LauncherProps) {
 
   // 4. Lifecycle & Sync
   Modules.useLauncherMemorySync({ store, props, runtime });
-  Modules.useLauncherEffects({ store, props, runtime, history, ui, tray, refs, actions, clearTerminalSurface: actions.clearTerminalSurface });
+  Modules.useLauncherEffects({ store, props, runtime, history, ui, tray, refs, actions, handlers, clearTerminalSurface: actions.clearTerminalSurface });
   Hooks.useWindowSync(refs.shellRef, active);
 
   // 5. Shortcuts & System Integration

@@ -84,7 +84,7 @@ function extractFallbackFilePath(raw: any, serializedArgs: string) {
 
   return candidates
     .map((candidate) => sanitizeFilePath(candidate))
-    .find((candidate) => candidate.length > 0) ?? '';
+    .find((candidate) => looksLikeWorkspaceFilePath(candidate)) ?? '';
 }
 
 function cleanInsertionContent(value: string, filePath?: string) {
@@ -112,6 +112,28 @@ function sanitizeFilePath(value: string) {
     .replace(/^["'`,:\s]+|["'`,:\s]+$/g, '')
     .replace(/^filePath["'`,:\s]+/i, '')
     .trim();
+}
+
+function looksLikeWorkspaceFilePath(value: string) {
+  if (!value) {
+    return false;
+  }
+
+  if (value.includes('/') || value.includes('\\') || value.startsWith('./') || value.startsWith('../')) {
+    return true;
+  }
+
+  const extension = value.split('.').pop()?.toLowerCase() ?? '';
+  const likelyFileExtensions = new Set([
+    'js', 'jsx', 'ts', 'tsx', 'json', 'md', 'rs', 'go', 'java', 'py', 'rb', 'php', 'css',
+    'scss', 'html', 'yml', 'yaml', 'toml', 'txt', 'env', 'sh', 'sql'
+  ]);
+
+  return likelyFileExtensions.has(extension)
+    && !value.startsWith('this.')
+    && !value.startsWith('error.')
+    && !value.startsWith('req.')
+    && !value.startsWith('res.');
 }
 
 function safeStringify(value: unknown) {
@@ -185,7 +207,7 @@ function normalizeDelta(rawDelta: any, fallbackRange: DiffDelta['replacement_lin
   };
 }
 
-function normalizeFileChangeApproval(args: any): Omit<FileChangeApproval, 'toolCallId'> | undefined {
+export function normalizeFileChangeApproval(args: any): Omit<FileChangeApproval, 'toolCallId'> | undefined {
   const serializedArgs = safeStringify(args);
   const rawDiffs: unknown[] = Array.isArray(args?.fileDiffs)
     ? args.fileDiffs
@@ -226,7 +248,10 @@ export const fileChangeToolCallHandler: ToolCallHandler = {
     registrations.forEach((registration) => {
       registration.update((message) => ({
         ...message,
-        body: message.body.trim().length > 0 ? message.body : approval.summary ?? message.body
+        body: message.body.trim().length > 0 ? message.body : approval.summary ?? message.body,
+        createdAt: message.body.trim().length > 0 || !(approval.summary ?? '').trim()
+          ? message.createdAt
+          : new Date().toISOString()
       }));
 
       const nextApproval = {

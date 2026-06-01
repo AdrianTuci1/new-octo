@@ -55,40 +55,26 @@ pub(super) fn handle_stream_payload(
     let message = choice.get("message");
 
     if let Some(content) = extract_stream_content_text(delta.and_then(|item| item.get("content"))) {
-        if use_synthetic_thinking {
-            streamed.push_str(&content);
-            if emit_visible_tokens {
-                sink.token(&content);
-            }
-        } else {
-            thinking_state.push_content(
-                &content,
-                sink,
-                streamed,
-                streamed_reasoning,
-                emit_visible_tokens,
-                emit_reasoning_tokens,
-            );
-        }
+        thinking_state.push_content(
+            &content,
+            sink,
+            streamed,
+            streamed_reasoning,
+            emit_visible_tokens,
+            emit_reasoning_tokens,
+        );
     }
 
     if let Some(content) = extract_stream_content_text(message.and_then(|item| item.get("content")))
     {
-        if use_synthetic_thinking {
-            streamed.push_str(&content);
-            if emit_visible_tokens {
-                sink.token(&content);
-            }
-        } else {
-            thinking_state.push_content(
-                &content,
-                sink,
-                streamed,
-                streamed_reasoning,
-                emit_visible_tokens,
-                emit_reasoning_tokens,
-            );
-        }
+        thinking_state.push_content(
+            &content,
+            sink,
+            streamed,
+            streamed_reasoning,
+            emit_visible_tokens,
+            emit_reasoning_tokens,
+        );
     }
 
     if let Some(tool_calls) = delta

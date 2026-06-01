@@ -2,15 +2,14 @@ use serde_json::{json, Value};
 use std::{fs, path::Path};
 
 use crate::ai::agent::harness::AgentHarnessContext;
-use crate::ai::agent::runtime::AgentLoopRuntime;
 use crate::ai::agent::types::AgentInputMessage;
 use crate::code_index;
 
 use super::super::{prompt, skills};
+use super::resume::should_use_synthetic_thinking;
 
 pub(super) fn build_chat_messages(
     context: &AgentHarnessContext,
-    runtime: &AgentLoopRuntime,
 ) -> Vec<Value> {
     let mut messages = Vec::new();
     let cwd = context.cwd.as_deref().unwrap_or("unknown");
@@ -32,10 +31,12 @@ pub(super) fn build_chat_messages(
         "content": system_prompt
     }));
 
-    messages.push(json!({
-        "role": "system",
-        "content": prompt::build_stage_prompt(runtime.current_stage())
-    }));
+    if should_use_synthetic_thinking(&context.model_id) {
+        messages.push(json!({
+            "role": "system",
+            "content": "For this model, emit concise progress summaries inside `<thinking>...</thinking>` whenever you need visible thinking. Keep each thinking segment to 2-3 short sentences about the concrete check, decision, or next step. Do not dump long hidden reasoning; summarize only the current working state. After the thinking block, continue with the normal visible answer or tool call."
+        }));
+    }
 
     if let Some(terminal_context) = build_terminal_context_message(context) {
         messages.push(json!({
@@ -327,4 +328,35 @@ fn normalize_outbound_tool_call(tool_call: &Value) -> Value {
     }
 
     Value::Object(normalized)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::build_chat_messages;
+    use crate::ai::agent::harness::AgentHarnessContext;
+
+    #[test]
+    fn synthetic_thinking_models_receive_short_thinking_instruction() {
+        let context = AgentHarnessContext {
+            run_id: "run-test".to_string(),
+            conversation_id: "conv-test".to_string(),
+            assistant_message_id: "assistant-test".to_string(),
+            prompt: "verifica docker".to_string(),
+            surface: Some("agent".to_string()),
+            messages: vec![],
+            terminal_blocks: vec![],
+            cwd: Some("/tmp".to_string()),
+            target_os: "macos".to_string(),
+            target_arch: "arm64".to_string(),
+            model_id: "gemma-3".to_string(),
+            terminal_model_id: None,
+            resume_execution_state: None,
+        };
+
+        let messages = build_chat_messages(&context);
+        let serialized = serde_json::to_string(&messages).expect("messages should serialize");
+
+        assert!(serialized.contains("<thinking>"));
+        assert!(serialized.contains("2-3 short sentences"));
+    }
 }

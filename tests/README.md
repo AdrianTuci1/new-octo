@@ -91,13 +91,17 @@ npm run test:agent-evals:live
 
 Those evals live under [src-tauri/src/ai/agent/evals](/Users/adriantucicovenco/Proiecte/launcher-rs-react/src-tauri/src/ai/agent/evals) and cover:
 
+- local terminal inspections
 - workspace search + file read
+- single-file creation
 - multi-file edit proposals
+- freshness-sensitive web search
+- visible planning
 - skill-influenced behavior
 - cloud-agent launch delegation
 
 If you want an additional LLM judge on top of deterministic assertions:
 
 ```bash
-OCTOMUS_EVAL_USE_JUDGE=1 npm run test:model-env -- cargo test --manifest-path src-tauri/Cargo.toml ai::agent::evals::live -- --ignored --nocapture
+OCTOMUS_EVAL_USE_JUDGE=1 npm run test:model-env -- cargo test --manifest-path src-tauri/Cargo.toml ai::agent::evals::live -- --ignored --nocapture --test-threads=1
 ```

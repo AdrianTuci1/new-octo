@@ -14,14 +14,44 @@ fn workspace_search_and_read_eval() {
 
 #[test]
 #[ignore = "live model-backed eval; run with tests.env"]
+fn terminal_inspection_eval() {
+    run_named_live_eval("terminal-inspection");
+}
+
+#[test]
+#[ignore = "live model-backed eval; run with tests.env"]
 fn multi_file_edit_eval() {
     run_named_live_eval("multi-file-edit");
 }
 
 #[test]
 #[ignore = "live model-backed eval; run with tests.env"]
+fn single_file_create_eval() {
+    run_named_live_eval("single-file-create");
+}
+
+#[test]
+#[ignore = "live model-backed eval; run with tests.env"]
+fn implement_api_and_verify_eval() {
+    run_named_live_eval("implement-api-and-verify");
+}
+
+#[test]
+#[ignore = "live model-backed eval; run with tests.env"]
 fn skill_assisted_search_eval() {
     run_named_live_eval("skill-assisted-search");
+}
+
+#[test]
+#[ignore = "live model-backed eval; run with tests.env"]
+fn web_search_summary_eval() {
+    run_named_live_eval("web-search-summary");
+}
+
+#[test]
+#[ignore = "live model-backed eval; run with tests.env"]
+fn visible_plan_eval() {
+    run_named_live_eval("visible-plan");
 }
 
 #[test]

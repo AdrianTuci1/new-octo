@@ -9,7 +9,6 @@ pub mod web_search;
 
 use tauri::{AppHandle, State};
 
-use agent::contract::AgentLoopContract;
 use agent::types::{
     AgentContinueRequest, AgentModelSourceConnectRequest, AgentModelSourceStatus,
     AgentProviderConfigRequest, AgentProviderStatus, AgentRunLookupRequest, AgentRunRequest,
@@ -98,11 +97,6 @@ pub fn agent_list_runs(
 #[tauri::command]
 pub fn agent_list_skills() -> Result<Vec<agent::skills::SkillCatalogItem>, String> {
     Ok(agent::skills::list_available_skills())
-}
-
-#[tauri::command]
-pub fn agent_get_loop_contract() -> Result<AgentLoopContract, String> {
-    agent::agent_get_loop_contract()
 }
 
 #[tauri::command]
