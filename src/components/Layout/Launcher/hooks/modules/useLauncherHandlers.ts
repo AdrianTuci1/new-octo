@@ -523,7 +523,7 @@ export function useLauncherHandlers({
   ]);
 
   const handlePendingApprovalAccept = useCallback(async (approval: CommandApproval) => {
-    if (approval.kind !== 'topic-change') {
+    if (approval.kind !== 'topic-change' && approval.kind !== 'remote-cli-install') {
       store.setAutoApproveAgentLoop(true);
     }
 

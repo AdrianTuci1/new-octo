@@ -17,7 +17,7 @@ import type {
   WorkspaceExplorationRequest,
   WorkspaceExplorationEntry
 } from '../../../../../types/chat';
-import type { TerminalCommandBlock } from '../../../../../types/terminal';
+import type { TerminalCommandBlock, TerminalSessionTarget } from '../../../../../types/terminal';
 
 function sortTerminalBlocksChronologically(blocks: TerminalCommandBlock[]) {
   return [...blocks].sort((left, right) => {
@@ -130,6 +130,30 @@ function appendHiddenContinuationInstruction(body: string, instruction: string) 
     '[Invisible harness instruction]',
     instruction
   ].join('\n');
+}
+
+function isRemoteVpsTarget(target: TerminalSessionTarget | null | undefined) {
+  return target?.provider === 'custom-vm' || (target?.kind === 'cloud' && target?.provider !== 'modal');
+}
+
+function buildRemoteSession(target: TerminalSessionTarget | null | undefined) {
+  if (!isRemoteVpsTarget(target)) {
+    return null;
+  }
+
+  const username = target?.username?.trim() || 'vps';
+  const host = target?.host?.trim() || null;
+  const label = username;
+  const title = host ? `VPS session: ${username}@${host}` : `VPS session: ${username}`;
+
+  return {
+    username,
+    host,
+    provider: target?.provider ?? null,
+    profileId: target?.profileId ?? null,
+    label,
+    title
+  };
 }
 
 export function useLauncherRuntime(props: LauncherProps, store: any, tray: any) {
@@ -322,6 +346,11 @@ export function useLauncherRuntime(props: LauncherProps, store: any, tray: any) 
     ? terminal.cwd ?? workingDirectory.currentPath
     : agentTerminal.cwd ?? workingDirectory.currentPath;
   const effectiveWorkingDirectory = activeSurfaceWorkingDirectory ?? workingDirectory.currentPath;
+  const terminalRemoteSession = useMemo(() => buildRemoteSession(terminalTarget), [terminalTarget]);
+  const agentRemoteSession = useMemo(() => buildRemoteSession(agentTerminalTarget), [agentTerminalTarget]);
+  const activeRemoteSession = store.composerSurface === 'terminal'
+    ? terminalRemoteSession
+    : agentRemoteSession;
 
   useEffect(() => {
     if (!effectiveWorkingDirectory || effectiveWorkingDirectory === workingDirectory.currentPath) {
@@ -667,6 +696,18 @@ export function useLauncherRuntime(props: LauncherProps, store: any, tray: any) 
     workingDirectory
   ]);
 
+  const onConversationLoaded = useCallback((conversation: any) => {
+    const savedBlocks: TerminalCommandBlock[] = conversation?.terminalBlocks ?? [];
+    agentTerminal.replaceBlocks(savedBlocks);
+  }, [agentTerminal]);
+
+  useEffect(() => {
+    if (store.composerSurface !== 'agent' || resolvedConversationId) return;
+    const id = Utils.createConversationId();
+    setLocalConversationId(id);
+    if (hasControlledConversation) props.onConversationChange?.(id);
+  }, [hasControlledConversation, props.onConversationChange, resolvedConversationId, setLocalConversationId, store.composerSurface]);
+
   const chatRaw = Hooks.useChat({
     conversationId: resolvedConversationId,
     cwd: effectiveWorkingDirectory,
@@ -688,7 +729,8 @@ export function useLauncherRuntime(props: LauncherProps, store: any, tray: any) 
     onCloudAgentLaunch: requestCloudAgentLaunch,
     onConversationCreated,
     onNewChat,
-    active
+    active,
+    onConversationLoaded
   });
 
   const startupCommandsSignature = useMemo(() => startupCommands.join('\u0000'), [startupCommands]);
@@ -769,6 +811,11 @@ export function useLauncherRuntime(props: LauncherProps, store: any, tray: any) 
     requestFileChangeApproval,
     terminal,
     agentTerminal,
+    terminalTarget,
+    agentTerminalTarget,
+    terminalRemoteSession,
+    agentRemoteSession,
+    activeRemoteSession,
     chat,
     hasShellActivator,
     queryWithoutActivator,
@@ -797,6 +844,11 @@ export function useLauncherRuntime(props: LauncherProps, store: any, tray: any) 
     requestFileChangeApproval,
     terminal,
     agentTerminal,
+    terminalTarget,
+    agentTerminalTarget,
+    terminalRemoteSession,
+    agentRemoteSession,
+    activeRemoteSession,
     chat,
     hasShellActivator,
     queryWithoutActivator,

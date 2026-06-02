@@ -2,13 +2,15 @@ import './WorkspaceTopbar.css';
 import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { ChevronDown, ChevronRight, Cloud, GitBranch, LayoutGrid, Minus, PanelLeftOpen, Plus, Search, Server, Sparkles, TerminalSquare } from 'lucide-react';
+import type { DragEvent } from 'react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useUIStore } from '../../../stores';
 import { useEditorStore } from '../../../stores/editorStore';
 import type { GitWorktreeDiff } from '../../../types/gitDiff';
 import { ProfileAvatar } from '../profile/ProfileAvatar';
 import { useProfileSettings } from '../settings/useProfileSettings';
-import type { WorkspaceActivePaneContext, WorkspaceChromeTab } from './workspaceChromeTypes';
+import type { WorkspaceChromeTab } from './workspaceChromeTypes';
+import { useAppWindowController } from '../hooks/useAppWindowController';
 import { WorkspaceTopbarTab } from './WorkspaceTopbarTab';
 import { WorkspaceTopbarTabMenu } from './WorkspaceTopbarTabMenu';
 import type { LucideIcon } from 'lucide-react';
@@ -22,7 +24,7 @@ type TabConfigSummary = {
 type PlusMenuItem = {
   id: 'agent' | 'terminal' | 'cloud-term' | 'cloud-agent' | 'create-tab-config' | 'update-tab-config' | 'tab-configs' | 'worktree-config';
   label: string;
-  action: 'new-terminal' | 'new-cloud-terminal' | 'new-cloud-agent' | 'save-current-config' | 'none';
+  action: 'new-agent' | 'new-terminal' | 'new-cloud-terminal' | 'new-cloud-agent' | 'save-current-config' | 'none';
   shortcut?: string;
   icon: LucideIcon;
   hasChevron?: boolean;
@@ -32,7 +34,7 @@ const PLUS_MENU_ITEMS: PlusMenuItem[] = [
   {
     id: 'agent',
     label: 'Agent',
-    action: 'new-terminal',
+    action: 'new-agent',
     icon: Sparkles
   },
   {
@@ -86,58 +88,64 @@ const PLUS_MENU_ITEMS: PlusMenuItem[] = [
 const DEFAULT_PLUS_ITEM_ID: PlusMenuItem['id'] = 'terminal';
 
 type WorkspaceTopbarProps = {
-  activeTabId: string;
-  launcherTabId: string | null;
-  tabs: WorkspaceChromeTab[];
-  activePaneContext: WorkspaceActivePaneContext | null;
-  onBringTabInLauncher: (tabId: string) => void;
-  onCloseOtherTabs: (tabId: string) => void;
-  onCloseTabsToRight: (tabId: string) => void;
-  onSelectTab: (tabId: string) => void;
-  onNewTerminalTab: () => void;
-  onNewCloudTerminalTab: () => void;
-  onNewCloudAgentTab: () => void;
-  onCloseTab: (tabId: string) => void;
-  onMoveTab: (tabId: string, direction: 'left' | 'right') => void;
-  onRemoveTabFromLauncher: (tabId: string) => void;
-  onRenameTab: (tabId: string) => void;
-  onSaveTabAsConfig: (tabId: string) => void;
-  onSetTabTint: (tabId: string, tintColor: string | null) => void;
-  onOpenTabConfig: (configPath: string) => void;
-  onToggleSidebar: () => void;
-  isSidebarOpen: boolean;
-  isAgentsActive: boolean;
-  onToggleAgents: () => void;
-  onOpenSettingsSection: (sectionId?: string) => void;
-  onOpenKeyboardShortcutsDrawer: () => void;
+  // Only used by AppWindow context; when not provided, resolved from the AppWindow controller.
+  onOpenKeyboardShortcutsDrawer?: () => void;
+  // Legacy props — when provided, used directly instead of resolving controller state locally.
+  activeTabId?: string;
+  launcherTabId?: string | null;
+  tabs?: WorkspaceChromeTab[];
+  activePaneContext?: import('./workspaceChromeTypes').WorkspaceActivePaneContext | null;
+  onBringTabInLauncher?: (tabId: string) => void;
+  onCloseOtherTabs?: (tabId: string) => void;
+  onCloseTabsToRight?: (tabId: string) => void;
+  onSelectTab?: (tabId: string) => void;
+  onNewAgentTab?: () => void;
+  onNewTerminalTab?: () => void;
+  onNewCloudTerminalTab?: () => void;
+  onNewCloudAgentTab?: () => void;
+  onCloseTab?: (tabId: string) => void;
+  onMoveTab?: (tabId: string, direction: 'left' | 'right') => void;
+  onRemoveTabFromLauncher?: (tabId: string) => void;
+  onRenameTab?: (tabId: string, label?: string | null) => void;
+  onSaveTabAsConfig?: (tabId: string) => void;
+  onSetTabTint?: (tabId: string, tintColor: string | null) => void;
+  onOpenTabConfig?: (configPath: string) => void;
+  onToggleSidebar?: () => void;
+  isSidebarOpen?: boolean;
+  isAgentsActive?: boolean;
+  onToggleAgents?: () => void;
+  onOpenSettingsSection?: (sectionId?: string) => void;
 };
 
-export function WorkspaceTopbar({
-  activeTabId,
-  launcherTabId,
-  tabs,
-  activePaneContext,
-  onBringTabInLauncher,
-  onCloseOtherTabs,
-  onCloseTabsToRight,
-  onSelectTab,
-  onNewTerminalTab,
-  onNewCloudTerminalTab,
-  onNewCloudAgentTab,
-  onCloseTab,
-  onMoveTab,
-  onRemoveTabFromLauncher,
-  onRenameTab,
-  onSaveTabAsConfig,
-  onSetTabTint,
-  onOpenTabConfig,
-  onToggleSidebar,
-  isSidebarOpen,
-  isAgentsActive,
-  onToggleAgents,
-  onOpenSettingsSection,
-  onOpenKeyboardShortcutsDrawer
-}: WorkspaceTopbarProps) {
+export function WorkspaceTopbar(props: WorkspaceTopbarProps) {
+  // Standalone consumers may resolve their own controller.
+  // AppWindow must pass the shared state explicitly so the topbar stays bound to the live workspace store.
+  const app = props.activeTabId !== undefined ? null : useAppWindowController();
+  const onOpenKeyboardShortcutsDrawer = props.onOpenKeyboardShortcutsDrawer ?? (() => {});
+  const activeTabId = props.activeTabId ?? (app ? app.chrome.selectedTab.id : '');
+  const launcherTabId = props.launcherTabId ?? (app ? app.chrome.launcherTabId : null);
+  const tabs = props.tabs ?? (app ? app.chrome.displayTabs : []);
+  const activePaneContext = props.activePaneContext ?? (app ? app.chrome.activePaneContext : null);
+  const isSidebarOpen = props.isSidebarOpen ?? (app ? app.chrome.isSidebarOpen : false);
+  const isAgentsActive = props.isAgentsActive ?? (app ? app.chrome.isAgentsActive : false);
+  const onBringTabInLauncher = props.onBringTabInLauncher ?? (app ? app.actions.setLauncherTabId : () => {});
+  const onCloseOtherTabs = props.onCloseOtherTabs ?? (app ? app.actions.handleCloseOtherTabs : () => {});
+  const onCloseTabsToRight = props.onCloseTabsToRight ?? (app ? app.actions.handleCloseTabsToRight : () => {});
+  const onSelectTab = props.onSelectTab ?? (app ? app.actions.onSelectTab : () => {});
+  const onNewAgentTab = props.onNewAgentTab ?? (app ? app.actions.onNewConversationInNewTab : () => {});
+  const onNewTerminalTab = props.onNewTerminalTab ?? (app ? app.actions.onNewTerminalTab : () => {});
+  const onNewCloudTerminalTab = props.onNewCloudTerminalTab ?? (app ? app.actions.onNewCloudTerminalTab : () => {});
+  const onNewCloudAgentTab = props.onNewCloudAgentTab ?? (app ? app.actions.onNewCloudAgentTab : () => {});
+  const onCloseTab = props.onCloseTab ?? (app ? app.actions.onCloseTab : () => {});
+  const onMoveTab = props.onMoveTab ?? (app ? app.actions.handleMoveTab : () => {});
+  const onRemoveTabFromLauncher = props.onRemoveTabFromLauncher ?? (app ? app.actions.onRemoveTabFromLauncher : () => {});
+  const onRenameTab = props.onRenameTab ?? (app ? app.actions.handleRenameTab : () => {});
+  const onSaveTabAsConfig = props.onSaveTabAsConfig ?? (app ? app.actions.handleSaveTabAsConfig : () => {});
+  const onSetTabTint = props.onSetTabTint ?? (app ? app.actions.handleSetTabTint : () => {});
+  const onOpenTabConfig = props.onOpenTabConfig ?? (app ? app.actions.handleOpenTabConfig : () => {});
+  const onToggleSidebar = props.onToggleSidebar ?? (app ? app.actions.onToggleSidebar : () => {});
+  const onToggleAgents = props.onToggleAgents ?? (app ? app.actions.onToggleAgents : () => {});
+  const onOpenSettingsSection = props.onOpenSettingsSection ?? (app ? app.actions.onOpenSettingsSection : () => {});
   const headerRef = useRef<HTMLElement | null>(null);
   const dragSpacerRef = useRef<HTMLDivElement | null>(null);
   const { profile } = useProfileSettings();
@@ -145,6 +153,7 @@ export function WorkspaceTopbar({
   const isCodeReviewDrawerOpen = useUIStore((state) => state.isCodeReviewDrawerOpen);
   const toggleCodeReviewDrawer = useUIStore((state) => state.toggleCodeReviewDrawer);
   const [menuState, setMenuState] = useState<{ tabId: string; left: number; top: number } | null>(null);
+  const [draggedTabId, setDraggedTabId] = useState<string | null>(null);
   const [gitDiffSummary, setGitDiffSummary] = useState<GitWorktreeDiff | null>(null);
   const [tabConfigs, setTabConfigs] = useState<TabConfigSummary[]>([]);
   const [isTabConfigsLoading, setIsTabConfigsLoading] = useState(true);
@@ -246,6 +255,52 @@ export function WorkspaceTopbar({
       top: triggerRect.bottom - (headerRect?.top ?? 0) + 6
     });
   };
+
+  const moveTabToIndex = useCallback((tabId: string, targetIndex: number) => {
+    const fromIndex = tabs.findIndex((tab) => tab.id === tabId);
+    if (fromIndex < 0 || targetIndex < 0 || targetIndex >= tabs.length || fromIndex === targetIndex) {
+      return;
+    }
+
+    const direction = fromIndex < targetIndex ? 'right' : 'left';
+    const steps = Math.abs(targetIndex - fromIndex);
+    for (let step = 0; step < steps; step += 1) {
+      onMoveTab(tabId, direction);
+    }
+  }, [onMoveTab, tabs]);
+
+  const handleTabDragStart = useCallback((tabId: string, event: DragEvent<HTMLDivElement>) => {
+    setDraggedTabId(tabId);
+    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData('text/plain', tabId);
+  }, []);
+
+  const handleTabDragOver = useCallback((tabId: string, event: DragEvent<HTMLDivElement>) => {
+    const sourceTabId = draggedTabId ?? event.dataTransfer.getData('text/plain');
+    if (!sourceTabId || sourceTabId === tabId) {
+      return;
+    }
+
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'move';
+  }, [draggedTabId]);
+
+  const handleTabDrop = useCallback((tabId: string, event: DragEvent<HTMLDivElement>) => {
+    const sourceTabId = draggedTabId ?? event.dataTransfer.getData('text/plain');
+    setDraggedTabId(null);
+
+    if (!sourceTabId || sourceTabId === tabId) {
+      return;
+    }
+
+    event.preventDefault();
+    const targetIndex = tabs.findIndex((tab) => tab.id === tabId);
+    moveTabToIndex(sourceTabId, targetIndex);
+  }, [draggedTabId, moveTabToIndex, tabs]);
+
+  const handleTabDragEnd = useCallback(() => {
+    setDraggedTabId(null);
+  }, []);
 
   const [accountMenuState, setAccountMenuState] = useState<{ left: number; top: number } | null>(null);
 
@@ -351,6 +406,12 @@ export function WorkspaceTopbar({
   );
 
   const handlePlusItemAction = (item: PlusMenuItem) => {
+    if (item.action === 'new-agent') {
+      setPlusMenuState(null);
+      onNewAgentTab();
+      return;
+    }
+
     if (item.action === 'new-terminal') {
       setPlusMenuState(null);
       onNewTerminalTab();
@@ -466,7 +527,13 @@ export function WorkspaceTopbar({
             isInLauncher={tab.id === launcherTabId}
             onSelect={onSelectTab}
             onClose={onCloseTab}
+            onRename={onRenameTab}
             onOpenContextMenu={openMenu}
+            onDragStart={handleTabDragStart}
+            onDragOver={handleTabDragOver}
+            onDrop={handleTabDrop}
+            onDragEnd={handleTabDragEnd}
+            isDragging={draggedTabId === tab.id}
           />
         ))}
       </div>

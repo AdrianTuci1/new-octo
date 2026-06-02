@@ -110,7 +110,7 @@ export function WorkspacePaneTree(props: WorkspacePaneTreeProps) {
           hasMultiplePanes={hasMultiplePanes}
           paneId={node.paneId}
           tabId={selectedTabId}
-          key={getLauncherIdentityKey(node.paneId)}
+          key={node.paneId}
         />
       );
     }

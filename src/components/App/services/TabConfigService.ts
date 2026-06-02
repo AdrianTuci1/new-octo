@@ -12,7 +12,7 @@ import {
   buildTabConfigTabId,
   fileNameFromPath,
   promptForTabConfigVariables
-} from '../hooks/useAppWindow/helpers';
+} from '../appWindow/helpers';
 
 export class TabConfigService {
   /** Open a tab config .toml file, creating all necessary tabs/panes/sessions. */
@@ -50,7 +50,9 @@ export class TabConfigService {
   }
 
   /** Build a tab config launch plan without applying it. For use by WorkspaceService consumers. */
-  static async buildTabConfigPlan(configPath: string): Promise<{
+  static async buildTabConfigPlan(configPath: string, options: {
+    homeDir?: string | null;
+  } = {}): Promise<{
     plan: ReturnType<typeof buildTabConfigLaunchPlan>;
     resolvedVariables: Record<string, string>;
   }> {
@@ -68,7 +70,7 @@ export class TabConfigService {
     const tabId = buildTabConfigTabId(fileNameFromPath(configPath) ?? parsed.name);
     const plan = buildTabConfigLaunchPlan(parsed, {
       tabId,
-      homeDir: null,
+      homeDir: options.homeDir ?? null,
       cloudTarget,
       resolvedVariables
     });

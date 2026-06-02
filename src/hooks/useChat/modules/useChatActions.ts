@@ -20,6 +20,7 @@ import { buildComposerContextSummary, parseComposerContextMentions } from '../..
 import type { useChatState } from './useChatState';
 import { resolveAgentPrompt } from './agentPrompt';
 import { settleAssistantMessagesForResolvedTool } from '../toolResultResolution';
+import type { TerminalCommandBlock } from '../../../types/terminal';
 
 type UseChatActionsProps = {
   options: UseChatOptions;
@@ -31,6 +32,13 @@ type UseChatActionsProps = {
   onWorkspaceFileReadRef: React.MutableRefObject<UseChatOptions['onWorkspaceFileRead']>;
   onCloudAgentLaunchRef: React.MutableRefObject<UseChatOptions['onCloudAgentLaunch']>;
 };
+
+function terminalBlocksForAgentContext(blocks: TerminalCommandBlock[] | undefined) {
+  return (blocks ?? []).filter((block) => (
+    block.presentation !== 'conversation-link'
+    && block.command.trim().length > 0
+  ));
+}
 
 export function useChatActions({
   options,
@@ -194,7 +202,7 @@ export function useChatActions({
           modelId: options.modelId ?? null,
           terminalModelId: options.terminalModelId ?? null,
           messages: requestMessages,
-          terminalBlocks: options.terminalBlocks ?? []
+          terminalBlocks: terminalBlocksForAgentContext(options.terminalBlocks)
         } satisfies AgentContinueRequest
       });
 
@@ -224,6 +232,8 @@ export function useChatActions({
     onCloudAgentLaunchRef,
     options.cwd,
     options.modelId,
+    options.surface,
+    options.terminalBlocks,
     options.terminalModelId,
     options.onConversationCreated,
     submitPlanExecution,
@@ -395,7 +405,7 @@ export function useChatActions({
           modelId: options.modelId ?? null,
           terminalModelId: options.terminalModelId ?? null,
           messages: requestMessages,
-          terminalBlocks: options.terminalBlocks ?? []
+          terminalBlocks: terminalBlocksForAgentContext(options.terminalBlocks)
         }
       });
 

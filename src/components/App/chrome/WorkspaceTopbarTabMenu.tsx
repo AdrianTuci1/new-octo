@@ -16,7 +16,7 @@ type WorkspaceTopbarTabMenuProps = {
   onMoveTab: (tabId: string, direction: 'left' | 'right') => void;
   onCloseTab: (tabId: string) => void;
   onRemoveTabFromLauncher: (tabId: string) => void;
-  onRenameTab: (tabId: string) => void;
+  onRenameTab: (tabId: string, label?: string | null) => void;
   onSaveTabAsConfig: (tabId: string) => void;
   onSetTabTint: (tabId: string, tintColor: string | null) => void;
 };
@@ -66,6 +66,7 @@ export function WorkspaceTopbarTabMenu({
   const canMoveLeft = tabIndex > 0;
   const canMoveRight = tabIndex >= 0 && tabIndex < tabsLength - 1;
   const canCloseOthers = tabsLength > 1;
+  const canRename = tab.kind !== 'settings';
 
   const handleSelect = (action: () => void) => {
     onClose();
@@ -92,9 +93,11 @@ export function WorkspaceTopbarTabMenu({
       >
         {launcherTabId === tab.id ? 'Remove from launcher' : 'Bring in launcher'}
       </button>
-      <button type="button" onClick={() => handleSelect(() => onRenameTab(tab.id))}>
-        Rename tab
-      </button>
+      {canRename && (
+        <button type="button" onClick={() => handleSelect(() => onRenameTab(tab.id))}>
+          Rename tab
+        </button>
+      )}
       {canMoveLeft && (
         <button type="button" onClick={() => handleSelect(() => onMoveTab(tab.id, 'left'))}>
           Move tab left

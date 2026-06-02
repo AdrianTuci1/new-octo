@@ -166,7 +166,7 @@ export function ShellWindow() {
 
   // Compute display tabs (view model)
   const displayTabs = useMemo(() => {
-    // Simple pass-through for now — full view model logic can be ported from useAppWindowViewModels later
+    // Simple pass-through for now — richer tab presentation can be delegated to a dedicated view model later.
     return tabs;
   }, [tabs]);
 
@@ -330,13 +330,18 @@ export function ShellWindow() {
         onCloseOtherTabs={(id) => shell.closeOtherTabs(id)}
         onCloseTabsToRight={(id) => shell.closeTabsToRight(id)}
         onSelectTab={(id) => shell.selectTab(id)}
+        onNewAgentTab={() => {}} // TODO: implement new agent conversation for ShellWindow
         onNewTerminalTab={() => shell.createTerminalTab()}
         onNewCloudTerminalTab={() => {}} // TODO
         onNewCloudAgentTab={() => {}} // TODO
         onCloseTab={(id) => shell.closeTab(id)}
         onMoveTab={(id, dir) => shell.moveTab(id, dir)}
         onRemoveTabFromLauncher={(id) => shell.removeTabFromLauncher(id)}
-        onRenameTab={(id) => {} /* shell.renameTab handled via prompt in WorkspaceTopbarTabMenu */ }
+        onRenameTab={(id, label) => {
+          if (label !== undefined) {
+            shell.renameTab(id, label?.trim() || null);
+          }
+        }}
         onSaveTabAsConfig={(id) => {}} // TODO
         onSetTabTint={(id, tint) => shell.setTabTint(id, tint)}
         onOpenTabConfig={(path) => {}} // TODO

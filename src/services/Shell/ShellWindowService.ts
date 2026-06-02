@@ -214,9 +214,14 @@ export class ShellWindowService {
     this.store.getState().setLauncherTabId(next?.id ?? null);
   }
 
-  renameTab(tabId: string, newLabel: string): void {
+  renameTab(tabId: string, newLabel: string | null): void {
+    const normalized = newLabel?.trim() ?? '';
     this.store.getState().setTabs((tabs) =>
-      tabs.map((t) => (t.id === tabId ? { ...t, label: newLabel, customLabel: newLabel } : t))
+      tabs.map((t) => (
+        t.id === tabId && t.kind !== 'settings'
+          ? { ...t, customLabel: normalized.length > 0 ? normalized : null }
+          : t
+      ))
     );
   }
 

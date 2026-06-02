@@ -1,9 +1,10 @@
 import type { StoreApi } from 'zustand/vanilla';
-import type { LauncherStoreState } from '../../stores/launcherStore';
-import type { ChatStoreState } from '../../stores/chatStore';
+import type { LauncherState } from '../../stores/launcherStore';
+import type { ChatState } from '../../stores/chatStore';
 import type { MemoryStoreState } from '../../stores/memoryStore';
 import type { RuntimeStoreState } from '../../stores/RuntimeStore';
 import { useRuntimeStore } from '../../stores/RuntimeStore';
+import { useUIStore } from '../../stores/uiStore';
 import { LauncherAppStateService } from './LauncherAppStateService';
 import { LauncherChatService } from './LauncherChatService';
 import { LauncherComposerService } from './LauncherComposerService';
@@ -14,6 +15,7 @@ import { LauncherRuntimeService } from './LauncherRuntimeService';
 import { LauncherTrayService } from './LauncherTrayService';
 import { LauncherApprovalService } from './LauncherApprovalService';
 import { LauncherTerminalService } from './LauncherTerminalService';
+import type { UIState } from '../../stores/uiStore';
 
 /**
  * LauncherService — Mediator that orchestrates all sub-services
@@ -33,8 +35,8 @@ export class LauncherService {
   readonly terminal: LauncherTerminalService;
 
   constructor(
-    readonly launcherStore: StoreApi<LauncherStoreState>,
-    readonly chatStore: StoreApi<ChatStoreState>,
+    readonly launcherStore: StoreApi<LauncherState>,
+    readonly chatStore: StoreApi<ChatState>,
     readonly memoryStore: StoreApi<MemoryStoreState>,
   ) {
     this.appState = new LauncherAppStateService(launcherStore, memoryStore);
@@ -47,8 +49,8 @@ export class LauncherService {
       useRuntimeStore as unknown as StoreApi<RuntimeStoreState>,
       memoryStore,
     );
-    this.tray = new LauncherTrayService(launcherStore);
-    this.approval = new LauncherApprovalService(chatStore);
+    this.tray = new LauncherTrayService(useUIStore as unknown as StoreApi<UIState>);
+    this.approval = new LauncherApprovalService(launcherStore);
     this.terminal = new LauncherTerminalService(launcherStore);
   }
 

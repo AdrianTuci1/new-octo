@@ -1,7 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import type { StoreApi } from 'zustand/vanilla';
-import type { LauncherStoreState } from '../../stores/launcherStore';
+import type { LauncherState } from '../../stores/launcherStore';
 import type {
   TerminalCommandBlock,
   TerminalSessionInfo,
@@ -40,7 +40,7 @@ export class LauncherTerminalService {
   private onSessionChange?: (sessionId: string | null) => void;
 
   constructor(
-    private readonly store: StoreApi<LauncherStoreState>,
+    private readonly store: StoreApi<LauncherState>,
     private readonly options: {
       cwd?: string | null;
       initialSessionId?: string | null;
@@ -120,7 +120,7 @@ export class LauncherTerminalService {
       this.activeBlockId = response.block.finishedAt ? null : response.block.id;
       this.commandInFlight = false;
 
-      const status: TerminalCommandBlock['status'] = response.block.finishedAt ? 'exited' : 'running';
+      const status: TerminalCommandBlock['status'] = response.block.finishedAt ? 'finished' : 'running';
       const existingIndex = this.commandBlocks.findIndex((b) => b.id === response.block.id);
       const nextBlocks = existingIndex >= 0
         ? this.commandBlocks.map((b) => (b.id === response.block.id ? { ...b, ...response.block, status } : b))
@@ -155,7 +155,7 @@ export class LauncherTerminalService {
       listen<TerminalBlockEvent>('terminal:block', (event) => {
         if (this.session?.id !== event.payload.sessionId) return;
         const block = event.payload.block;
-        const status: TerminalCommandBlock['status'] = block.finishedAt ? 'exited' : 'running';
+        const status: TerminalCommandBlock['status'] = block.finishedAt ? 'finished' : 'running';
         const existingIndex = this.commandBlocks.findIndex((b) => b.id === block.id);
         const nextBlocks = existingIndex >= 0
           ? this.commandBlocks.map((b) => (b.id === block.id ? { ...b, ...block, status, output: b.output } : b))

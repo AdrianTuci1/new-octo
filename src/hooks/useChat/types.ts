@@ -8,6 +8,7 @@ import type {
   WorkspaceFileReadRequest
 } from '../../types/chat';
 import type { CommandApproval, FileChangeApproval, TerminalCommandBlock } from '../../types/terminal';
+import type { MemoryConversationRecord } from '../../types/memory';
 
 export type UseChatOptions = {
   onCommandApproval?: (approval: CommandApproval) => void;
@@ -28,6 +29,7 @@ export type UseChatOptions = {
   terminalBlocks?: TerminalCommandBlock[];
   onCloseTray?: () => void;
   active?: boolean;
+  onConversationLoaded?: (conversation: MemoryConversationRecord) => void;
 };
 
 export type AssistantMessageRegistration = {

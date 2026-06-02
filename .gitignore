@@ -8,3 +8,4 @@ artifacts
 .codegraphy/
 release.env
 tests.env
+.worktrees/

@@ -13,39 +13,42 @@ import {
   Ban
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
-import type { WorkspaceConversation } from './workspaceChromeTypes';
 import { FileExplorer } from './FileExplorer';
 import { useEditorStore } from '../../../stores/editorStore';
+import { useAppWindowController } from '../hooks/useAppWindowController';
+import type { WorkspaceConversation } from './workspaceChromeTypes';
 
 interface WorkspaceSidebarProps {
-  isOpen: boolean;
-  onClose: () => void;
-  conversations: WorkspaceConversation[];
-  openConversationIds: string[];
-  selectedConversationId: string | null;
-  onSelectConversation: (id: string) => void;
-  onNewConversation: () => void;
-  onDeleteConversation: (id: string) => void;
-  onForkConversationInNewTab: (id: string) => void;
-  onForkConversationInNewPane: (id: string) => void;
+  isOpen?: boolean;
+  onClose?: () => void;
+  conversations?: WorkspaceConversation[];
+  openConversationIds?: string[];
+  selectedConversationId?: string | null;
+  onSelectConversation?: (id: string) => void;
+  onNewConversation?: () => void;
+  onDeleteConversation?: (id: string) => void;
+  onForkConversationInNewTab?: (id: string) => void;
+  onForkConversationInNewPane?: (id: string) => void;
   activeWorkingDirectory?: string | null;
 }
 
 type SidebarMenu = 'chat' | 'files' | 'search' | 'history';
 
-export function WorkspaceSidebar({
-  isOpen,
-  onClose,
-  conversations,
-  openConversationIds,
-  selectedConversationId,
-  onSelectConversation,
-  onNewConversation,
-  onDeleteConversation,
-  onForkConversationInNewPane,
-  onForkConversationInNewTab,
-  activeWorkingDirectory
-}: WorkspaceSidebarProps) {
+export function WorkspaceSidebar(props: WorkspaceSidebarProps) {
+  // Standalone consumers may resolve their own controller.
+  // AppWindow must pass the shared state explicitly so the sidebar stays bound to the live workspace store.
+  const app = props.isOpen !== undefined ? null : useAppWindowController();
+  const isOpen = props.isOpen ?? (app ? app.chrome.isSidebarOpen : false);
+  const onClose = props.onClose ?? (app ? app.actions.onToggleSidebar : () => {});
+  const conversations = props.conversations ?? (app ? app.sidebar.workspaceConversations : []);
+  const openConversationIds = props.openConversationIds ?? (app ? app.sidebar.openConversationIds : []);
+  const selectedConversationId = props.selectedConversationId ?? (app ? app.sidebar.selectedOpenConversationId : null);
+  const onSelectConversation = props.onSelectConversation ?? (app ? app.actions.onSelectConversation : () => {});
+  const onNewConversation = props.onNewConversation ?? (app ? app.actions.onNewConversationInNewTab : () => {});
+  const onDeleteConversation = props.onDeleteConversation ?? (app ? app.actions.handleDeleteConversation : () => {});
+  const onForkConversationInNewTab = props.onForkConversationInNewTab ?? (app ? app.actions.handleForkConversationInNewTab : () => {});
+  const onForkConversationInNewPane = props.onForkConversationInNewPane ?? (app ? app.actions.handleForkConversationInNewPane : () => {});
+  const activeWorkingDirectory = props.activeWorkingDirectory ?? (app ? app.chrome.activeWorkingDirectory : null);
   const [activeMenu, setActiveMenu] = useState<SidebarMenu>('chat');
   const openFile = useEditorStore((state) => state.openFile);
   const [menuConversationId, setMenuConversationId] = useState<string | null>(null);
@@ -206,7 +209,7 @@ export function WorkspaceSidebar({
             )}
 
             <div className="workspace-sidebar-group">
-              <button className="workspace-sidebar-new-btn" type="button" onClick={onNewConversation}>
+              <button className="workspace-sidebar-new-btn" type="button" onClick={() => { onNewConversation(); }}>
                 <Plus size={16} />
                 <span>New conversation</span>
               </button>

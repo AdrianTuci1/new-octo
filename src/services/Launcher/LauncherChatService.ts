@@ -1,25 +1,14 @@
 import type { StoreApi } from 'zustand/vanilla';
 import type { ChatMessage, ChatAttachment } from '../../types/chat';
 import type { ComposerMode } from '../../types/ui';
-
-export interface ChatStoreState {
-  query: string;
-  messages: ChatMessage[];
-  attachments: ChatAttachment[];
-  modeLock: ComposerMode | null;
-  autodetectedShellLatch: boolean;
-  setQuery: (query: string) => void;
-  setMessages: (messages: ChatMessage[]) => void;
-  setModeLock: (mode: ComposerMode | null) => void;
-  setAutodetectedShellLatch: (latch: boolean) => void;
-}
+import type { ChatState } from '../../stores/chatStore';
 
 /**
  * Manages the Launcher chat surface — query state, message list, attachments,
  * and mode/shell toggles.
  */
 export class LauncherChatService {
-  constructor(private readonly store: StoreApi<ChatStoreState>) {}
+  constructor(private readonly store: StoreApi<ChatState>) {}
 
   /** Set the composer query text. */
   setQuery(query: string): void {
@@ -41,7 +30,7 @@ export class LauncherChatService {
     const state = this.store.getState();
     const current = state.attachments ?? [];
     if (!current.some((a) => a.id === attachment.id)) {
-      this.store.setState({ attachments: [...current, attachment] } as Partial<ChatStoreState>);
+      this.store.setState({ attachments: [...current, attachment] } as Partial<ChatState>);
     }
   }
 
@@ -49,12 +38,12 @@ export class LauncherChatService {
   removeAttachment(id: string): void {
     const state = this.store.getState();
     const current = state.attachments ?? [];
-    this.store.setState({ attachments: current.filter((a) => a.id !== id) } as Partial<ChatStoreState>);
+    this.store.setState({ attachments: current.filter((a) => a.id !== id) } as Partial<ChatState>);
   }
 
   /** Remove all attachments. */
   clearAttachments(): void {
-    this.store.setState({ attachments: [] } as Partial<ChatStoreState>);
+    this.store.setState({ attachments: [] } as Partial<ChatState>);
   }
 
   /** Toggle or set the mode lock. */

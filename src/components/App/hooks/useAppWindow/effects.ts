@@ -191,7 +191,15 @@ function useWorkspaceRestoreSync({
   store
 }: UseAppWindowEffectsParams) {
   useEffect(() => {
-    if (memoryStatus !== 'ready' || !memoryWorkspace) {
+    if (memoryStatus !== 'ready') {
+      return;
+    }
+
+    if (!memoryWorkspace) {
+      if (!didRestoreWorkspaceRef.current) {
+        didRestoreWorkspaceRef.current = true;
+        lastSavedWorkspaceSignatureRef.current = null;
+      }
       return;
     }
 

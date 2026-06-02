@@ -2,6 +2,30 @@
 import { useEffect } from 'react';
 import type { LauncherProps } from '../types';
 
+type ResolveLocalConversationIdSyncParams = {
+  controlledConversationId: string | null | undefined;
+  initialComposerSurface?: LauncherProps['initialComposerSurface'];
+  localConversationId: string | null;
+};
+
+export function resolveLocalConversationIdSyncTarget({
+  controlledConversationId,
+  initialComposerSurface = 'terminal',
+  localConversationId
+}: ResolveLocalConversationIdSyncParams): string | null {
+  if (controlledConversationId === undefined) {
+    return localConversationId;
+  }
+
+  if (controlledConversationId === null) {
+    return initialComposerSurface === 'terminal'
+      ? null
+      : localConversationId;
+  }
+
+  return controlledConversationId;
+}
+
 export function useLauncherMemorySync({
   store, props, runtime
 }: {
@@ -36,11 +60,23 @@ export function useLauncherMemorySync({
 
   // 2. Local Conversation ID Sync
   useEffect(() => {
-    if (props.conversationId === undefined || store.localConversationId === props.conversationId) {
+    const nextLocalConversationId = resolveLocalConversationIdSyncTarget({
+      controlledConversationId: props.conversationId,
+      initialComposerSurface: props.initialComposerSurface,
+      localConversationId: store.localConversationId
+    });
+
+    if (store.localConversationId === nextLocalConversationId) {
       return;
     }
-    store.setLocalConversationId(props.conversationId);
-  }, [props.conversationId, store.localConversationId, store.setLocalConversationId]);
+
+    store.setLocalConversationId(nextLocalConversationId);
+  }, [
+    props.conversationId,
+    props.initialComposerSurface,
+    store.localConversationId,
+    store.setLocalConversationId
+  ]);
 
   // 3. Pending Approval Sync
   useEffect(() => {

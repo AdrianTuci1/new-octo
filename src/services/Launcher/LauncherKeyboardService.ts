@@ -1,8 +1,8 @@
 import { type KeyboardEvent } from 'react';
 import type { StoreApi } from 'zustand/vanilla';
 import { useUIStore } from '../../stores/uiStore';
-import type { LauncherStoreState } from '../../stores/launcherStore';
-import type { ChatStoreState } from '../../stores/chatStore';
+import type { LauncherState } from '../../stores/launcherStore';
+import type { ChatState } from '../../stores/chatStore';
 
 export interface KeybindingEntry {
   keys: string[];
@@ -16,8 +16,8 @@ export interface KeybindingEntry {
  */
 export class LauncherKeyboardService {
   constructor(
-    private readonly launcherStore: StoreApi<LauncherStoreState>,
-    private readonly chatStore: StoreApi<ChatStoreState>,
+    private readonly launcherStore: StoreApi<LauncherState>,
+    private readonly chatStore: StoreApi<ChatState>,
   ) {}
 
   /**
@@ -42,7 +42,7 @@ export class LauncherKeyboardService {
         useUIStore.setState({ trayMode: 'closed', isExpanded: false });
       } else {
         const nextSurface = composerSurface === 'terminal' ? 'agent' : 'terminal';
-        this.launcherStore.setState({ composerSurface: nextSurface } as Partial<LauncherStoreState>);
+        this.launcherStore.setState({ composerSurface: nextSurface });
       }
       return;
     }

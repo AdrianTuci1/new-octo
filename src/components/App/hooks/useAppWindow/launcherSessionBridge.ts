@@ -291,16 +291,8 @@ export function useAppWindowLauncherSessionBridge({
   }, [updateLauncherSessionForPane]);
 
   const getLauncherIdentityKey = useCallback((paneId: string) => {
-    const session = getLauncherSessionForPane(paneId);
-    return [
-      paneId,
-      resolveLauncherSessionIdForPane(paneId) ?? '',
-      session?.activeConversationId ?? '',
-      session?.terminalSessionId ?? '',
-      session?.agentTerminalSessionId ?? '',
-      session?.composerSurface ?? 'terminal'
-    ].join('|');
-  }, [getLauncherSessionForPane, resolveLauncherSessionIdForPane]);
+    return `pane-${paneId}`;
+  }, []);
 
   return {
     activeConversationId,

@@ -1,5 +1,5 @@
 import { memo } from 'react';
-import { ArrowRight, CornerDownLeft, Paperclip, Plus, Sparkles, X } from 'lucide-react';
+import { ArrowRight, CornerDownLeft, Paperclip, Plus, Server, Sparkles, X } from 'lucide-react';
 import { ComposerContextMenu } from './ComposerContextMenu';
 import { GitBranchPicker } from './GitBranchPicker';
 import { SlashCommandHighlight } from './SlashCommandHighlight';
@@ -158,6 +158,12 @@ export const ComposerBar = memo(function ComposerBar({
       {!view.restrictActions && (
         <div className="input-actions composer-actions">
           <div className="action-group left-actions">
+            {view.remoteSession && (
+              <div className="toolbar-chip remote-session-chip" title={view.remoteSession.title}>
+                <Server size={12} />
+                <span>{view.remoteSession.label}</span>
+              </div>
+            )}
             <WorkingDirectoryPicker
               buttonLabel={view.workingDirectoryLabel}
               currentPath={view.workingDirectory}

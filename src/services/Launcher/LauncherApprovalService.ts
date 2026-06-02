@@ -1,5 +1,5 @@
 import type { StoreApi } from 'zustand/vanilla';
-import type { ChatStoreState } from '../../stores/chatStore';
+import type { LauncherState } from '../../stores/launcherStore';
 import type { CommandApproval, FileChangeApproval } from '../../types/terminal';
 
 /**
@@ -7,7 +7,7 @@ import type { CommandApproval, FileChangeApproval } from '../../types/terminal';
  * Mirrors AgentApprovalService but uses chatStore instead of AgentStore.
  */
 export class LauncherApprovalService {
-  constructor(private readonly store: StoreApi<ChatStoreState>) {}
+  constructor(private readonly store: StoreApi<LauncherState>) {}
 
   setPendingApproval(approval: CommandApproval | null): void {
     this.store.getState().setLocalPendingApproval(approval);

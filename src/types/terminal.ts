@@ -158,6 +158,17 @@ export type FileChangeApproval = {
   acceptLabel?: string;
 };
 
+export type RemoteCliInstallApproval = {
+  kind: 'remote-cli-install';
+  command: string;
+  toolCallId?: string;
+  reason?: string;
+  username?: string | null;
+  host?: string | null;
+  provider?: TerminalSessionProvider | string | null;
+  dismissStorageKey?: string | null;
+};
+
 export type CommandApproval = {
   kind?: 'command';
   command: string;
@@ -168,4 +179,4 @@ export type CommandApproval = {
   reason?: string;
   startNewConversationLabel?: string;
   continueConversationLabel?: string;
-} | FileChangeApproval;
+} | FileChangeApproval | RemoteCliInstallApproval;

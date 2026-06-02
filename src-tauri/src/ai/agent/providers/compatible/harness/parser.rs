@@ -54,19 +54,14 @@ pub(super) fn handle_stream_payload(
     let delta = choice.get("delta");
     let message = choice.get("message");
 
-    if let Some(content) = extract_stream_content_text(delta.and_then(|item| item.get("content"))) {
-        thinking_state.push_content(
-            &content,
-            sink,
-            streamed,
-            streamed_reasoning,
-            emit_visible_tokens,
-            emit_reasoning_tokens,
-        );
-    }
+    // Prefer `message.content` over `delta.content` when both are present in the same
+    // SSE chunk: some providers include the full accumulated text in `message.content`
+    // on the final chunk, while `delta.content` still carries the last incremental fragment.
+    // Processing both would append the full text twice, duplicating the response.
+    let message_content = extract_stream_content_text(message.and_then(|item| item.get("content")));
+    let delta_content = extract_stream_content_text(delta.and_then(|item| item.get("content")));
 
-    if let Some(content) = extract_stream_content_text(message.and_then(|item| item.get("content")))
-    {
+    if let Some(content) = message_content.or(delta_content) {
         thinking_state.push_content(
             &content,
             sink,

@@ -392,6 +392,19 @@
   max-width: 132px;
 }
 
+.remote-session-chip {
+  gap: 6px;
+  color: #8dd7ff;
+  font-family: var(--font-mono);
+  font-weight: 650;
+}
+
+.remote-session-chip svg {
+  width: 12px;
+  height: 12px;
+  flex: 0 0 auto;
+}
+
 .composer-context-indicator-chip {
   position: relative;
   display: inline-flex;
@@ -1102,6 +1115,120 @@
   border: 0;
   outline: none;
   resize: vertical;
+}
+
+.remote-cli-install-shell {
+  gap: 12px;
+  padding: 0;
+  overflow: hidden;
+}
+
+.remote-cli-install-heading {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  color: rgba(244, 247, 246, 0.86);
+  font-size: 13px;
+}
+
+.remote-cli-install-heading svg {
+  color: #8dd7ff;
+}
+
+.remote-cli-install-options {
+  display: grid;
+  gap: 8px;
+  padding: 0 14px;
+}
+
+.remote-cli-install-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  width: 100%;
+  min-height: 58px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text-main);
+  text-align: left;
+  cursor: pointer;
+}
+
+.remote-cli-install-option.primary {
+  border-color: rgba(141, 215, 255, 0.46);
+  background: rgba(141, 215, 255, 0.08);
+}
+
+.remote-cli-install-option:hover {
+  border-color: rgba(141, 215, 255, 0.42);
+  background: rgba(141, 215, 255, 0.1);
+}
+
+.remote-cli-install-option-copy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.remote-cli-install-option-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.remote-cli-install-badge {
+  min-height: 18px;
+  padding: 2px 6px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(244, 247, 246, 0.66);
+  font-size: 10px;
+  font-weight: 650;
+}
+
+.remote-cli-install-option-description {
+  color: rgba(244, 247, 246, 0.5);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.remote-cli-install-enter {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(244, 247, 246, 0.78);
+  flex: 0 0 auto;
+}
+
+.remote-cli-install-checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 14px 12px;
+  color: rgba(244, 247, 246, 0.48);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.remote-cli-install-checkbox input {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: #8dd7ff;
 }
 
 @media (max-width: 720px) {

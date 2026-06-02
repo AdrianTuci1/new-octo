@@ -296,15 +296,65 @@
   }
 }
 
-.workspace-tab-label {
+.workspace-tab-text {
   position: relative;
   z-index: 1;
-  font-size: 11px;
-  font-weight: 600;
-  line-height: 1.05;
+  flex: 1;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.workspace-tab-label-button {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  background: transparent;
+  color: inherit;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  cursor: text;
+}
+
+.workspace-tab-label,
+.workspace-tab-subtitle {
+  display: block;
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.workspace-tab-label {
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.05;
+}
+
+.workspace-tab-subtitle {
+  color: var(--text-dim);
+  font-size: 9px;
+  font-weight: 500;
+  line-height: 1.15;
+}
+
+.workspace-tab-label-input {
+  width: 100%;
+  min-width: 0;
+  height: auto;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  text-align: center;
+  outline: none;
+  padding: 0;
 }
 
 .workspace-tab-close {
@@ -361,7 +411,15 @@
   padding: 8px 10px;
   font-size: 12px;
   line-height: 1.2;
-  cursor: pointer;
+  cursor: grab;
+}
+
+.workspace-tab.dragging {
+  opacity: 0.58;
+}
+
+.workspace-tab:active {
+  cursor: grabbing;
 }
 
 .workspace-topbar-tab-menu button:hover {

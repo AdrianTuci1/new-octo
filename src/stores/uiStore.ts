@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import type { TrayMode, TrayContentMode } from '../types/ui';
 
-interface UIState {
+export interface UIState {
   trayMode: TrayMode;
   lastTrayMode: TrayContentMode;
   isExpanded: boolean;

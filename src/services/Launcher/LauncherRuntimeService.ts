@@ -1,9 +1,20 @@
 import { invoke } from '@tauri-apps/api/core';
-import { execSync } from 'child_process';
 import type { StoreApi } from 'zustand/vanilla';
 import type { MemoryStoreState } from '../../stores/memoryStore';
 import type { RuntimeStoreState } from '../../stores/RuntimeStore';
 import type { FilesystemDirectoryListing } from '../../types/filesystem';
+
+interface GitRepoContext {
+  rootPath: string;
+  currentBranch: string;
+  branches: string[];
+}
+
+interface TerminalRuntimeContext {
+  nodeVersion: string | null;
+  targetOs: string;
+  targetArch: string;
+}
 
 // ── Service ─────────────────────────────────────────────────────────
 
@@ -28,9 +39,10 @@ export class LauncherRuntimeService {
     try {
       let cwd: string;
       try {
-        cwd = await invoke<string>('get_current_dir');
+        const ctx = await invoke<{ homeDir: string; currentDir: string }>('terminal_get_path_context');
+        cwd = ctx.currentDir;
       } catch {
-        cwd = process.cwd();
+        cwd = '/';
       }
 
       this.store.getState().setWorkingDirectory((prev) => ({
@@ -59,10 +71,12 @@ export class LauncherRuntimeService {
 
   /** List directory entries via Tauri invoke */
   async getWorkingDirectoryListing(path: string): Promise<FilesystemDirectoryListing> {
-    const listing = await invoke<FilesystemDirectoryListing>('list_directory', { path });
+    const listing = await invoke<FilesystemDirectoryListing>('terminal_list_directory_entries', {
+      request: { path }
+    });
     this.store.getState().setWorkingDirectory((prev) => ({
       ...prev,
-      listing: listing.entries,
+      listing: listing.entries.map((e) => e.path),
     }));
     return listing;
   }
@@ -72,11 +86,14 @@ export class LauncherRuntimeService {
   /** Initialize git context: current branch + all branches */
   async initGitContext(): Promise<void> {
     try {
-      const currentBranch = execSync('git branch --show-current', { encoding: 'utf-8' }).trim();
+      const currentPath = this.store.getState().workingDirectory.currentPath;
+      const context = await invoke<GitRepoContext | null>('terminal_get_git_context', {
+        request: { path: currentPath }
+      });
 
       this.store.getState().setGitContext({
-        gitContext: currentBranch ? { currentBranch } : null,
-        currentBranch: currentBranch || null,
+        gitContext: context ? { currentBranch: context.currentBranch } : null,
+        currentBranch: context?.currentBranch ?? null,
         isBranchMenuOpen: false,
       });
     } catch {
@@ -92,7 +109,10 @@ export class LauncherRuntimeService {
   /** Switch to a different branch and refresh git context */
   async switchBranch(branch: string): Promise<void> {
     try {
-      execSync(`git checkout ${branch}`, { encoding: 'utf-8' });
+      const currentPath = this.store.getState().workingDirectory.currentPath;
+      await invoke<GitRepoContext | null>('terminal_switch_git_branch', {
+        request: { path: currentPath, branch }
+      });
       await this.initGitContext();
     } catch (error) {
       console.warn('[LauncherRuntimeService] failed to switch branch', error);
@@ -108,10 +128,13 @@ export class LauncherRuntimeService {
   /** Initialize runtime context — detect node version */
   async initRuntimeContext(): Promise<void> {
     try {
-      const nodeVersion = execSync('node --version', { encoding: 'utf-8' }).trim();
+      const currentPath = this.store.getState().workingDirectory.currentPath;
+      const ctx = await invoke<TerminalRuntimeContext>('terminal_get_runtime_context', {
+        request: { path: currentPath }
+      });
 
       this.store.getState().setRuntimeContext({
-        nodeVersion: nodeVersion || null,
+        nodeVersion: ctx.nodeVersion || null,
       });
     } catch {
       // Node not available — clear context

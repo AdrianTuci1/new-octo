@@ -166,7 +166,10 @@ export function useLauncherShortcuts({
         tray.closeTray();
         return;
       }
-      if (store.composerSurface === 'terminal') return;
+      if (store.composerSurface === 'terminal') {
+        handlers.toggleComposerSurface();
+        return;
+      }
       handlers.toggleComposerSurface();
       return;
     }
@@ -272,10 +275,7 @@ export function useLauncherShortcuts({
         return;
       }
 
-      if (event.key === 'ArrowRight' || event.key === 'Tab' || event.key === 'ArrowDown') {
-        handleKeyDown(event);
-        if (event.defaultPrevented) return;
-      }
+      handleKeyDown(event);
       return;
     }
 

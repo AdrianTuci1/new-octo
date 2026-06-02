@@ -547,13 +547,18 @@ export function useAppWindowTabActions({
     });
   }, [getLauncherSessionForPane, onCloseTab, paneLayoutsByTabId, setPaneLayoutsByTabId, setPaneSessionBindingsByPaneId, setPaneStartupCommandsByPaneId, setTerminalSessions]);
 
-  const handleRenameTab = useCallback((tabId: string) => {
+  const handleRenameTab = useCallback((tabId: string, label?: string | null) => {
     const tab = tabs.find((candidate) => candidate.id === tabId);
     if (!tab) {
       return;
     }
+    if (tab.kind === 'settings') {
+      return;
+    }
 
-    const nextLabel = window.prompt('Rename tab', tab.customLabel?.trim() || displayTabs.find((item) => item.id === tabId)?.label || tab.label);
+    const nextLabel = label !== undefined
+      ? label
+      : window.prompt('Rename tab', tab.customLabel?.trim() || displayTabs.find((item) => item.id === tabId)?.label || tab.label);
     if (nextLabel === null) {
       return;
     }

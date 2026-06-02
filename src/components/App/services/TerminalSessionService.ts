@@ -1,5 +1,5 @@
 import type { CommandApproval, TerminalBlockSharedMeta, TerminalCommandBlock } from '../../../types/terminal';
-import type { AppWindowStoreApi } from '../hooks/useAppWindow/store';
+import type { AppWindowStoreApi } from '../appWindow/store';
 import * as Utils from '../utils';
 import type { TerminalSessionState } from '../utils';
 

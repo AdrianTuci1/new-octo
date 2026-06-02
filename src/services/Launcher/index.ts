@@ -1,4 +1,4 @@
-export type { AgentModelEntry, AgentModelSelection } from './LauncherAppStateService'; // re-exported types only
+export type { AgentModelEntry, AgentModelSelection } from '../../stores/AgentStore';
 // Classes (explicit re-exports to avoid interface duplicates like ChatStoreState)
 export { LauncherAppStateService } from './LauncherAppStateService';
 export { LauncherApprovalService } from './LauncherApprovalService';

@@ -4,7 +4,7 @@ import { WorkspacePanelPlaceholder, WorkspaceTopbar } from './chrome';
 import { SettingsContent } from './settings/SettingsContent';
 import { SettingsSidebar } from './settings/SettingsSidebar';
 import { WorkspaceSidebar } from './chrome/WorkspaceSidebar';
-import { useAppWindow } from './hooks/useAppWindow';
+import { useAppWindowController } from './hooks/useAppWindowController';
 import { AgentsView } from './agents/AgentsView';
 import { useEditorStore } from '../../stores/editorStore';
 import { useCallback, useEffect, useState } from 'react';
@@ -17,7 +17,7 @@ import { SettingsHeader } from './headers';
 import { applyAppearanceSettings } from './services/appearance';
 
 export function AppWindow() {
-  const app = useAppWindow();
+  const app = useAppWindowController();
   const { tabs } = useEditorStore();
   const appearanceSettings = useMemoryStore((state) => state.settings?.values.appearance);
   const isEditorOpen = tabs.length > 0;
@@ -83,9 +83,11 @@ export function AppWindow() {
         onCloseOtherTabs={app.actions.handleCloseOtherTabs}
         onCloseTabsToRight={app.actions.handleCloseTabsToRight}
         onSelectTab={app.actions.onSelectTab}
+        onOpenKeyboardShortcutsDrawer={() => setIsKeyboardShortcutsDrawerOpen(true)}
+        onNewAgentTab={app.actions.onNewConversationInNewTab}
         onNewTerminalTab={app.actions.onNewTerminalTab}
         onNewCloudTerminalTab={app.actions.onNewCloudTerminalTab}
-        onNewCloudAgentTab={() => { void app.actions.onNewCloudAgentTab(); }}
+        onNewCloudAgentTab={app.actions.onNewCloudAgentTab}
         onCloseTab={app.actions.onCloseTab}
         onMoveTab={app.actions.handleMoveTab}
         onRemoveTabFromLauncher={app.actions.onRemoveTabFromLauncher}
@@ -98,7 +100,6 @@ export function AppWindow() {
         isAgentsActive={app.chrome.isAgentsActive}
         onToggleAgents={app.actions.onToggleAgents}
         onOpenSettingsSection={app.actions.onOpenSettingsSection}
-        onOpenKeyboardShortcutsDrawer={() => setIsKeyboardShortcutsDrawerOpen(true)}
       />
 
       <div className="app-window-container">
@@ -111,17 +112,17 @@ export function AppWindow() {
         >
           <div className="sidebar-clip-container">
             <WorkspaceSidebar
-              conversations={app.sidebar.workspaceConversations}
               isOpen={app.chrome.isSidebarOpen}
-              openConversationIds={app.sidebar.openConversationIds}
               onClose={app.actions.onToggleSidebar}
+              conversations={app.sidebar.workspaceConversations}
+              openConversationIds={app.sidebar.openConversationIds}
+              selectedConversationId={app.sidebar.selectedOpenConversationId}
+              onSelectConversation={app.actions.onSelectConversation}
               onNewConversation={app.actions.onNewConversationInNewTab}
               onDeleteConversation={app.actions.handleDeleteConversation}
-              onForkConversationInNewPane={app.actions.handleForkConversationInNewPane}
               onForkConversationInNewTab={app.actions.handleForkConversationInNewTab}
-              onSelectConversation={app.actions.onSelectConversation}
-              selectedConversationId={app.sidebar.selectedOpenConversationId}
-              activeWorkingDirectory={app.chrome.activePaneContext.workingDirectory}
+              onForkConversationInNewPane={app.actions.handleForkConversationInNewPane}
+              activeWorkingDirectory={app.chrome.activeWorkingDirectory}
             />
           </div>
           {app.chrome.isSidebarOpen && (

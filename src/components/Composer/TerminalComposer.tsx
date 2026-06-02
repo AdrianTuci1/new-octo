@@ -1,5 +1,5 @@
 import { memo } from 'react';
-import { ArrowRight, Command, CornerDownLeft, Sparkles, SquareTerminal } from 'lucide-react';
+import { ArrowRight, Command, CornerDownLeft, Server, Sparkles, SquareTerminal } from 'lucide-react';
 import { GitBranchPicker } from './GitBranchPicker';
 import { SlashCommandHighlight } from './SlashCommandHighlight';
 import { WorkingDirectoryPicker } from './WorkingDirectoryPicker';
@@ -22,6 +22,13 @@ export const TerminalComposer = memo(function TerminalComposer({ view }: Termina
           <div className="terminal-runtime-chip" title={`Node ${view.runtimeNodeVersion}`}>
             <SquareTerminal size={12} />
             <span>{view.runtimeNodeVersion}</span>
+          </div>
+        )}
+
+        {view.remoteSession && (
+          <div className="remote-session-chip" title={view.remoteSession.title}>
+            <Server size={12} />
+            <span>{view.remoteSession.label}</span>
           </div>
         )}
 

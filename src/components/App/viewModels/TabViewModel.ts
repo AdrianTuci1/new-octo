@@ -1,8 +1,8 @@
 import { formatCompactPathLabel } from '../../../lib/pathLabels';
 import type { MemoryConversationRecord, MemoryConversationSummary } from '../../../types';
+import { latestFinishedCommandStatus, latestUserPromptTitle } from '../appWindow/helpers';
 import type { WorkspaceChromeTab, WorkspacePaneLayout } from '../chrome';
 import type { TerminalSessionState } from '../utils';
-import { latestFinishedCommandStatus, latestUserPromptTitle } from '../hooks/useAppWindow/helpers';
 
 export type GetLauncherSessionForPane = (paneId: string | null) => TerminalSessionState | null;
 
@@ -27,6 +27,7 @@ export class TabViewModel {
 
       const activePaneIdForTab = this.paneLayoutsByTabId[tab.id]?.activePaneId ?? tab.id;
       const session = this.getLauncherSessionForPane(activePaneIdForTab);
+      const isAgentConversationActive = session?.composerSurface === 'agent';
       const conversationId = session?.activeConversationId ?? null;
       const activeConversation = conversationId
         ? this.memoryConversationsById.get(conversationId) ?? null
@@ -45,9 +46,9 @@ export class TabViewModel {
       return {
         ...tab,
         label: tab.customLabel?.trim()
-          || latestPromptTitle
-          || activeConversation?.title
-          || (conversationId ? 'New agent conversation' : pathLabel),
+          || (isAgentConversationActive
+            ? latestPromptTitle || activeConversation?.title || 'New agent conversation'
+            : pathLabel),
         lastExecutionStatus: latestFinishedCommandStatus(
           session ?? undefined,
           activeConversation?.status ?? null

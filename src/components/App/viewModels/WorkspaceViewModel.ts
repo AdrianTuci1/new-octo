@@ -14,7 +14,7 @@ export class WorkspaceViewModel {
   }
 
   isLauncherView(): boolean {
-    return this.selectedTab.kind === 'terminal';
+    return !this.isAgentsActive && this.selectedTab.kind === 'terminal';
   }
 
   isSettingsView(): boolean {

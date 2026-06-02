@@ -14,8 +14,19 @@ export function timeFromMessage(message: ChatMessage) {
 }
 
 export function timeFromBlock(block: TerminalCommandBlock) {
-  const timestamp = Date.parse(block.startedAt);
-  return Number.isFinite(timestamp) ? timestamp : 0;
+  const startedAt = Date.parse(block.startedAt);
+  if (Number.isFinite(startedAt)) {
+    return startedAt;
+  }
+
+  const finishedAt = block.finishedAt ? Date.parse(block.finishedAt) : NaN;
+  if (Number.isFinite(finishedAt)) {
+    return finishedAt;
+  }
+
+  const idParts = block.id.split('-');
+  const idTimestamp = Number(idParts[idParts.length - 1]);
+  return Number.isFinite(idTimestamp) ? idTimestamp : Number.MAX_SAFE_INTEGER;
 }
 
 export function shouldRenderCollapsedBlock(

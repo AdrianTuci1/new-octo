@@ -12,7 +12,6 @@ type UseAppWindowViewModelsParams = {
   memoryConversationRecords: Record<string, MemoryConversationRecord>;
   memoryConversations: MemoryConversationSummary[];
   memoryConversationsById: Map<string, MemoryConversationSummary>;
-  openPastConversationBaselineById: Record<string, number>;
   paneLayoutsByTabId: Record<string, WorkspacePaneLayout>;
   pathContextHomeDir: string | null | undefined;
   tabs: WorkspaceChromeTab[];
@@ -27,7 +26,6 @@ export function useAppWindowViewModels({
   memoryConversationRecords,
   memoryConversations,
   memoryConversationsById,
-  openPastConversationBaselineById,
   paneLayoutsByTabId,
   pathContextHomeDir,
   tabs,
@@ -48,8 +46,8 @@ export function useAppWindowViewModels({
   );
 
   const openConversationIds = useMemo(
-    () => dedupedOrderedConversationIds.filter((conversationId) => !(conversationId in openPastConversationBaselineById)),
-    [dedupedOrderedConversationIds, openPastConversationBaselineById]
+    () => dedupedOrderedConversationIds,
+    [dedupedOrderedConversationIds]
   );
 
   const openConversationIdSet = useMemo(
@@ -92,19 +90,24 @@ export function useAppWindowViewModels({
     const activePaneIdForTab = paneLayoutsByTabId[tab.id]?.activePaneId ?? tab.id;
     const session = getLauncherSessionForPane(activePaneIdForTab);
     const conversationId = session?.activeConversationId ?? null;
-    const activeConversation = conversationId
+    const isAgentConversationActive = Boolean(conversationId && session?.composerSurface === 'agent');
+    const activeConversation = isAgentConversationActive && conversationId
       ? memoryConversationsById.get(conversationId) ?? null
       : null;
-    const activeConversationRecord = conversationId ? memoryConversationRecords[conversationId] ?? null : null;
+    const activeConversationRecord = isAgentConversationActive && conversationId
+      ? memoryConversationRecords[conversationId] ?? null
+      : null;
     const latestPromptTitle = useLatestPromptTabNames ? latestUserPromptTitle(activeConversationRecord) : null;
     const pathLabel = formatCompactPathLabel(
       session?.workingDirectory ?? defaultWorkingDirectory,
       pathContextHomeDir ?? null
     );
+    const conversationTitle = latestPromptTitle || activeConversation?.title || (conversationId ? 'New agent conversation' : null);
 
     return {
       ...tab,
-      label: tab.customLabel?.trim() || latestPromptTitle || activeConversation?.title || (conversationId ? 'New agent conversation' : pathLabel),
+      label: tab.customLabel?.trim() || (isAgentConversationActive ? conversationTitle : null) || pathLabel,
+      subtitle: isAgentConversationActive ? pathLabel : undefined,
       lastExecutionStatus: latestFinishedCommandStatus(session ?? undefined, activeConversation?.status ?? null)
     };
   }), [

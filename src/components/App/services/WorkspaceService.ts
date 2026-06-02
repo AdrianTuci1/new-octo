@@ -1,18 +1,25 @@
 import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
+import type { AppWindowStoreApi } from '../appWindow/store';
+import { buildEmptyWorkspaceSnapshot, SETTINGS_TAB_ID } from '../appWindow/helpers';
 import { initialWorkspaceChromeTabs, type WorkspaceChromeTab, type WorkspacePaneLayout } from '../chrome';
+import { settingsDefaultExpandedGroupIds, settingsDefaultSectionId } from '../settings/settingsData';
 import * as Utils from '../utils';
 import type { TerminalSessionState } from '../utils';
-import type { AppWindowStoreApi } from '../hooks/useAppWindow/store';
-import { buildEmptyWorkspaceSnapshot } from '../hooks/useAppWindow/helpers';
 
 const DEFAULT_TAB_LABEL = '~';
 
 export class WorkspaceService {
   private store: AppWindowStoreApi;
+  private readonly options: {
+    inheritSelectedTabTint?: boolean;
+  };
 
-  constructor(store: AppWindowStoreApi) {
+  constructor(store: AppWindowStoreApi, options: {
+    inheritSelectedTabTint?: boolean;
+  } = {}) {
     this.store = store;
+    this.options = options;
   }
 
   private resolvePaneId(tabId: string): string | null {
@@ -51,7 +58,7 @@ export class WorkspaceService {
     workingDirectory?: string | null;
   }): WorkspaceChromeTab {
     const state = this.store.getState();
-    const { nextTerminalIndex, selectedTabId, paneLayoutsByTabId, activeSectionId, expandedGroupIds, isSidebarOpen, isAgentsActive } = state;
+    const { nextTerminalIndex, selectedTabId } = state;
 
     const activePaneId = this.resolvePaneId(selectedTabId);
     const resolvedWorkingDirectory =
@@ -67,7 +74,11 @@ export class WorkspaceService {
         }
       : Utils.createEmptyTerminalSession(resolvedWorkingDirectory);
 
-    const nextTab = Utils.buildTerminalTab(nextTerminalIndex, options?.label ?? DEFAULT_TAB_LABEL);
+    const selectedTab = state.tabs.find((tab) => tab.id === selectedTabId) ?? null;
+    const nextTab = {
+      ...Utils.buildTerminalTab(nextTerminalIndex, options?.label ?? DEFAULT_TAB_LABEL),
+      tintColor: this.options.inheritSelectedTabTint ? selectedTab?.tintColor ?? null : null
+    };
 
     state.setTabs((current) => [...current, nextTab]);
     state.setPaneLayoutsByTabId((current) => ({
@@ -85,6 +96,15 @@ export class WorkspaceService {
     state.setNextTerminalIndex((value) => value + 1);
 
     return nextTab;
+  }
+
+  selectTab(tabId: string): void {
+    const state = this.store.getState();
+    if (state.selectedTabId === tabId) {
+      return;
+    }
+
+    state.setSelectedTabId(tabId);
   }
 
   /** Close a tab. If it's the last tab, close the window with a fresh workspace. */
@@ -284,12 +304,15 @@ export class WorkspaceService {
   }
 
   /** Prompt to rename a tab. */
-  renameTab(tabId: string): void {
+  renameTab(tabId: string, label?: string | null): void {
     const state = this.store.getState();
     const tab = state.tabs.find((candidate) => candidate.id === tabId);
     if (!tab) return;
+    if (tab.kind === 'settings') return;
 
-    const nextLabel = window.prompt('Rename tab', tab.customLabel?.trim() || tab.label);
+    const nextLabel = label !== undefined
+      ? label
+      : window.prompt('Rename tab', tab.customLabel?.trim() || tab.label);
     if (nextLabel === null) return;
 
     const normalized = nextLabel.trim();
@@ -313,6 +336,10 @@ export class WorkspaceService {
   /** Set which tab is the "launcher" tab. */
   setLauncherTabId(tabId: string): void {
     this.store.getState().setLauncherTabId(tabId);
+  }
+
+  removeTabFromLauncher(tabId: string): void {
+    this.store.getState().setLauncherTabId((current) => current === tabId ? null : current);
   }
 
   /** Close a single pane within a tab. */
@@ -389,6 +416,54 @@ export class WorkspaceService {
         activePaneId: paneId
       }
     }));
+  }
+
+  toggleSidebar(): void {
+    this.store.getState().setIsSidebarOpen((current) => !current);
+  }
+
+  toggleAgents(): void {
+    this.store.getState().setIsAgentsActive((current) => !current);
+  }
+
+  selectSection(sectionId: string): void {
+    this.store.getState().setActiveSectionId(sectionId);
+  }
+
+  toggleGroup(groupId: string): void {
+    this.store.getState().setExpandedGroupIds((current) => (
+      current.includes(groupId)
+        ? current.filter((id) => id !== groupId)
+        : [...current, groupId]
+    ));
+  }
+
+  openSettingsSection(sectionId = settingsDefaultSectionId): void {
+    const state = this.store.getState();
+
+    state.setTabs((current) => {
+      const hasSettingsTab = current.some((tab) => tab.id === SETTINGS_TAB_ID);
+      if (hasSettingsTab) {
+        return current;
+      }
+
+      const settingsTab = initialWorkspaceChromeTabs.find((tab) => tab.id === SETTINGS_TAB_ID) ?? {
+        id: SETTINGS_TAB_ID,
+        label: 'Settings',
+        kind: 'settings' as const
+      };
+
+      const nextTabs = [...current];
+      const insertAt = Math.min(1, nextTabs.length);
+      nextTabs.splice(insertAt, 0, settingsTab);
+      return nextTabs;
+    });
+
+    state.setActiveSectionId(sectionId);
+    if (state.expandedGroupIds.length === 0) {
+      state.setExpandedGroupIds(settingsDefaultExpandedGroupIds);
+    }
+    state.setSelectedTabId(SETTINGS_TAB_ID);
   }
 
   private async closeWindowWithFreshWorkspace(): Promise<void> {

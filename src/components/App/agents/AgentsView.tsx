@@ -2,6 +2,7 @@ import './AgentsView.css';
 import { useMemo, useState } from 'react';
 import { Search, CheckCircle2, Circle, Moon, AlertTriangle, Ban } from 'lucide-react';
 import type { WorkspaceConversation } from '../chrome/workspaceChromeTypes';
+import { useAppWindowController } from '../hooks/useAppWindowController';
 
 type ConversationGroup = 'active' | 'past';
 type StatusFilter = 'all' | 'active' | 'completed' | 'failed' | 'cancelled';
@@ -14,11 +15,11 @@ type Run = WorkspaceConversation & {
 };
 
 type AgentsViewProps = {
-  conversations: WorkspaceConversation[];
-  openConversationIds: string[];
-  selectedConversationId: string | null;
-  onNewConversation: () => void;
-  onSelectConversation: (id: string) => void;
+  conversations?: WorkspaceConversation[];
+  openConversationIds?: string[];
+  selectedConversationId?: string | null;
+  onNewConversation?: () => void;
+  onSelectConversation?: (id: string) => void;
   onClose?: () => void;
 };
 
@@ -87,14 +88,16 @@ function environmentLabel(conversation: WorkspaceConversation) {
   return conversation.branchLabel ?? cwdSegments[cwdSegments.length - 1] ?? '~';
 }
 
-export function AgentsView({
-  conversations,
-  openConversationIds,
-  selectedConversationId,
-  onNewConversation,
-  onSelectConversation,
-  onClose
-}: AgentsViewProps) {
+export function AgentsView(props: AgentsViewProps) {
+  // Standalone consumers may resolve their own controller.
+  // AppWindow must pass the shared state explicitly so the overlay stays bound to the live workspace store.
+  const app = props.onNewConversation !== undefined ? null : useAppWindowController();
+  const conversations = props.conversations ?? (app ? app.sidebar.workspaceConversations : []);
+  const openConversationIds = props.openConversationIds ?? (app ? app.sidebar.openConversationIds : []);
+  const selectedConversationId = props.selectedConversationId ?? (app ? app.sidebar.selectedOpenConversationId : null);
+  const onNewConversation = props.onNewConversation ?? (app ? app.actions.onNewConversationInNewTab : () => {});
+  const onSelectConversation = props.onSelectConversation ?? (app ? app.actions.onSelectConversation : () => {});
+  const onClose = props.onClose ?? (app ? app.actions.onToggleAgents : () => {});
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [groupFilter, setGroupFilter] = useState<GroupFilter>('all');
   const [createdFilter, setCreatedFilter] = useState<CreatedFilter>('all');

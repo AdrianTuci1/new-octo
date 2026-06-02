@@ -1,6 +1,6 @@
 import { DiffEditor } from '@monaco-editor/react';
 import { useEffect, useRef, useState } from 'react';
-import { ChevronDown, CornerDownLeft, PencilLine, Check, X, Save } from 'lucide-react';
+import { ChevronDown, CornerDownLeft, PencilLine, Check, X, Save, Server } from 'lucide-react';
 import { CodeDiffView } from '../Chat/CodeDiffView';
 import type { CommandApproval } from '../../types/terminal';
 import type { FileDiff } from '../../types/diff';
@@ -39,6 +39,7 @@ function CommandApprovalComposerContent({
   const [isAcceptMenuOpen, setIsAcceptMenuOpen] = useState(false);
   const [isEditingCommand, setIsEditingCommand] = useState(false);
   const [isEditingFileChanges, setIsEditingFileChanges] = useState(false);
+  const [remoteDontAskAgain, setRemoteDontAskAgain] = useState(false);
   const [draftCommand, setDraftCommand] = useState('command' in approval ? approval.command : '');
   const [activeDraftFileIndex, setActiveDraftFileIndex] = useState(0);
   const [draftFileDiffs, setDraftFileDiffs] = useState<FileDiff[]>(approval.kind === 'file-change' ? approval.fileDiffs : []);
@@ -102,6 +103,81 @@ function CommandApprovalComposerContent({
             {approval.continueConversationLabel ?? 'Continue current conversation'}
           </button>
         </div>
+      </section>
+    );
+  }
+
+  if (approval.kind === 'remote-cli-install') {
+    const targetLabel = approval.username
+      ? approval.host ? `${approval.username}@${approval.host}` : approval.username
+      : approval.host ?? 'this VPS';
+    const markRemotePromptDismissed = () => {
+      if (!remoteDontAskAgain || !approval.dismissStorageKey) {
+        return;
+      }
+
+      try {
+        window.localStorage.setItem(approval.dismissStorageKey, '1');
+      } catch {
+        // Session-level de-dupe in the launcher still prevents immediate repeat prompts.
+      }
+    };
+
+    return (
+      <section className="command-approval-shell remote-cli-install-shell" aria-label="Remote session experience">
+        <div className="remote-cli-install-heading">
+          <Server size={14} />
+          <span>{approval.reason ?? `Choose your Octomus experience for ${targetLabel}:`}</span>
+        </div>
+
+        <div className="remote-cli-install-options">
+          <button
+            type="button"
+            className="remote-cli-install-option primary"
+            onClick={() => {
+              markRemotePromptDismissed();
+              onAccept(approval);
+            }}
+          >
+            <span className="remote-cli-install-option-copy">
+              <span className="remote-cli-install-option-title">
+                Install Octomus CLI
+                <span className="remote-cli-install-badge">Recommended</span>
+              </span>
+              <span className="remote-cli-install-option-description">
+                Enable richer agent features, workspace context, file review, and smarter command completions on this VPS.
+              </span>
+            </span>
+            <span className="remote-cli-install-enter" aria-hidden="true">
+              <CornerDownLeft size={14} />
+            </span>
+          </button>
+
+          <button
+            type="button"
+            className="remote-cli-install-option"
+            onClick={() => {
+              markRemotePromptDismissed();
+              onReject?.(approval);
+            }}
+          >
+            <span className="remote-cli-install-option-copy">
+              <span className="remote-cli-install-option-title">Continue without installing</span>
+              <span className="remote-cli-install-option-description">
+                You can keep using the remote terminal, with fewer Octomus-assisted capabilities.
+              </span>
+            </span>
+          </button>
+        </div>
+
+        <label className="remote-cli-install-checkbox">
+          <input
+            type="checkbox"
+            checked={remoteDontAskAgain}
+            onChange={(event) => setRemoteDontAskAgain(event.target.checked)}
+          />
+          <span>Don't ask me again for this VPS</span>
+        </label>
       </section>
     );
   }
@@ -391,6 +467,10 @@ function getApprovalComposerKey(approval: CommandApproval) {
 
   if (approval.kind === 'file-change') {
     return `file:${approval.toolCallId ?? ''}:${approval.fileDiffs.map((diff) => `${diff.filePath}:${diff.diffType.kind}`).join('|')}`;
+  }
+
+  if (approval.kind === 'remote-cli-install') {
+    return `remote-cli-install:${approval.username ?? ''}:${approval.host ?? ''}:${approval.dismissStorageKey ?? ''}`;
   }
 
   return `command:${approval.toolCallId ?? ''}:${approval.command}`;

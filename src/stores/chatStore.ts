@@ -1,17 +1,24 @@
 import { create } from 'zustand';
-import type { ChatMessage } from '../types/chat';
+import type { ChatMessage, ChatAttachment } from '../types/chat';
+import type { ComposerMode } from '../types/ui';
 
-interface ChatState {
+export interface ChatState {
   activeConversationId: string | null;
   activeRunId: string | null;
   query: string;
   messages: ChatMessage[];
-  
+  attachments: ChatAttachment[];
+  modeLock: ComposerMode | null;
+  autodetectedShellLatch: boolean;
+
   // Actions
   setActiveConversationId: (conversationId: string | null) => void;
   setActiveRunId: (runId: string | null) => void;
   setQuery: (query: string) => void;
   setMessages: (messages: ChatMessage[] | ((prev: ChatMessage[]) => ChatMessage[])) => void;
+  setAttachments: (attachments: ChatAttachment[]) => void;
+  setModeLock: (mode: ComposerMode | null) => void;
+  setAutodetectedShellLatch: (latch: boolean) => void;
   addMessage: (message: ChatMessage) => void;
   updateMessage: (messageId: string, updater: (message: ChatMessage) => ChatMessage) => void;
   appendToMessage: (messageId: string, text: string) => boolean;
@@ -23,15 +30,24 @@ export const useChatStore = create<ChatState>((set) => ({
   activeRunId: null,
   query: '',
   messages: [],
+  attachments: [],
+  modeLock: null,
+  autodetectedShellLatch: false,
 
   setActiveConversationId: (conversationId) => set({ activeConversationId: conversationId }),
   setActiveRunId: (runId) => set({ activeRunId: runId }),
 
   setQuery: (query) => set({ query }),
-  
+
   setMessages: (messages) => set((state) => ({
     messages: typeof messages === 'function' ? messages(state.messages) : messages
   })),
+
+  setAttachments: (attachments) => set({ attachments }),
+
+  setModeLock: (mode) => set({ modeLock: mode }),
+
+  setAutodetectedShellLatch: (latch) => set({ autodetectedShellLatch: latch }),
 
   addMessage: (message) => set((state) => ({
     messages: [...state.messages, message]

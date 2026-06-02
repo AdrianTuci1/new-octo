@@ -2,24 +2,14 @@ import type { StoreApi } from 'zustand/vanilla';
 import { consumeShellModeActivator, isImmediateShellCommandCandidate } from '../../lib';
 import type { ChatMessage } from '../../types/chat';
 import type { ComposerMode } from '../../types/ui';
-
-export interface ChatStoreState {
-  query: string;
-  messages: ChatMessage[];
-  modeLock: ComposerMode | null;
-  autodetectedShellLatch: boolean;
-  setQuery: (query: string) => void;
-  setMessages: (messages: ChatMessage[]) => void;
-  setModeLock: (mode: ComposerMode | null) => void;
-  setAutodetectedShellLatch: (latch: boolean) => void;
-}
+import type { ChatState } from '../../stores/chatStore';
 
 /**
  * Provides composer intelligence for the Launcher surface — mode detection,
  * shell activator checking, and prediction/recommendation stubs.
  */
 export class LauncherComposerService {
-  constructor(private readonly store: StoreApi<ChatStoreState>) {}
+  constructor(private readonly store: StoreApi<ChatState>) {}
 
   /**
    * Detect the composer mode based on context.

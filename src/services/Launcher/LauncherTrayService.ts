@@ -1,44 +1,40 @@
 import type { StoreApi } from 'zustand/vanilla';
-import type { LauncherStoreState } from '../../stores/launcherStore';
+import type { UIState } from '../../stores/uiStore';
+import type { TrayContentMode } from '../../types/ui';
 
 /**
  * Manages tray open/close state and active tray mode for the Launcher.
- * Mirrors AgentTrayService but uses launcherStore instead of AgentStore.
+ * Uses uiStore (the global tray state) instead of launcherStore.
  */
 export class LauncherTrayService {
-  constructor(private readonly store: StoreApi<LauncherStoreState>) {}
+  constructor(private readonly store: StoreApi<UIState>) {}
 
-  toggleTray(mode: LauncherStoreState['activeTrayMode']): void {
+  toggleTray(mode: TrayContentMode): void {
     const state = this.store.getState();
-    if (state.isTrayOpen && state.activeTrayMode === mode) {
-      state.setIsTrayOpen(false);
+    if (state.trayMode !== 'closed' && state.trayMode === mode) {
+      this.store.setState({ trayMode: 'closed', isExpanded: false });
     } else {
-      state.setActiveTrayMode(mode);
-      state.setIsTrayOpen(true);
+      this.store.setState({ trayMode: mode, isExpanded: true });
     }
   }
 
   closeTray(): void {
-    this.store.getState().setIsTrayOpen(false);
+    this.store.setState({ trayMode: 'closed', isExpanded: false });
   }
 
   openHistory(): void {
-    this.store.getState().setActiveTrayMode('history');
-    this.store.getState().setIsTrayOpen(true);
+    this.store.setState({ trayMode: 'history', isExpanded: true });
   }
 
   openModels(): void {
-    this.store.getState().setActiveTrayMode('models');
-    this.store.getState().setIsTrayOpen(true);
+    this.store.setState({ trayMode: 'models', isExpanded: true });
   }
 
   openHelp(): void {
-    this.store.getState().setActiveTrayMode('help');
-    this.store.getState().setIsTrayOpen(true);
+    this.store.setState({ trayMode: 'help', isExpanded: true });
   }
 
   openConversations(): void {
-    this.store.getState().setActiveTrayMode('conversations');
-    this.store.getState().setIsTrayOpen(true);
+    this.store.setState({ trayMode: 'conversations', isExpanded: true });
   }
 }

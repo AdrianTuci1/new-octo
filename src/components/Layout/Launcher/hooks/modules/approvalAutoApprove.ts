@@ -23,7 +23,7 @@ export function shouldAutoApprovePendingApproval(params: {
 }) {
   const { approval, activeProfile, autoApproveAgentLoop } = params;
 
-  if (!approval || approval.kind === 'topic-change') {
+  if (!approval || approval.kind === 'topic-change' || approval.kind === 'remote-cli-install') {
     return false;
   }
 

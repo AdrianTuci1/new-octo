@@ -6,6 +6,15 @@ import { buildConversationLinkTitle } from '../helpers';
 import type { LauncherProps } from '../types';
 import { shouldAutoApprovePendingApproval } from './approvalAutoApprove';
 
+const REMOTE_CLI_INSTALL_COMMAND = [
+  'octomus_dir="$HOME/.octomus/bin"',
+  'octomus_url="${OCTOMUS_CLI_URL:-https://get.octomus.dev/linux/octomus-cli}"',
+  'octomus_bin="$octomus_dir/octomus-cli"',
+  'if [ ! -x "$octomus_bin" ]; then mkdir -p "$octomus_dir"; tmp="$octomus_bin.tmp.$$"; if command -v curl >/dev/null 2>&1; then curl -fsSL "$octomus_url" -o "$tmp" && chmod 0755 "$tmp" && mv "$tmp" "$octomus_bin" || rm -f "$tmp"; elif command -v wget >/dev/null 2>&1; then wget -qO "$tmp" "$octomus_url" && chmod 0755 "$tmp" && mv "$tmp" "$octomus_bin" || rm -f "$tmp"; else echo "Octomus CLI install skipped: curl or wget is required" >&2; fi; fi',
+  'export PATH="$octomus_dir:$PATH"',
+  'octomus-cli --version'
+].join('; ');
+
 export type LauncherEffectsParams = {
   store: any;
   props: LauncherProps;
@@ -42,6 +51,7 @@ type LauncherEffectContext = {
   suppressComposerSurfaceReportRef: React.MutableRefObject<boolean>;
   lastReportedComposerSurfaceRef: React.MutableRefObject<'agent' | 'terminal' | null>;
   lastReportedWorkingDirectoryRef: React.MutableRefObject<string | null>;
+  remoteCliPromptedKeysRef: React.MutableRefObject<Set<string>>;
 };
 
 export function useLauncherEffects(params: LauncherEffectsParams) {
@@ -72,6 +82,7 @@ export function useLauncherEffects(params: LauncherEffectsParams) {
   const suppressComposerSurfaceReportRef = useRef(false);
   const lastReportedComposerSurfaceRef = useRef<'agent' | 'terminal' | null>(null);
   const lastReportedWorkingDirectoryRef = useRef<string | null>(null);
+  const remoteCliPromptedKeysRef = useRef<Set<string>>(new Set());
 
   const context: LauncherEffectContext = {
     store,
@@ -95,13 +106,15 @@ export function useLauncherEffects(params: LauncherEffectsParams) {
     didPromptModelSetupRef,
     suppressComposerSurfaceReportRef,
     lastReportedComposerSurfaceRef,
-    lastReportedWorkingDirectoryRef
+    lastReportedWorkingDirectoryRef,
+    remoteCliPromptedKeysRef
   };
 
   useHistorySelectionSync(context);
   useVisibleModelSelectionSync(context);
   useInitialComposerSurfaceSync(context);
   usePendingAutoSubmit(context);
+  useRemoteCliInstallPrompt(context);
   usePendingApprovalAutoAccept(context);
   useTerminalAutoDetectSettingSync(context);
   useComposerSurfaceReporter(context);
@@ -153,7 +166,9 @@ function useInitialComposerSurfaceSync({
 
     suppressComposerSurfaceReportRef.current = true;
     store.setComposerSurface(initialComposerSurface);
-  }, [initialComposerSurface, store.composerSurface, store.setComposerSurface, suppressComposerSurfaceReportRef]);
+    // Only react to parent-driven changes, not internal store mutations.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialComposerSurface]);
 }
 
 function usePendingAutoSubmit({
@@ -172,6 +187,57 @@ function usePendingAutoSubmit({
       void runtime.chat.submitQuery();
     });
   }, [refs.pendingAutoSubmitPromptRef, runtime.chat.query, runtime.chat.submitQuery, store.composerSurface]);
+}
+
+function useRemoteCliInstallPrompt({
+  remoteCliPromptedKeysRef,
+  runtime
+}: LauncherEffectContext) {
+  useEffect(() => {
+    const remoteSession = runtime.activeRemoteSession;
+    if (!remoteSession || runtime.resolvedPendingApproval) {
+      return;
+    }
+
+    const targetKey = remoteSession.profileId
+      || [remoteSession.username, remoteSession.host].filter(Boolean).join('@')
+      || 'custom-vm';
+    const promptKey = `remote-cli-install:${targetKey}`;
+    const storageKey = `octomus.remoteCliInstallPrompt.${targetKey}`;
+
+    if (remoteCliPromptedKeysRef.current.has(promptKey)) {
+      return;
+    }
+
+    try {
+      if (window.localStorage.getItem(storageKey) === '1') {
+        remoteCliPromptedKeysRef.current.add(promptKey);
+        return;
+      }
+    } catch {
+      // localStorage can be unavailable in restricted webviews; session-level de-dupe still applies.
+    }
+
+    remoteCliPromptedKeysRef.current.add(promptKey);
+    const targetLabel = remoteSession.username
+      ? remoteSession.host ? `${remoteSession.username}@${remoteSession.host}` : remoteSession.username
+      : remoteSession.host ?? 'this VPS';
+
+    runtime.setResolvedPendingApproval({
+      kind: 'remote-cli-install',
+      command: REMOTE_CLI_INSTALL_COMMAND,
+      username: remoteSession.username,
+      host: remoteSession.host,
+      provider: remoteSession.provider,
+      dismissStorageKey: storageKey,
+      reason: `Choose your Octomus experience for ${targetLabel}:`
+    });
+  }, [
+    remoteCliPromptedKeysRef,
+    runtime.activeRemoteSession,
+    runtime.resolvedPendingApproval,
+    runtime.setResolvedPendingApproval
+  ]);
 }
 
 function usePendingApprovalAutoAccept({
@@ -200,7 +266,9 @@ function usePendingApprovalAutoAccept({
       ? `file:${approval.toolCallId ?? ''}:${approval.fileDiffs.map((diff: any) => diff.filePath).join('|')}`
       : approval.kind === 'topic-change'
         ? `topic:${approval.reason ?? ''}`
-        : `command:${approval.toolCallId ?? ''}:${approval.command}`;
+        : approval.kind === 'remote-cli-install'
+          ? `remote-cli-install:${approval.username ?? ''}:${approval.host ?? ''}`
+          : `command:${approval.toolCallId ?? ''}:${approval.command}`;
 
     if (!shouldAutoApprove) {
       lastAutoApprovedKeyRef.current = null;

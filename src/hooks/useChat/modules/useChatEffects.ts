@@ -5,6 +5,7 @@ import type { useChatState } from './useChatState';
 import { ensureAgentEventBridge, setAssistantRegistration, deleteOwnerRegistrations } from '../bridge';
 import { useMemoryStore } from '../../../stores/memoryStore';
 import { sameMessages } from '../helpers';
+import type { TerminalCommandBlock } from '../../../types/terminal';
 
 type UseChatEffectsProps = {
   options: UseChatOptions;
@@ -22,6 +23,22 @@ type UseChatEffectsProps = {
   onCloudAgentLaunchRef: React.MutableRefObject<UseChatOptions['onCloudAgentLaunch']>;
 };
 
+function terminalBlocksSignature(blocks: TerminalCommandBlock[] | undefined) {
+  return (blocks ?? []).map((block) => [
+    block.id,
+    block.command,
+    block.output,
+    block.startedAt,
+    block.finishedAt ?? '',
+    block.exitCode ?? '',
+    block.status,
+    block.presentation ?? '',
+    block.source ?? '',
+    block.conversationId ?? '',
+    block.conversationTitle ?? ''
+  ].join('\u0000')).join('\u0001');
+}
+
 export function useChatEffects({
   options,
   state,
@@ -33,7 +50,13 @@ export function useChatEffects({
   onWorkspaceFileReadRef,
   onCloudAgentLaunchRef
 }: UseChatEffectsProps) {
+  const onConversationLoadedRef = useRef(options.onConversationLoaded);
+
+  useEffect(() => {
+    onConversationLoadedRef.current = options.onConversationLoaded;
+  }, [options.onConversationLoaded]);
   const conversationRecord = useMemoryStore((s: any) => options.conversationId ? s.conversationRecords[options.conversationId] : undefined);
+  const terminalBlocksSaveSignature = terminalBlocksSignature(options.terminalBlocks);
 
   useEffect(() => {
     void ensureAgentEventBridge();
@@ -135,6 +158,10 @@ export function useChatEffects({
       }
 
       state.setMessages(conversation?.messages ?? []);
+
+      if (conversation && onConversationLoadedRef.current) {
+        onConversationLoadedRef.current(conversation);
+      }
     });
 
     return () => {
@@ -195,5 +222,5 @@ export function useChatEffects({
     return () => {
       window.clearTimeout(timeoutId);
     };
-  }, [state.messages, options.terminalBlocks?.length, actions.saveCurrentConversation]);
+  }, [state.messages, terminalBlocksSaveSignature, options.terminalBlocks?.length, actions.saveCurrentConversation]);
 }

@@ -1,4 +1,4 @@
-import type { AppWindowStoreApi } from '../hooks/useAppWindow/store';
+import type { AppWindowStoreApi } from '../appWindow/store';
 import type { WorkspaceService } from './WorkspaceService';
 import * as Utils from '../utils';
 
