@@ -1,3 +1,4 @@
+pub mod types;
 pub mod chat;
 pub mod launcher;
 pub mod runtime;
@@ -7,13 +8,15 @@ pub mod shell;
 pub mod agent;
 pub mod memory;
 pub mod model_selection;
+pub mod terminal_blocks;
 
-pub use chat::*;
+pub use chat::{ChatState, ChatStore, Message, MessageBlock, MessageRole};
 pub use launcher::*;
 pub use runtime::*;
 pub use ui::*;
 pub use editor::*;
-pub use shell::*;
+pub use shell::{ShellState, ShellStore, TerminalSessionState, WorkspaceChromeTab, WorkspacePaneLayout};
 pub use agent::*;
 pub use memory::*;
 pub use model_selection::*;
+pub use terminal_blocks::*;

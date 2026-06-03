@@ -2,6 +2,10 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
+use super::types::{
+    CommandApproval, TerminalBlockSharedMeta, TerminalCommandBlock, TerminalSessionTarget,
+};
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct WorkspaceChromeTab {
     pub id: String,
@@ -20,14 +24,14 @@ pub struct TerminalSessionState {
     pub working_directory: Option<String>,
     pub terminal_session_id: Option<String>,
     pub agent_terminal_session_id: Option<String>,
-    pub terminal_target: Option<serde_json::Value>,
-    pub agent_terminal_target: Option<serde_json::Value>,
-    pub pending_approval: Option<serde_json::Value>,
-    pub terminal_block_meta_by_id: HashMap<String, serde_json::Value>,
-    pub agent_terminal_block_meta_by_id: HashMap<String, serde_json::Value>,
-    pub terminal_blocks: Vec<serde_json::Value>,
-    pub agent_terminal_blocks: Vec<serde_json::Value>,
-    pub synthetic_blocks: Vec<serde_json::Value>,
+    pub terminal_target: Option<TerminalSessionTarget>,
+    pub agent_terminal_target: Option<TerminalSessionTarget>,
+    pub pending_approval: Option<CommandApproval>,
+    pub terminal_block_meta_by_id: HashMap<String, TerminalBlockSharedMeta>,
+    pub agent_terminal_block_meta_by_id: HashMap<String, TerminalBlockSharedMeta>,
+    pub terminal_blocks: Vec<TerminalCommandBlock>,
+    pub agent_terminal_blocks: Vec<TerminalCommandBlock>,
+    pub synthetic_blocks: Vec<TerminalCommandBlock>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -59,7 +63,7 @@ impl ShellState {
     pub fn new() -> Self {
         let default_tab = WorkspaceChromeTab {
             id: "terminal-main".to_string(),
-            label: "Terminal".to_string(),
+            label: "~".to_string(),
             kind: "terminal".to_string(),
             ..Default::default()
         };
@@ -97,6 +101,22 @@ impl ShellState {
             open_past_conversation_baseline_by_id: HashMap::new(),
         }
     }
+
+    pub fn set_tabs(&mut self, tabs: Vec<WorkspaceChromeTab>) { self.tabs = tabs; }
+    pub fn set_selected_tab_id(&mut self, id: String) { self.selected_tab_id = id; }
+    pub fn set_launcher_tab_id(&mut self, id: Option<String>) { self.launcher_tab_id = id; }
+    pub fn set_pane_layouts_by_tab_id(&mut self, layouts: HashMap<String, WorkspacePaneLayout>) { self.pane_layouts_by_tab_id = layouts; }
+    pub fn set_pane_session_bindings_by_pane_id(&mut self, bindings: HashMap<String, String>) { self.pane_session_bindings_by_pane_id = bindings; }
+    pub fn set_active_section_id(&mut self, id: String) { self.active_section_id = id; }
+    pub fn set_expanded_group_ids(&mut self, ids: Vec<String>) { self.expanded_group_ids = ids; }
+    pub fn set_is_sidebar_open(&mut self, open: bool) { self.is_sidebar_open = open; }
+    pub fn set_next_terminal_index(&mut self, index: usize) { self.next_terminal_index = index; }
+    pub fn set_terminal_sessions(&mut self, sessions: HashMap<String, TerminalSessionState>) { self.terminal_sessions = sessions; }
+    pub fn set_pane_startup_commands_by_pane_id(&mut self, commands: HashMap<String, Vec<String>>) { self.pane_startup_commands_by_pane_id = commands; }
+    pub fn set_path_context(&mut self, ctx: Option<serde_json::Value>) { self.path_context = ctx; }
+    pub fn set_is_agents_active(&mut self, active: bool) { self.is_agents_active = active; }
+    pub fn set_is_spotlight_visible(&mut self, visible: bool) { self.is_spotlight_visible = visible; }
+    pub fn set_open_past_conversation_baseline_by_id(&mut self, baselines: HashMap<String, usize>) { self.open_past_conversation_baseline_by_id = baselines; }
 }
 
 #[derive(Debug, Clone)]
@@ -105,27 +125,9 @@ pub struct ShellStore {
 }
 
 impl ShellStore {
-    pub fn new() -> Self {
-        Self {
-            state: Arc::new(Mutex::new(ShellState::new())),
-        }
-    }
-
-    pub fn with_state<F, R>(&self, f: F) -> R
-    where
-        F: FnOnce(&mut ShellState) -> R,
-    {
-        let mut guard = self.state.lock().unwrap();
-        f(&mut guard)
-    }
-
-    pub fn get_state(&self) -> ShellState {
-        self.state.lock().unwrap().clone()
-    }
+    pub fn new() -> Self { Self { state: Arc::new(Mutex::new(ShellState::new())) } }
+    pub fn with_state<F, R>(&self, f: F) -> R where F: FnOnce(&mut ShellState) -> R { let mut guard = self.state.lock().unwrap(); f(&mut guard) }
+    pub fn get_state(&self) -> ShellState { self.state.lock().unwrap().clone() }
 }
 
-impl Default for ShellStore {
-    fn default() -> Self {
-        Self::new()
-    }
-}
+impl Default for ShellStore { fn default() -> Self { Self::new() } }

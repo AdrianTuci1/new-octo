@@ -1,51 +1,9 @@
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct ModelSpec {
-    pub id: String,
-    pub model_id: Option<String>,
-    pub label: String,
-    pub provider: String,
-    pub provider_id: Option<String>,
-    pub note: Option<String>,
-    pub base_url: Option<String>,
-    pub supports_attachments: Option<bool>,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct AgentSourceModel {
-    pub id: String,
-    pub source_kind: String,
-    pub label: String,
-    pub provider: String,
-    pub provider_id: Option<String>,
-    pub model_id: String,
-    pub note: String,
-    pub supports_attachments: bool,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct AgentModelSourceStatus {
-    pub kind: String,
-    pub label: String,
-    pub available: bool,
-    pub connected: bool,
-    pub binary_path: Option<String>,
-    pub auth_source: Option<String>,
-    pub message: Option<String>,
-    pub models: Vec<AgentSourceModel>,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct AgentProviderStatus {
-    pub provider: String,
-    pub provider_id: String,
-    pub base_url: String,
-    pub model_id: String,
-    pub has_api_key: bool,
-    pub source: String,
-}
+use super::types::{
+    AgentModelSourceStatus, AgentProviderStatus, ModelSpec,
+};
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ModelSelectionState {
@@ -65,7 +23,7 @@ pub struct ModelSelectionState {
 impl ModelSelectionState {
     pub fn new() -> Self {
         Self {
-            selected_model_label: "You don't have any model".to_string(),
+            selected_model_label: "You do not have any model".to_string(),
             ..Default::default()
         }
     }
@@ -75,42 +33,25 @@ impl ModelSelectionState {
         provider_status: Option<AgentProviderStatus>,
         source_statuses: Vec<AgentModelSourceStatus>,
         models: Vec<ModelSpec>,
-        view_model: std::collections::HashMap<String, serde_json::Value>,
+        selected_model_id: Option<String>,
+        selected_model: Option<ModelSpec>,
+        selected_model_api_id: Option<String>,
+        selected_model_label: String,
+        selected_model_supports_attachments: bool,
+        is_configured: bool,
+        requires_model_setup: bool,
     ) {
         self.provider_status = provider_status;
         self.source_statuses = source_statuses;
         self.models = models;
         self.is_provider_status_loaded = true;
-        if let Some(v) = view_model.get("selectedModelId") {
-            if let Some(s) = v.as_str() {
-                self.selected_model_id = Some(s.to_string());
-            }
-        }
-        if let Some(v) = view_model.get("selectedModelApiId") {
-            if let Some(s) = v.as_str() {
-                self.selected_model_api_id = Some(s.to_string());
-            }
-        }
-        if let Some(v) = view_model.get("selectedModelLabel") {
-            if let Some(s) = v.as_str() {
-                self.selected_model_label = s.to_string();
-            }
-        }
-        if let Some(v) = view_model.get("selectedModelSupportsAttachments") {
-            if let Some(b) = v.as_bool() {
-                self.selected_model_supports_attachments = b;
-            }
-        }
-        if let Some(v) = view_model.get("isConfigured") {
-            if let Some(b) = v.as_bool() {
-                self.is_configured = b;
-            }
-        }
-        if let Some(v) = view_model.get("requiresModelSetup") {
-            if let Some(b) = v.as_bool() {
-                self.requires_model_setup = b;
-            }
-        }
+        self.selected_model_id = selected_model_id;
+        self.selected_model = selected_model;
+        self.selected_model_api_id = selected_model_api_id;
+        self.selected_model_label = selected_model_label;
+        self.selected_model_supports_attachments = selected_model_supports_attachments;
+        self.is_configured = is_configured;
+        self.requires_model_setup = requires_model_setup;
     }
 
     pub fn set_selected_model_id(&mut self, model_id: Option<String>) {
@@ -124,27 +65,9 @@ pub struct ModelSelectionStore {
 }
 
 impl ModelSelectionStore {
-    pub fn new() -> Self {
-        Self {
-            state: Arc::new(Mutex::new(ModelSelectionState::new())),
-        }
-    }
-
-    pub fn with_state<F, R>(&self, f: F) -> R
-    where
-        F: FnOnce(&mut ModelSelectionState) -> R,
-    {
-        let mut guard = self.state.lock().unwrap();
-        f(&mut guard)
-    }
-
-    pub fn get_state(&self) -> ModelSelectionState {
-        self.state.lock().unwrap().clone()
-    }
+    pub fn new() -> Self { Self { state: Arc::new(Mutex::new(ModelSelectionState::new())) } }
+    pub fn with_state<F, R>(&self, f: F) -> R where F: FnOnce(&mut ModelSelectionState) -> R { let mut guard = self.state.lock().unwrap(); f(&mut guard) }
+    pub fn get_state(&self) -> ModelSelectionState { self.state.lock().unwrap().clone() }
 }
 
-impl Default for ModelSelectionStore {
-    fn default() -> Self {
-        Self::new()
-    }
-}
+impl Default for ModelSelectionStore { fn default() -> Self { Self::new() } }

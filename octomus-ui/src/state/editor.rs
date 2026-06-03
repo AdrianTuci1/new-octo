@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 pub enum EditorTabPresentation {
     #[default]
     File,
@@ -26,10 +26,27 @@ pub struct EditorState {
     pub active_tab_id: Option<String>,
 }
 
+fn get_language_from_path(path: &str) -> Option<String> {
+    let ext = path.split(".").last()?.to_lowercase();
+    let lang = match ext.as_str() {
+        "ts" | "tsx" => "typescript",
+        "js" | "jsx" => "javascript",
+        "json" => "json",
+        "md" => "markdown",
+        "css" => "css",
+        "html" => "html",
+        "rs" => "rust",
+        "py" => "python",
+        "go" => "go",
+        "sh" => "shell",
+        "yml" | "yaml" => "yaml",
+        _ => "plaintext",
+    };
+    Some(lang.to_string())
+}
+
 impl EditorState {
-    pub fn new() -> Self {
-        Self::default()
-    }
+    pub fn new() -> Self { Self::default() }
 
     pub fn open_file(
         &mut self,
@@ -60,11 +77,11 @@ impl EditorState {
 
         let new_tab = EditorTab {
             id: format!("tab_{}", rand::random::<u64>()),
-            path,
+            path: path.clone(),
             name,
             is_dirty: false,
-            content,
-            language: None,
+            content: content.clone(),
+            language: get_language_from_path(&path),
             presentation,
             read_only,
         };
@@ -76,12 +93,7 @@ impl EditorState {
     }
 
     pub fn close_tab(&mut self, id: &str) {
-        let new_tabs: Vec<EditorTab> = self
-            .tabs
-            .iter()
-            .filter(|t| t.id != id)
-            .cloned()
-            .collect();
+        let new_tabs: Vec<EditorTab> = self.tabs.iter().filter(|t| t.id != id).cloned().collect();
         if self.active_tab_id.as_deref() == Some(id) {
             self.active_tab_id = new_tabs.last().map(|t| t.id.clone());
         }
@@ -97,21 +109,14 @@ impl EditorState {
         self.active_tab_id = Some(id);
     }
 
-    pub fn update_content(&mut self,
-        id: &str,
-        content: String,
-    ) {
+    pub fn update_content(&mut self, id: &str, content: String) {
         if let Some(tab) = self.tabs.iter_mut().find(|t| t.id == id) {
             tab.content = Some(content);
             tab.is_dirty = true;
         }
     }
 
-    pub fn set_dirty(
-        &mut self,
-        id: &str,
-        is_dirty: bool,
-    ) {
+    pub fn set_dirty(&mut self, id: &str, is_dirty: bool) {
         if let Some(tab) = self.tabs.iter_mut().find(|t| t.id == id) {
             tab.is_dirty = is_dirty;
         }
@@ -124,27 +129,9 @@ pub struct EditorStore {
 }
 
 impl EditorStore {
-    pub fn new() -> Self {
-        Self {
-            state: Arc::new(Mutex::new(EditorState::new())),
-        }
-    }
-
-    pub fn with_state<F, R>(&self, f: F) -> R
-    where
-        F: FnOnce(&mut EditorState) -> R,
-    {
-        let mut guard = self.state.lock().unwrap();
-        f(&mut guard)
-    }
-
-    pub fn get_state(&self) -> EditorState {
-        self.state.lock().unwrap().clone()
-    }
+    pub fn new() -> Self { Self { state: Arc::new(Mutex::new(EditorState::new())) } }
+    pub fn with_state<F, R>(&self, f: F) -> R where F: FnOnce(&mut EditorState) -> R { let mut guard = self.state.lock().unwrap(); f(&mut guard) }
+    pub fn get_state(&self) -> EditorState { self.state.lock().unwrap().clone() }
 }
 
-impl Default for EditorStore {
-    fn default() -> Self {
-        Self::new()
-    }
-}
+impl Default for EditorStore { fn default() -> Self { Self::new() } }

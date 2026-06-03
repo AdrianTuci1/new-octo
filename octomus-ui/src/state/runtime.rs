@@ -28,9 +28,13 @@ pub struct RuntimeState {
 }
 
 impl RuntimeState {
-    pub fn new() -> Self {
-        Self::default()
-    }
+    pub fn new() -> Self { Self::default() }
+
+    pub fn set_working_directory(&mut self, wd: WorkingDirectory) { self.working_directory = wd; }
+    pub fn set_git_context(&mut self, ctx: GitContext) { self.git_context = ctx; }
+    pub fn set_terminal_cwd(&mut self, cwd: Option<String>) { self.terminal_cwd = cwd; }
+    pub fn set_active_surface_working_directory(&mut self, path: Option<String>) { self.active_surface_working_directory = path; }
+    pub fn set_runtime_context(&mut self, ctx: Option<serde_json::Value>) { self.runtime_context = ctx; }
 }
 
 #[derive(Debug, Clone)]
@@ -39,27 +43,9 @@ pub struct RuntimeStore {
 }
 
 impl RuntimeStore {
-    pub fn new() -> Self {
-        Self {
-            state: Arc::new(Mutex::new(RuntimeState::new())),
-        }
-    }
-
-    pub fn with_state<F, R>(&self, f: F) -> R
-    where
-        F: FnOnce(&mut RuntimeState) -> R,
-    {
-        let mut guard = self.state.lock().unwrap();
-        f(&mut guard)
-    }
-
-    pub fn get_state(&self) -> RuntimeState {
-        self.state.lock().unwrap().clone()
-    }
+    pub fn new() -> Self { Self { state: Arc::new(Mutex::new(RuntimeState::new())) } }
+    pub fn with_state<F, R>(&self, f: F) -> R where F: FnOnce(&mut RuntimeState) -> R { let mut guard = self.state.lock().unwrap(); f(&mut guard) }
+    pub fn get_state(&self) -> RuntimeState { self.state.lock().unwrap().clone() }
 }
 
-impl Default for RuntimeStore {
-    fn default() -> Self {
-        Self::new()
-    }
-}
+impl Default for RuntimeStore { fn default() -> Self { Self::new() } }
