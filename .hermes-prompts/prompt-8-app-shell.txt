@@ -1,0 +1,51 @@
+Repo: AdrianTuci1/new-octo
+Base branch: codex/launcher-context-refactor
+Task: Port App shell: ShellWindow, drawers, agent panel, editor 1:1
+
+~> git clone https://oauth2:${GITHUB_TOKEN}@github.com/AdrianTuci1/new-octo.git /tmp/repo
+~> cd /tmp/repo
+~> git checkout codex/launcher-context-refactor
+~> git checkout -b hermes/ui-app-shell
+
+---
+
+CRITICAL: READ every file, PORT 1:1. This is the MAIN app assembly.
+
+READ src/views/Shell/ShellWindow.tsx → octomus-ui/src/app.rs
+  - Full ShellWindow layout: WorkspaceTopbar, sidebar, main content
+  - Settings view vs Launcher view vs panel placeholder
+  - Agents overlay, keyboard shortcuts drawer
+  - Pane tree rendering (horizontal/vertical splits with resize handles)
+  - Appearance runtime (theme, font, zoom, opacity)
+  - Tab management (create, close, select, move, rename)
+  - Full pane splitting logic
+
+READ src/App.tsx → octomus-ui/src/main.rs update
+  - Entry point: onboarding → ShellWindow or AgentPanel
+  - Panel mode routing (shell/launcher/settings/onboarding)
+
+READ src/components/App/drawers/AppWindowDrawers.tsx → octomus-ui/src/chrome/drawers.rs
+  - Editor drawer, keyboard shortcuts drawer
+
+READ src/views/Agent/AgentPanel.tsx → octomus-ui/src/windows/agent_panel.rs
+  - Topbar, agent panel content
+
+READ src/components/App/agents/AgentsView.tsx → octomus-ui/src/chrome/agents_view.rs
+
+Editor integration:
+READ src/components/Editor/* → octomus-ui/src/editor/mod.rs
+  - Editor tabs, content area, line numbers, scroll, selection
+  - Integrate with ShellWindow's editor state
+
+Terminal widget integration:
+READ octomus-ui/src/terminal/mod.rs → Update to render real terminal output
+
+Update octomus-ui/src/main.rs:
+  - eframe startup with proper options
+  - Theme initialization
+  - Window title, size, resizable
+
+~> cargo check -p octomus-ui 2>&1 | tail -20
+~> git add .
+~> git commit -m "app-shell: port ShellWindow, drawers, agents, editor 1:1"
+~> git push origin hermes/ui-app-shell

@@ -1,0 +1,47 @@
+Repo: AdrianTuci1/new-octo
+Base branch: codex/launcher-context-refactor
+Task: Port ALL settings sections + App chrome (topbar, workspace sidebar) 1:1
+
+~> git clone https://oauth2:${GITHUB_TOKEN}@github.com/AdrianTuci1/new-octo.git /tmp/repo
+~> cd /tmp/repo
+~> git checkout codex/launcher-context-refactor
+~> git checkout -b hermes/ui-sections-chrome
+
+---
+
+CRITICAL: READ every file, PORT 1:1. Match ALL form fields, buttons, layouts.
+
+Settings sections (READ src/components/App/settings/sections/*):
+READ AccountSection.tsx → octomus-ui/src/settings/sections/profile.rs
+  - Avatar, display name, workspace identity. Match ALL fields.
+READ AgentSection.tsx → octomus-ui/src/settings/sections/agent.rs
+  - Agent configuration: default model, task routing, tool settings
+READ AppearanceSection.tsx → octomus-ui/src/settings/sections/appearance.rs
+  - Theme picker, font settings, zoom, opacity, cursor style
+READ KeyboardShortcutsSection.tsx → octomus-ui/src/settings/sections/keyboard.rs
+READ MCPServersSection.tsx → octomus-ui/src/settings/sections/mcp.rs
+READ KnowledgeSection.tsx → octomus-ui/src/settings/sections/knowledge.rs
+READ ProfilesSection.tsx → octomus-ui/src/settings/sections/profiles.rs
+READ ThirdPartyCliAgentsSection.tsx → octomus-ui/src/settings/sections/third_party_cli.rs
+READ CloudCredentialsSection.tsx → octomus-ui/src/settings/sections/cloud_credentials.rs
+READ CloudTerminalsSection.tsx → octomus-ui/src/settings/sections/cloud.rs
+READ CodeSettingsSections.tsx → octomus-ui/src/settings/sections/code.rs
+READ SectionPlaceholder.tsx → octomus-ui/src/settings/sections/placeholder.rs
+READ SettingsPrimitives.tsx → octomus-ui/src/settings/sections/primitives.rs
+
+App Chrome (READ src/components/App/chrome/*):
+READ WorkspaceTopbar.tsx → octomus-ui/src/chrome/topbar.rs
+  - Tab bar with drag, close, plus button. Tab tint colors.
+READ WorkspaceTopbarTab.tsx → octomus-ui/src/chrome/topbar_tab.rs
+READ WorkspaceTopbarTabMenu.tsx → octomus-ui/src/chrome/topbar_tab_menu.rs
+READ WorkspaceSidebar.tsx → octomus-ui/src/chrome/sidebar.rs
+  - Workspace conversations list, active directory
+READ WorkspacePanelPlaceholder.tsx → octomus-ui/src/chrome/panel_placeholder.rs
+READ FileExplorer.tsx → octomus-ui/src/chrome/file_explorer.rs
+READ workspaceChromeTypes.ts → octomus-ui/src/chrome/types.rs
+READ workspaceChromeData.ts → octomus-ui/src/chrome/data.rs
+
+~> cargo check -p octomus-ui 2>&1 | tail -20
+~> git add .
+~> git commit -m "sections-chrome: port ALL settings sections + topbar/sidebar 1:1"
+~> git push origin hermes/ui-sections-chrome

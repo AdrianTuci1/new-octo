@@ -1,0 +1,50 @@
+Repo: AdrianTuci1/new-octo
+Base branch: codex/launcher-context-refactor
+Task: Port message bubbles, blocks, markdown rendering 1:1
+
+~> git clone https://oauth2:${GITHUB_TOKEN}@github.com/AdrianTuci1/new-octo.git /tmp/repo
+~> cd /tmp/repo
+~> git checkout codex/launcher-context-refactor
+~> git checkout -b hermes/ui-chat-message
+
+---
+
+CRITICAL: READ EVERY React file first, then PORT 1:1. Don't invent.
+
+Message bubbles (READ src/components/Chat/messageBubble/):
+READ MessageBubbleFacade.tsx → octomus-ui/src/chat/bubble.rs
+  - Role icon, timestamp, content area with blocks
+  - Collapse/expand for large messages
+  
+READ MessageBubbleContent.tsx → octomus-ui/src/chat/bubble_content.rs
+READ MessageBubblePresenter.ts → octomus-ui/src/chat/bubble_presenter.rs
+READ CodeBlock.tsx → octomus-ui/src/chat/code_block.rs
+  - Syntax highlighting with syntect
+  - Copy button, language label
+
+READ markdownRenderer.tsx → octomus-ui/src/chat/markdown.rs
+  - Real markdown rendering (headings, code, lists, blockquotes, bold, italic, links)
+  - Use pulldown-cmark for parsing
+
+READ markdownText.ts → octomus-ui/src/chat/markdown_text.rs
+READ FileDiffPreviewGroup.tsx → octomus-ui/src/chat/diff.rs
+  - Diff viewer with +/- colors, file path header
+
+READ ToolMessageContent.tsx → octomus-ui/src/chat/tool_message.rs
+READ fileProposals.ts → octomus-ui/src/chat/file_proposals.rs
+READ useFileProposalApproval.ts → octomus-ui/src/chat/file_proposal_state.rs
+
+Blocks (READ src/components/Chat/blocks/):
+READ ThinkingBlock.tsx → octomus-ui/src/chat/blocks.rs
+  - Add all block types: Thinking, WebSearch, WorkspaceExploration, FileRead, CodeDisplay, FileArtifact, ImplementationPlan, MultiAgent, TerminalBlockCard/Detail/Summary
+READ blocks/index.tsx → octomus-ui/src/chat/block_index.rs
+  - Block dispatcher mapping kind → renderer
+
+READ src/components/Chat/utils/highlight.ts → octomus-ui/src/chat/highlight.rs
+READ src/components/Chat/utils/timeline.ts → octomus-ui/src/chat/timeline_utils.rs
+READ src/components/Chat/utils/timelineMessageTime.ts → octomus-ui/src/chat/message_time.rs
+
+~> cargo check -p octomus-ui 2>&1 | tail -20
+~> git add .
+~> git commit -m "chat-message: port bubbles, blocks, markdown, diffs 1:1"
+~> git push origin hermes/ui-chat-message

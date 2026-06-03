@@ -1,0 +1,45 @@
+Repo: AdrianTuci1/new-octo
+Base branch: codex/launcher-context-refactor
+Task: chat + composer modules in octomus-ui
+
+~> git clone https://oauth2:${GITHUB_TOKEN}@github.com/AdrianTuci1/new-octo.git /tmp/repo
+~> cd /tmp/repo
+~> git checkout codex/launcher-context-refactor
+~> git checkout -b hermes/ui-chat-composer
+
+---
+
+CRITICAL: NEVER use write_file. ALWAYS write files with bash heredoc:
+cat > path << 'EOF'
+content
+EOF
+
+Creeaza modulele cu cat heredoc.
+
+octomus-ui/src/chat/:
+- mod.rs — ChatPanel struct implementing egui::Widget
+- timeline.rs — message timeline
+- bubble.rs — message bubbles
+- code_block.rs — code blocks with syntect
+- markdown.rs — markdown rendering (egui_commonmark)
+- diff.rs — file diffs
+- blocks.rs — thinking, exploration, web search blocks
+- find_overlay.rs — chat find overlay
+- approval.rs — command approval rows
+
+octomus-ui/src/composer/:
+- mod.rs — ComposerBar struct
+- input.rs — text input (egui TextEdit)
+- slash.rs — slash command autocomplete
+- mentions.rs — context mention picker
+- model_picker.rs — model selector
+- directory_picker.rs — working directory
+- branch_picker.rs — git branch picker
+
+Depinde de state::chat, state::ui.
+Update octomus-ui/src/lib.rs: add pub mod chat; pub mod composer;
+
+~> cargo check 2>&1 | head -50 || true
+~> git add .
+~> git commit -m "chat-composer: port chat panel + composer"
+~> git push origin hermes/ui-chat-composer

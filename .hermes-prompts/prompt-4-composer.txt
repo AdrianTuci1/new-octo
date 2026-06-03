@@ -1,0 +1,37 @@
+Repo: AdrianTuci1/new-octo
+Base branch: codex/launcher-context-refactor
+Task: Port Composer 1:1 from React → Rust egui
+
+~> git clone https://oauth2:${GITHUB_TOKEN}@github.com/AdrianTuci1/new-octo.git /tmp/repo
+~> cd /tmp/repo
+~> git checkout codex/launcher-context-refactor
+~> git checkout -b hermes/ui-composer
+
+---
+
+CRITICAL: READ every React file first, then PORT 1:1. Match layout, colors, spacing.
+
+READ src/components/Composer/ComposerBar.tsx → octomus-ui/src/composer/mod.rs
+  - Text input area with placeholder, slash command highlight, context mention highlight
+  - Action bar: working directory picker, git branch picker, auto-detect toggle
+  - Model chip, context ring indicator, attach button
+  - Attachments strip below input
+
+READ src/components/Composer/useComposerBar.ts → octomus-ui/src/composer/composer_state.rs
+READ src/components/Composer/useComposerBarController.tsx → octomus-ui/src/composer/controller.rs
+READ src/components/Composer/SlashCommandHighlight.tsx → octomus-ui/src/composer/slash.rs
+READ src/components/Composer/ComposerContextMenu.tsx → octomus-ui/src/composer/context_menu.rs
+READ src/components/Composer/WorkingDirectoryPicker.tsx → octomus-ui/src/composer/directory_picker.rs
+READ src/components/Composer/GitBranchPicker.tsx → octomus-ui/src/composer/branch_picker.rs
+READ src/components/Composer/ModelSetupOverlay.tsx → octomus-ui/src/composer/model_setup.rs
+READ src/components/Composer/TerminalComposer.tsx → octomus-ui/src/composer/terminal_composer.rs
+READ src/components/Composer/CommandApprovalComposer.tsx → octomus-ui/src/composer/command_approval.rs
+READ src/components/Composer/composerInputSelection.ts → octomus-ui/src/composer/input_selection.rs
+READ src/components/Composer/contextMentions.ts → octomus-ui/src/composer/mentions.rs
+READ src/components/Composer/useComposerContextMenuStore.ts → octomus-ui/src/composer/context_menu_store.rs
+READ src/components/Composer/useTerminalComposerController.ts → octomus-ui/src/composer/terminal_controller.rs
+
+~> cargo check -p octomus-ui 2>&1 | tail -20
+~> git add .
+~> git commit -m "composer: port ComposerBar, TerminalComposer, pickers 1:1"
+~> git push origin hermes/ui-composer

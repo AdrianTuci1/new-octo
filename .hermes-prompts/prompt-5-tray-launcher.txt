@@ -1,0 +1,38 @@
+Repo: AdrianTuci1/new-octo
+Base branch: codex/launcher-context-refactor
+Task: Port Tray panel + Launcher layout 1:1
+
+~> git clone https://oauth2:${GITHUB_TOKEN}@github.com/AdrianTuci1/new-octo.git /tmp/repo
+~> cd /tmp/repo
+~> git checkout codex/launcher-context-refactor
+~> git checkout -b hermes/ui-tray-launcher
+
+---
+
+CRITICAL: READ every React file first, then PORT 1:1.
+
+Tray (READ src/components/Tray/):
+READ TrayPanel.tsx → octomus-ui/src/tray/mod.rs
+  - Tab bar: Help, Commands, Conversations, History, Models
+  - Content area switching
+READ TrayHelp.tsx → octomus-ui/src/tray/help.rs
+READ TrayCommands.tsx → octomus-ui/src/tray/commands.rs
+READ TrayConversations.tsx → octomus-ui/src/tray/conversations.rs
+READ TrayHistory.tsx → octomus-ui/src/tray/history.rs
+READ TrayModels.tsx → octomus-ui/src/tray/models.rs
+READ TrayFooter.tsx → octomus-ui/src/tray/footer.rs
+
+Launcher layout (READ src/components/Layout/Launcher/):
+READ Launcher.tsx → octomus-ui/src/app.rs (rewrite app layout)
+  - Chat panel stack, dock stack with AgentStatusBar, Tray, Composer
+  - Conditional: model setup overlay vs composer bar vs terminal composer
+  - Shell mode vs agent mode
+READ AgentStatusBar.tsx → octomus-ui/src/layout/agent_status_bar.rs
+READ LauncherContext.tsx → octomus-ui/src/layout/launcher_context.rs
+
+READ src/components/Onboarding/Onboarding.tsx → octomus-ui/src/windows/onboarding.rs
+
+~> cargo check -p octomus-ui 2>&1 | tail -20
+~> git add .
+~> git commit -m "tray-launcher: port Tray panel, Launcher layout, Onboarding 1:1"
+~> git push origin hermes/ui-tray-launcher

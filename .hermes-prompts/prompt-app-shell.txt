@@ -1,0 +1,34 @@
+Repo: AdrianTuci1/new-octo
+Base branch: codex/launcher-context-refactor
+Task: app shell in octomus-ui (assembly + windows + tray)
+
+~> git clone https://oauth2:${GITHUB_TOKEN}@github.com/AdrianTuci1/new-octo.git /tmp/repo
+~> cd /tmp/repo
+~> git checkout codex/launcher-context-refactor
+~> git checkout -b hermes/ui-app-shell
+
+---
+
+CRITICAL: NEVER use write_file. ALWAYS write files with bash heredoc:
+cat > path << 'EOF'
+content
+EOF
+
+Completeaza octomus-ui/ cu cat heredoc:
+
+- octomus-ui/src/main.rs — binary entry point cu eframe
+- octomus-ui/src/app.rs — App struct, startup, eframe::App impl
+- octomus-ui/src/windows/mod.rs, launcher.rs, settings.rs, onboarding.rs
+- octomus-ui/src/tray.rs — system tray (tray-icon crate)
+- octomus-ui/src/themes/mod.rs, light.rs, dark.rs
+- octomus-ui/src/utils/mod.rs, markdown.rs, diff.rs, path.rs
+
+Update:
+- octomus-ui/Cargo.toml — all deps (eframe, egui, syntect, egui_commonmark, tray-icon, octomus-core)
+- octomus-ui/src/lib.rs — all modules
+- root Cargo.toml — workspace members
+
+~> cargo check 2>&1 | head -50 || true
+~> git add .
+~> git commit -m "app-shell: app shell, windows, tray, themes, utils"
+~> git push origin hermes/ui-app-shell

@@ -1,0 +1,44 @@
+Repo: AdrianTuci1/new-octo
+Base branch: codex/launcher-context-refactor
+Task: Port ALL TypeScript types + Zustand stores → Rust enums/structs
+
+~> git clone https://oauth2:${GITHUB_TOKEN}@github.com/AdrianTuci1/new-octo.git /tmp/repo
+~> cd /tmp/repo
+~> git checkout codex/launcher-context-refactor
+~> git checkout -b hermes/ui-types-stores
+
+---
+
+CRITICAL RULES:
+1. NEVER use write_file. Write ALL files with bash heredoc (cat > path << 'EOF')
+2. YOUR JOB: Port these EXACT files 1:1 from React/TS → Rust
+3. READ each file before porting it — DON'T invent code, PORT the existing code
+4. Preserve ALL fields, ALL variants, ALL logic from the original
+
+FILES TO PORT:
+
+types/ (src/types/*.ts — create octomus-ui/src/state/types.rs):
+- chat.ts → Message, MessageBlock, ChatAttachment, AgentRunStatus, all events
+- terminal.ts → TerminalStatus, SessionInfo, TerminalBlock, CommandBlock
+- ui.ts → PanelMode, ComposerMode, TrayMode
+- diff.ts, git.ts, filesystem.ts, codeIndex.ts, model.ts, memory.ts, keybindings.ts, skills.ts, history.ts, gitDiff.ts
+
+stores/ (src/stores/*.ts — port ALL stores to octomus-ui/src/state/):
+READ src/stores/chatStore.ts → octomus-ui/src/state/chat.rs (complete with all actions)
+READ src/stores/launcherStore.ts → octomus-ui/src/state/launcher.rs
+READ src/stores/uiStore.ts → octomus-ui/src/state/ui.rs
+READ src/stores/editorStore.ts → octomus-ui/src/state/editor.rs
+READ src/stores/ShellStore.ts → octomus-ui/src/state/shell.rs
+READ src/stores/RuntimeStore.ts → octomus-ui/src/state/runtime.rs
+READ src/stores/AgentStore.ts → octomus-ui/src/state/agent.rs
+READ src/stores/memoryStore.ts → octomus-ui/src/state/memory.rs
+READ src/stores/modelSelectionStore.ts → octomus-ui/src/state/model_selection.rs
+READ src/stores/terminalBlocksStore.ts → octomus-ui/src/state/terminal_blocks.rs
+
+Each store → Arc<Mutex<State>> pattern with with_state() and get_state() methods.
+ALSO create octomus-ui/src/state/mod.rs declaring all modules.
+
+~> cargo check -p octomus-ui 2>&1 | tail -20
+~> git add .
+~> git commit -m "types-stores: port all TS types + Zustand stores → Rust"
+~> git push origin hermes/ui-types-stores

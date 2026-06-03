@@ -1,0 +1,39 @@
+Repo: AdrianTuci1/new-octo
+Base branch: codex/launcher-context-refactor
+Task: settings + editor modules in octomus-ui
+
+~> git clone https://oauth2:${GITHUB_TOKEN}@github.com/AdrianTuci1/new-octo.git /tmp/repo
+~> cd /tmp/repo
+~> git checkout codex/launcher-context-refactor
+~> git checkout -b hermes/ui-settings-editor
+
+---
+
+CRITICAL: NEVER use write_file. ALWAYS write files with bash heredoc:
+cat > path << 'EOF'
+content
+EOF
+
+Creeaza modulele cu cat heredoc.
+
+octomus-ui/src/settings/:
+- mod.rs — SettingsWindow struct
+- sidebar.rs — settings sidebar navigation
+- sections/profile.rs, agent.rs, appearance.rs, mcp.rs, cloud.rs, keyboard.rs, code.rs
+- drawer.rs — cloud profile drawer
+
+octomus-ui/src/editor/:
+- mod.rs — EditorWidget struct
+- view.rs — editor view with syntect highlighting
+- line_numbers.rs
+- scroll.rs
+- selection.rs
+- tabs.rs — file tabs
+
+Study src/views/Shell/ShellWindow.tsx and src/components/App/settings/* for reference.
+Update octomus-ui/src/lib.rs: add pub mod settings; pub mod editor;
+
+~> cargo check 2>&1 | head -50 || true
+~> git add .
+~> git commit -m "settings-editor: port settings + code editor"
+~> git push origin hermes/ui-settings-editor

@@ -1,0 +1,31 @@
+Repo: AdrianTuci1/new-octo
+Base branch: codex/launcher-context-refactor
+Task: terminal module in octomus-ui
+
+~> git clone https://oauth2:${GITHUB_TOKEN}@github.com/AdrianTuci1/new-octo.git /tmp/repo
+~> cd /tmp/repo
+~> git checkout codex/launcher-context-refactor
+~> git checkout -b hermes/ui-terminal
+
+---
+
+CRITICAL: NEVER use write_file. ALWAYS write files with bash heredoc:
+cat > path << 'EOF'
+content
+EOF
+
+Creeaza modulele in octomus-ui/src/terminal/:
+- mod.rs — TerminalWidget struct + re-exports
+- ansi.rs — ANSI escape sequence parsing
+- renderer.rs — terminal emulator widget (monospace font, grid)
+- session.rs — terminal session display
+- output.rs — output blocks with selection and scrolling
+
+Study src/Chat/blocks/TerminalBlock*.tsx and src-tauri/src/terminal/*.rs for reference.
+
+Update octomus-ui/src/lib.rs: add pub mod terminal;
+
+~> cargo check 2>&1 | head -50 || true
+~> git add .
+~> git commit -m "terminal: port terminal display to octomus-ui"
+~> git push origin hermes/ui-terminal

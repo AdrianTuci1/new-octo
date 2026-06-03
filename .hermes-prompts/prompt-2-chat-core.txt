@@ -1,0 +1,49 @@
+Repo: AdrianTuci1/new-octo
+Base branch: codex/launcher-context-refactor
+Task: Port chat panel core 1:1 from React → Rust egui
+
+~> git clone https://oauth2:${GITHUB_TOKEN}@github.com/AdrianTuci1/new-octo.git /tmp/repo
+~> cd /tmp/repo
+~> git checkout codex/launcher-context-refactor
+~> git checkout -b hermes/ui-chat-core
+
+---
+
+CRITICAL RULES:
+1. NEVER use write_file. ALWAYS write with bash heredoc (cat > path << 'EOF')
+2. READ each React file BEFORE writing Rust code — PORT 1:1, don't invent
+3. Match the exact layout, scroll behavior, expand/collapse, colors
+4. Every MessageBlock variant MUST be rendered exactly like in React
+
+READ AND PORT THESE FILES (42 files in Chat/):
+
+Chat timeline + panel facade:
+READ src/components/Chat/chatPanel/ChatTimeline.tsx → octomus-ui/src/chat/timeline.rs
+  - Port timeline items: message, terminal-block, multi-agent-block
+  - Scroll area with auto-scroll to bottom
+  - Command approval row at bottom
+
+READ src/components/Chat/chatPanel/ChatPanelFacade.tsx → octomus-ui/src/chat/mod.rs  
+  - ChatPanel widget with scroll ref
+  - Topbar with conversation title
+  - Find overlay toggle
+  - Empty state vs timeline
+
+READ src/components/Chat/chatPanel/ChatFindOverlay.tsx → octomus-ui/src/chat/find_overlay.rs
+READ src/components/Chat/chatPanel/CommandApprovalRow.tsx → octomus-ui/src/chat/approval.rs
+  - Approve/Reject buttons, command text display
+
+READ src/components/Chat/layout/index.tsx → octomus-ui/src/chat/layout.rs
+  - ChatEmptyState, ChatTopbar components
+
+READ src/components/Chat/chatPanel/MessageTimelineRow.tsx → octomus-ui/src/chat/message_row.rs
+READ src/components/Chat/chatPanel/TerminalTimelineRow.tsx → octomus-ui/src/chat/terminal_row.rs
+READ src/components/Chat/chatPanel/MultiAgentTimelineRow.tsx → octomus-ui/src/chat/multi_agent_row.rs
+READ src/components/Chat/chatPanel/TerminalErrorRow.tsx → octomus-ui/src/chat/terminal_error_row.rs
+
+READ src/components/Chat/ChatPanel.tsx → octomus-ui/src/chat/chat_panel_wrapper.rs
+
+~> cargo check -p octomus-ui 2>&1 | tail -20
+~> git add .
+~> git commit -m "chat-core: port chat timeline, panel facade, find, approval 1:1"
+~> git push origin hermes/ui-chat-core

@@ -1,0 +1,37 @@
+Repo: AdrianTuci1/new-octo
+Base branch: codex/launcher-context-refactor
+Task: Port Settings core (sidebar + content + types) 1:1
+
+~> git clone https://oauth2:${GITHUB_TOKEN}@github.com/AdrianTuci1/new-octo.git /tmp/repo
+~> cd /tmp/repo
+~> git checkout codex/launcher-context-refactor
+~> git checkout -b hermes/ui-settings-core
+
+---
+
+CRITICAL: READ every file, PORT 1:1. Match EXACT sidebar structure.
+
+READ src/components/App/settings/SettingsSidebar.tsx → octomus-ui/src/settings/sidebar.rs
+  - Full sidebar with groups: Agents (Octo Agent, Profiles, MCP servers, Knowledge, Third party CLI agents), Code (Indexing and projects, Editor and Code Review), Cloud settings, Appearance, Keyboard shortcuts
+  - Expand/collapse groups, active section highlight
+
+READ src/components/App/settings/SettingsContent.tsx → octomus-ui/src/settings/content.rs
+  - Content panel with section metadata, render dispatcher
+
+READ src/components/App/settings/settingsTypes.ts → octomus-ui/src/settings/types.rs
+READ src/components/App/settings/settingsData.ts → octomus-ui/src/settings/data.rs
+READ src/components/App/settings/agentSettings.ts → octomus-ui/src/settings/agent_settings.rs
+READ src/components/App/settings/codeSettings.ts → octomus-ui/src/settings/code_settings.rs
+READ src/components/App/settings/profileSettings.ts → octomus-ui/src/settings/profile_settings.rs
+READ src/components/App/settings/cloudProfiles.ts → octomus-ui/src/settings/cloud_profiles.rs
+READ src/components/App/settings/useProfileSettings.ts → octomus-ui/src/settings/profile_state.rs
+READ src/components/App/settings/ModelManagementDrawer.tsx → octomus-ui/src/settings/model_drawer.rs
+READ src/components/App/settings/CloudProfileDrawer.tsx → octomus-ui/src/settings/cloud_drawer.rs
+
+READ src/components/App/settings/menus/keyboard-shortcuts/ShortcutPrimitives.tsx → octomus-ui/src/settings/shortcut_primitives.rs
+READ src/components/App/settings/menus/keyboard-shortcuts/shortcuts.ts → octomus-ui/src/settings/shortcuts.rs
+
+~> cargo check -p octomus-ui 2>&1 | tail -20
+~> git add .
+~> git commit -m "settings-core: port Settings sidebar, content, types, data 1:1"
+~> git push origin hermes/ui-settings-core
