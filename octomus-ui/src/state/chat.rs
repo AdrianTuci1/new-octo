@@ -1,0 +1,141 @@
+use serde::{Deserialize, Serialize};
+use std::sync::{Arc, Mutex};
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ChatAttachment {
+    pub id: String,
+    pub name: String,
+    pub size: u64,
+    pub mime_type: Option<String>,
+    pub kind: ChatAttachmentKind,
+    pub content: Option<String>,
+    pub truncated: bool,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub enum ChatAttachmentKind {
+    #[default]
+    Text,
+    Image,
+    Binary,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ChatMessage {
+    pub id: String,
+    pub role: String,
+    pub title: String,
+    pub body: String,
+    pub created_at: Option<String>,
+    pub conversation_id: Option<String>,
+    pub run_id: Option<String>,
+    pub is_streaming: bool,
+    pub is_error: bool,
+    pub status: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ChatState {
+    pub active_conversation_id: Option<String>,
+    pub active_run_id: Option<String>,
+    pub query: String,
+    pub messages: Vec<ChatMessage>,
+    pub attachments: Vec<ChatAttachment>,
+    pub mode_lock: Option<String>,
+    pub autodetected_shell_latch: bool,
+}
+
+impl ChatState {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn set_active_conversation_id(&mut self, id: Option<String>) {
+        self.active_conversation_id = id;
+    }
+
+    pub fn set_active_run_id(&mut self, id: Option<String>) {
+        self.active_run_id = id;
+    }
+
+    pub fn set_query(&mut self, query: String) {
+        self.query = query;
+    }
+
+    pub fn set_messages(&mut self, messages: Vec<ChatMessage>) {
+        self.messages = messages;
+    }
+
+    pub fn set_attachments(&mut self, attachments: Vec<ChatAttachment>) {
+        self.attachments = attachments;
+    }
+
+    pub fn set_mode_lock(&mut self, mode: Option<String>) {
+        self.mode_lock = mode;
+    }
+
+    pub fn set_autodetected_shell_latch(&mut self, latch: bool) {
+        self.autodetected_shell_latch = latch;
+    }
+
+    pub fn add_message(&mut self, message: ChatMessage) {
+        self.messages.push(message);
+    }
+
+    pub fn update_message<F>(&mut self, message_id: &str, updater: F) -> bool
+    where
+        F: FnOnce(&mut ChatMessage),
+    {
+        if let Some(msg) = self.messages.iter_mut().find(|m| m.id == message_id) {
+            updater(msg);
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn append_to_message(&mut self, message_id: &str, text: &str) -> bool {
+        if let Some(msg) = self.messages.iter_mut().find(|m| m.id == message_id) {
+            msg.body.push_str(text);
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn clear_messages(&mut self) {
+        self.active_conversation_id = None;
+        self.messages.clear();
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ChatStore {
+    state: Arc<Mutex<ChatState>>,
+}
+
+impl ChatStore {
+    pub fn new() -> Self {
+        Self {
+            state: Arc::new(Mutex::new(ChatState::new())),
+        }
+    }
+
+    pub fn with_state<F, R>(&self, f: F) -> R
+    where
+        F: FnOnce(&mut ChatState) -> R,
+    {
+        let mut guard = self.state.lock().unwrap();
+        f(&mut guard)
+    }
+
+    pub fn get_state(&self) -> ChatState {
+        self.state.lock().unwrap().clone()
+    }
+}
+
+impl Default for ChatStore {
+    fn default() -> Self {
+        Self::new()
+    }
+}

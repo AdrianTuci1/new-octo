@@ -1,0 +1,12 @@
+pub mod app;
+pub mod chat;
+pub mod components;
+pub mod composer;
+pub mod editor;
+pub mod settings;
+pub mod state;
+pub mod terminal;
+pub mod themes;
+pub mod tray;
+pub mod utils;
+pub mod windows;
