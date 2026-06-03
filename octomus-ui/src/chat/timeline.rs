@@ -3,13 +3,13 @@ use egui::{Response, Ui, Widget};
 use crate::chat::bubble::MessageBubble;
 
 pub struct Timeline<'a> {
-    messages: &'a [octomus_state::chat::Message],
+    messages: &'a [crate::state::chat::Message],
     is_loading: bool,
 }
 
 impl<'a> Timeline<'a> {
     pub fn new(
-        messages: &'a [octomus_state::chat::Message],
+        messages: &'a [crate::state::chat::Message],
         is_loading: bool,
     ) -> Self {
         Self { messages, is_loading }

@@ -1,6 +1,38 @@
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
 
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+pub enum MessageRole {
+    #[default]
+    User,
+    Assistant,
+    System,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum MessageBlock {
+    Text(String),
+    Code {
+        language: Option<String>,
+        code: String,
+    },
+    Diff {
+        path: String,
+        diff: String,
+    },
+    Thinking(String),
+    Exploration(String),
+    WebSearch(String),
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct Message {
+    pub id: String,
+    pub role: MessageRole,
+    pub content: String,
+    pub blocks: Vec<MessageBlock>,
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ChatAttachment {
     pub id: String,
@@ -39,10 +71,13 @@ pub struct ChatState {
     pub active_conversation_id: Option<String>,
     pub active_run_id: Option<String>,
     pub query: String,
-    pub messages: Vec<ChatMessage>,
+    pub messages: Vec<Message>,
     pub attachments: Vec<ChatAttachment>,
     pub mode_lock: Option<String>,
     pub autodetected_shell_latch: bool,
+    pub is_loading: bool,
+    pub find_visible: bool,
+    pub find_query: String,
 }
 
 impl ChatState {
@@ -62,7 +97,7 @@ impl ChatState {
         self.query = query;
     }
 
-    pub fn set_messages(&mut self, messages: Vec<ChatMessage>) {
+    pub fn set_messages(&mut self, messages: Vec<Message>) {
         self.messages = messages;
     }
 
@@ -78,13 +113,13 @@ impl ChatState {
         self.autodetected_shell_latch = latch;
     }
 
-    pub fn add_message(&mut self, message: ChatMessage) {
+    pub fn add_message(&mut self, message: Message) {
         self.messages.push(message);
     }
 
     pub fn update_message<F>(&mut self, message_id: &str, updater: F) -> bool
     where
-        F: FnOnce(&mut ChatMessage),
+        F: FnOnce(&mut Message),
     {
         if let Some(msg) = self.messages.iter_mut().find(|m| m.id == message_id) {
             updater(msg);
@@ -96,7 +131,7 @@ impl ChatState {
 
     pub fn append_to_message(&mut self, message_id: &str, text: &str) -> bool {
         if let Some(msg) = self.messages.iter_mut().find(|m| m.id == message_id) {
-            msg.body.push_str(text);
+            msg.content.push_str(text);
             true
         } else {
             false

@@ -1,5 +1,4 @@
-use egui::{Response, Ui, Widget};
-use egui_commonmark::{CommonMarkCache, CommonMarkViewer};
+use egui::{Color32, Response, RichText, Ui, Widget};
 
 pub struct MarkdownRenderer {
     source: String,
@@ -15,9 +14,30 @@ impl MarkdownRenderer {
 
 impl Widget for MarkdownRenderer {
     fn ui(self, ui: &mut Ui) -> Response {
-        let mut cache = CommonMarkCache::default();
-        CommonMarkViewer::new()
-            .show(ui, &mut cache, &self.source)
-            .response
+        ui.vertical(|ui| {
+            for line in self.source.lines() {
+                if line.starts_with("### ") {
+                    ui.heading(RichText::new(&line[4..]).strong());
+                } else if line.starts_with("## ") {
+                    ui.heading(RichText::new(&line[3..]).strong());
+                } else if line.starts_with("# ") {
+                    ui.heading(RichText::new(&line[2..]).strong());
+                } else if line.starts_with("> ") {
+                    ui.colored_label(Color32::GRAY, line);
+                } else if line.starts_with("- ") || line.starts_with("* ") {
+                    ui.horizontal(|ui| {
+                        ui.label("  •");
+                        ui.label(&line[2..]);
+                    });
+                } else if line.starts_with("```") {
+                    ui.separator();
+                } else if !line.is_empty() {
+                    ui.label(line);
+                } else {
+                    ui.add_space(4.0);
+                }
+            }
+        })
+        .response
     }
 }

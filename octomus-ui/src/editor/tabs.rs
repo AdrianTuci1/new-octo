@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 
 /// File tabs state for the editor widget.
 ///

@@ -1,4 +1,4 @@
-use super::{SettingsSidebarGroupItem, SettingsSidebarItem, SettingsSidebarLeafItem};
+use super::SettingsSidebarItem;
 
 /// Renders settings sidebar navigation state.
 ///

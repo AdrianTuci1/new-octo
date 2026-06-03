@@ -35,7 +35,7 @@ impl EditorView {
         let mut highlighter = HighlightLines::new(syntax, theme);
         let mut lines = Vec::new();
         for line in LinesWithEndings::from(code) {
-            let ranges = highlighter.highlight_line(line, &self.syntax_set).unwrap_or_default();
+            let ranges: Vec<(Style, String)> = highlighter.highlight_line(line, &self.syntax_set).unwrap_or_default().into_iter().map(|(s,t)| (s, t.to_string())).collect();
             lines.push(HighlightedLine {
                 text: line.trim_end_matches('\n').to_string(),
                 ranges,

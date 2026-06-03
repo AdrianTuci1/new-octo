@@ -17,7 +17,7 @@ impl Default for PanelProps {
 }
 
 pub fn render_panel<R>(ui: &mut Ui, props: &mut PanelProps, content: impl FnOnce(&mut Ui) -> R) -> Response {
-    let frame = Frame::group(ui.style()).inner_margin(Margin::same(8.0));
+    let frame = Frame::group(ui.style()).inner_margin(Margin::same(8));
     frame.show(ui, |ui| {
         ui.horizontal(|ui| {
             if props.collapsible && ui.small_button(if props.collapsed { "▶" } else { "▼" }).clicked() {

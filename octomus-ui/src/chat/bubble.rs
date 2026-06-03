@@ -1,21 +1,21 @@
-use egui::{Color32, Response, RichText, Rounding, Stroke, Ui, Widget};
+use egui::{Color32, CornerRadius, Response, RichText, Stroke, Ui, Widget};
 
 use crate::chat::blocks::BlockRenderer;
 
 pub struct MessageBubble<'a> {
-    message: &'a octomus_state::chat::Message,
+    message: &'a crate::state::chat::Message,
 }
 
 impl<'a> MessageBubble<'a> {
-    pub fn new(message: &'a octomus_state::chat::Message) -> Self {
+    pub fn new(message: &'a crate::state::chat::Message) -> Self {
         Self { message }
     }
 
     fn background_color(&self) -> Color32 {
         match self.message.role {
-            octomus_state::chat::MessageRole::User => Color32::from_rgb(40, 80, 120),
-            octomus_state::chat::MessageRole::Assistant => Color32::from_rgb(50, 50, 55),
-            octomus_state::chat::MessageRole::System => Color32::from_rgb(60, 60, 40),
+            crate::state::chat::MessageRole::User => Color32::from_rgb(40, 80, 120),
+            crate::state::chat::MessageRole::Assistant => Color32::from_rgb(50, 50, 55),
+            crate::state::chat::MessageRole::System => Color32::from_rgb(60, 60, 40),
         }
     }
 }
@@ -23,20 +23,20 @@ impl<'a> MessageBubble<'a> {
 impl<'a> Widget for MessageBubble<'a> {
     fn ui(self, ui: &mut Ui) -> Response {
         let bg = self.background_color();
-        let rounding = Rounding::same(12.0);
+        let rounding = CornerRadius::same(12);
         let stroke = Stroke::NONE;
 
-        egui::Frame::none()
+        egui::Frame::NONE
             .fill(bg)
-            .rounding(rounding)
+            .corner_radius(rounding)
             .stroke(stroke)
             .inner_margin(egui::vec2(12.0, 8.0))
             .show(ui, |ui| {
                 ui.vertical(|ui| {
                     let role_label = match self.message.role {
-                        octomus_state::chat::MessageRole::User => "You",
-                        octomus_state::chat::MessageRole::Assistant => "Assistant",
-                        octomus_state::chat::MessageRole::System => "System",
+                        crate::state::chat::MessageRole::User => "You",
+                        crate::state::chat::MessageRole::Assistant => "Assistant",
+                        crate::state::chat::MessageRole::System => "System",
                     };
                     ui.label(RichText::new(role_label).strong().size(12.0));
                     ui.add_space(4.0);

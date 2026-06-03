@@ -18,12 +18,12 @@ impl Default for DrawerProps {
 
 pub fn render_drawer<R>(ui: &mut Ui, props: &DrawerProps, content: impl FnOnce(&mut Ui) -> R) -> Response {
     if props.is_open {
-        SidePanel::right(&props.id)
+        let panel = SidePanel::right("drawer_panel")
             .resizable(false)
-            .exact_width(props.width)
-            .show_inside(ui, |ui| {
-                content(ui);
-            });
+            .exact_width(props.width);
+        panel.show_inside(ui, |ui| {
+            content(ui);
+        });
     }
     ui.response()
 }

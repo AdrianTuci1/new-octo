@@ -12,11 +12,11 @@ pub mod markdown;
 pub mod timeline;
 
 pub struct ChatPanel {
-    state: std::sync::Arc<std::sync::Mutex<octomus_state::chat::ChatState>>,
+    state: std::sync::Arc<std::sync::Mutex<crate::state::chat::ChatState>>,
 }
 
 impl ChatPanel {
-    pub fn new(state: std::sync::Arc<std::sync::Mutex<octomus_state::chat::ChatState>>) -> Self {
+    pub fn new(state: std::sync::Arc<std::sync::Mutex<crate::state::chat::ChatState>>) -> Self {
         Self { state }
     }
 }
@@ -26,13 +26,14 @@ impl Widget for ChatPanel {
         let state = self.state.lock().unwrap();
         let is_loading = state.is_loading;
         let find_visible = state.find_visible;
-        let mut find_query = state.find_query.clone();
+        let find_query = state.find_query.clone();
 
         ui.vertical(|ui| {
             Timeline::new(&state.messages, is_loading).ui(ui);
 
             if find_visible {
-                ChatFindOverlay::new(&mut find_query).ui(ui);
+                let mut opt_query = if find_query.is_empty() { None } else { Some(find_query.clone()) };
+                ChatFindOverlay::new(&mut opt_query).ui(ui);
             }
         })
         .response

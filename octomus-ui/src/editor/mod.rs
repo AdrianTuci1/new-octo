@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 
 pub mod view;
 pub mod line_numbers;

@@ -12,7 +12,6 @@ path = "src/main.rs"
 eframe = { version = "0.31", features = ["default"] }
 egui = "0.31"
 egui_extras = "0.31"
-egui_commonmark = { version = "0.19", default-features = false, features = ["better_syntax_highlighting"] }
 syntect = "5.2"
 tray-icon = "0.19"
 chrono = { version = "0.4", features = ["serde"] }
@@ -20,4 +19,4 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 image = { version = "0.25", default-features = false, features = ["png"] }
 tokio = { version = "1.0", features = ["rt-multi-thread", "sync"] }
-octomus-core = { path = "../octomus-core" }
+rand = "0.10.1"

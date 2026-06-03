@@ -56,7 +56,7 @@ impl Widget for CodeBlock {
     fn ui(self, ui: &mut Ui) -> Response {
         egui::Frame::dark_canvas(ui.style())
             .inner_margin(egui::vec2(8.0, 6.0))
-            .rounding(egui::Rounding::same(6.0))
+            .corner_radius(egui::CornerRadius::same(6))
             .show(ui, |ui| {
                 if let Some(ref lang) = self.language {
                     ui.label(RichText::new(format!("{}", lang)).small().monospace());

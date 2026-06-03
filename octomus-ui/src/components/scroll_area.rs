@@ -21,5 +21,6 @@ pub fn render_scroll_area<R>(ui: &mut Ui, props: &ScrollAreaProps, content: impl
     }
     area.show(ui, |ui| {
         content(ui);
-    }).inner
+    });
+    ui.response()
 }

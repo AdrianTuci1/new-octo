@@ -1,4 +1,4 @@
-use egui::{Response, Ui};
+use egui::Response;
 
 pub struct ContextMenuItem {
     pub id: String,

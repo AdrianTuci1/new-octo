@@ -28,9 +28,9 @@ impl ApprovalRow {
 
 impl Widget for ApprovalRow {
     fn ui(self, ui: &mut Ui) -> Response {
-        egui::Frame::none()
+        egui::Frame::NONE
             .fill(Color32::from_rgb(45, 45, 50))
-            .rounding(egui::Rounding::same(8.0))
+            .corner_radius(egui::CornerRadius::same(8))
             .inner_margin(egui::vec2(12.0, 8.0))
             .show(ui, |ui| {
                 ui.horizontal(|ui| {

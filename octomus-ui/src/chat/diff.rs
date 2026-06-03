@@ -31,7 +31,7 @@ impl Widget for DiffView {
     fn ui(self, ui: &mut Ui) -> Response {
         egui::Frame::dark_canvas(ui.style())
             .inner_margin(egui::vec2(8.0, 6.0))
-            .rounding(egui::Rounding::same(6.0))
+            .corner_radius(egui::CornerRadius::same(6))
             .show(ui, |ui| {
                 ui.label(RichText::new(format!("📄 {}", self.path)).strong());
                 ui.separator();
