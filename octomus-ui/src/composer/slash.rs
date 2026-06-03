@@ -1,47 +1,50 @@
-use egui::{Response, Ui, Widget};
+use egui::{Color32, Response, Ui, Widget};
 
-pub struct SlashAutocomplete<'a> {
-    query: &'a str,
+pub struct SlashCommandHighlight<'a> {
+    pub text: &'a str,
+    pub extra_class: Option<&'a str>,
 }
 
-impl<'a> SlashAutocomplete<'a> {
-    pub fn new(query: &'a str) -> Self {
-        Self { query }
+impl<'a> SlashCommandHighlight<'a> {
+    pub fn new(text: &'a str) -> Self {
+        Self { text, extra_class: None }
     }
 
-    fn commands() -> &'static [(&'static str, &'static str)] {
-        &[
-            ("/explain", "Explain the selected code"),
-            ("/fix", "Fix issues in the selected code"),
-            ("/test", "Generate tests for the selected code"),
-            ("/doc", "Generate documentation"),
-            ("/commit", "Generate a commit message"),
-            ("/review", "Review the current changes"),
-        ]
+    pub fn with_extra_class(mut self, class: &'a str) -> Self {
+        self.extra_class = Some(class);
+        self
     }
 }
 
-impl<'a> Widget for SlashAutocomplete<'a> {
+impl<'a> Widget for SlashCommandHighlight<'a> {
     fn ui(self, ui: &mut Ui) -> Response {
-        let prefix = self.query.split_whitespace().next().unwrap_or(self.query);
-        let matches: Vec<_> = Self::commands()
-            .iter()
-            .filter(|(cmd, _)| cmd.starts_with(prefix))
-            .collect();
+        let text_color = ui.visuals().text_color();
+        let accent = Color32::from_rgb(0, 163, 255);
 
-        if matches.is_empty() {
-            return ui.label("");
+        let mut job = egui::text::LayoutJob::default();
+        for word in self.text.split_whitespace() {
+            if word.starts_with('/') {
+                job.append(word, 0.0, egui::TextFormat {
+                    color: accent,
+                    font_id: egui::FontId::monospace(12.0),
+                    ..Default::default()
+                });
+            } else if word.starts_with('@') {
+                job.append(word, 0.0, egui::TextFormat {
+                    color: Color32::from_rgb(168, 129, 255),
+                    font_id: egui::FontId::monospace(12.0),
+                    ..Default::default()
+                });
+            } else {
+                job.append(word, 0.0, egui::TextFormat {
+                    color: text_color,
+                    font_id: egui::FontId::monospace(12.0),
+                    ..Default::default()
+                });
+            }
+            job.append(" ", 0.0, egui::TextFormat::default());
         }
 
-        egui::Frame::popup(ui.style())
-            .show(ui, |ui| {
-                ui.set_max_width(280.0);
-                for (cmd, desc) in matches {
-                    if ui.selectable_label(false, format!("{} — {}", cmd, desc)).clicked() {
-                        // command selected
-                    }
-                }
-            })
-            .response
+        ui.add(egui::Label::new(job).selectable(false))
     }
 }
