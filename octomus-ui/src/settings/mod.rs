@@ -10,6 +10,12 @@ pub mod sections {
     pub mod cloud;
     pub mod keyboard;
     pub mod code;
+    pub mod knowledge;
+    pub mod profiles;
+    pub mod third_party_cli;
+    pub mod cloud_credentials;
+    pub mod placeholder;
+    pub mod primitives;
 }
 
 /// Content kind for a settings section, mirroring the TS `SettingsSectionContentKind`.
@@ -24,6 +30,7 @@ pub enum SettingsSectionContentKind {
     KeyboardShortcuts,
     ThirdPartyCliAgents,
     CloudTerminals,
+    CloudCredentials,
     CodeIndexing,
     EditorCodeReview,
     Placeholder,
@@ -143,6 +150,14 @@ impl Default for SettingsWindow {
             },
         );
         meta.insert(
+            "cloud-platform/credentials".to_string(),
+            SettingsSectionMeta {
+                title: "Provider credentials".to_string(),
+                description: "Manage the secret material that cloud terminal providers depend on.".to_string(),
+                content_kind: SettingsSectionContentKind::CloudCredentials,
+            },
+        );
+        meta.insert(
             "code/indexing-and-projects".to_string(),
             SettingsSectionMeta {
                 title: "Codebase Indexing".to_string(),
@@ -258,6 +273,10 @@ impl SettingsWindow {
             SettingsSidebarItem::Leaf(SettingsSidebarLeafItem {
                 id: "cloud-platform/cloud".to_string(),
                 label: "Cloud".to_string(),
+            }),
+            SettingsSidebarItem::Leaf(SettingsSidebarLeafItem {
+                id: "cloud-platform/credentials".to_string(),
+                label: "Provider credentials".to_string(),
             }),
             SettingsSidebarItem::Leaf(SettingsSidebarLeafItem {
                 id: "appearance".to_string(),
