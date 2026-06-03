@@ -1,4 +1,3 @@
-
 pub mod view;
 pub mod line_numbers;
 pub mod scroll;
@@ -41,7 +40,12 @@ impl EditorWidget {
         Self::default()
     }
 
-    pub fn open_file(&mut self, path: String, label: String, content: String, language: String) {
+    pub fn open_file(&mut self,
+        path: String,
+        label: String,
+        content: String,
+        language: String,
+    ) {
         if let Some(tab) = self.tabs.iter_mut().find(|t| t.path.as_ref() == Some(&path)) {
             tab.is_active = true;
             self.active_tab_id = Some(tab.id.clone());
@@ -74,6 +78,12 @@ impl EditorWidget {
             self.is_open = false;
             self.active_tab_id = None;
         }
+    }
+
+    pub fn close_all_tabs(&mut self) {
+        self.tabs.clear();
+        self.is_open = false;
+        self.active_tab_id = None;
     }
 
     pub fn select_tab(&mut self, id: &str) {

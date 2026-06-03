@@ -1,11 +1,9 @@
-/// Workspace chrome module.
-///
-/// Mirrors the React `src/components/App/chrome/` directory.
-pub mod types;
-pub mod data;
+pub mod agents_view;
+pub mod drawers;
+pub mod settings_data;
+pub mod settings_sidebar;
+pub mod settings_content;
 pub mod topbar;
-pub mod topbar_tab;
-pub mod topbar_tab_menu;
 pub mod sidebar;
-pub mod panel_placeholder;
-pub mod file_explorer;
+pub mod pane_tree;
+pub mod workspace_types;

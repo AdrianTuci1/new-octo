@@ -76,6 +76,46 @@ impl TerminalWidget {
     pub fn visible_text(&self) -> String {
         self.renderer.to_string()
     }
+
+    /// Render the terminal widget into an egui UI
+    pub fn render_ui(&self,
+        ui: &mut egui::Ui,
+    ) {
+        let available = ui.available_size_before_wrap();
+        let (response, painter) = ui.allocate_painter(available, egui::Sense::click());
+        let rect = response.rect;
+
+        let char_width = 8.0;
+        let line_height = 16.0;
+        let cols = (rect.width() / char_width).max(1.0) as usize;
+        let rows = (rect.height() / line_height).max(1.0) as usize;
+
+        let grid = self.renderer.grid();
+        let visible = grid.visible_rows();
+
+        for (row_idx, row) in visible.iter().enumerate().take(rows) {
+            let y = rect.min.y + row_idx as f32 * line_height;
+            for (col_idx, cell) in row.cells.iter().enumerate().take(cols) {
+                let x = rect.min.x + col_idx as f32 * char_width;
+                match cell {
+                    TerminalCell::Empty => {}
+                    TerminalCell::Filled(styled) => {
+                        let char_rect = egui::Rect::from_min_size(
+                            egui::Pos2::new(x, y),
+                            egui::Vec2::new(char_width, line_height),
+                        );
+                        painter.text(
+                            char_rect.center(),
+                            egui::Align2::CENTER_CENTER,
+                            styled.ch.to_string(),
+                            egui::FontId::monospace(12.0),
+                            egui::Color32::WHITE,
+                        );
+                    }
+                }
+            }
+        }
+    }
 }
 
 impl Default for TerminalWidget {
