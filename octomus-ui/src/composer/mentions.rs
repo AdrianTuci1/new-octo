@@ -1,44 +1,52 @@
-use egui::{Response, Ui, Widget};
+use regex::Regex;
 
-pub struct MentionPicker<'a> {
-    query: &'a str,
+/// ContextMentions — 1:1 port of React `contextMentions.ts`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Mention {
+    pub text: String,
+    pub start: usize,
+    pub end: usize,
+    pub kind: MentionKind,
 }
 
-impl<'a> MentionPicker<'a> {
-    pub fn new(query: &'a str) -> Self {
-        Self { query }
-    }
-
-    fn extract_trigger(query: &str) -> Option<&str> {
-        query.rsplit('@').next()
-    }
+#[derive(Debug, Clone, PartialEq)]
+pub enum MentionKind {
+    File,
+    Directory,
+    Symbol,
+    Url,
 }
 
-impl<'a> Widget for MentionPicker<'a> {
-    fn ui(self, ui: &mut Ui) -> Response {
-        let trigger = match Self::extract_trigger(self.query) {
-            Some(t) if !t.is_empty() => t,
-            _ => return ui.label(""),
+pub fn find_mentions(text: &str) -> Vec<Mention> {
+    let mut mentions = Vec::new();
+    let re = Regex::new(r"@([a-zA-Z0-9_./\-~]+)").unwrap();
+    for cap in re.captures_iter(text) {
+        let m = cap.get(0).unwrap();
+        let name = cap.get(1).map(|x| x.as_str()).unwrap_or("").to_string();
+        let kind = if name.starts_with("http://") || name.starts_with("https://") {
+            MentionKind::Url
+        } else if name.ends_with('/') {
+            MentionKind::Directory
+        } else if name.contains('.') {
+            MentionKind::File
+        } else {
+            MentionKind::Symbol
         };
-
-        let suggestions: Vec<&str> = vec!["file", "symbol", "terminal", "git"]
-            .into_iter()
-            .filter(|s| s.starts_with(trigger))
-            .collect();
-
-        if suggestions.is_empty() {
-            return ui.label("");
-        }
-
-        egui::Frame::popup(ui.style())
-            .show(ui, |ui| {
-                ui.set_max_width(200.0);
-                for suggestion in suggestions {
-                    if ui.selectable_label(false, format!("@{}", suggestion)).clicked() {
-                        // mention selected
-                    }
-                }
-            })
-            .response
+        mentions.push(Mention {
+            text: name,
+            start: m.start(),
+            end: m.end(),
+            kind,
+        });
     }
+    mentions
+}
+
+pub fn insert_mention(text: &mut String, cursor: usize, mention: &str) {
+    let insert = format!("@{}", mention);
+    text.insert_str(cursor, &insert);
+}
+
+pub fn remove_mention(text: &mut String, mention: &Mention) {
+    text.replace_range(mention.start..mention.end, "");
 }

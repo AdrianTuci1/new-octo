@@ -3897,6 +3897,7 @@ dependencies = [
  "egui_extras",
  "image",
  "rand 0.10.1",
+ "regex",
  "serde",
  "serde_json",
  "syntect",

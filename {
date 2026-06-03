@@ -1,0 +1,3 @@
+use egui::{Color32, Response, RichText, CornerRadius, Sense, Ui, Vec2, Widget};
+
+pub struct SlashCommandHighlight<a
