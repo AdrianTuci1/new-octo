@@ -44,6 +44,7 @@ impl Widget for ChatPanel {
                     crate::state::chat::MessageRole::User => types::MessageRole::User,
                     crate::state::chat::MessageRole::Assistant => types::MessageRole::Assistant,
                     crate::state::chat::MessageRole::System => types::MessageRole::System,
+                    crate::state::chat::MessageRole::Tool => types::MessageRole::Assistant,
                 },
                 title: m.content.clone(),
                 body: m.content.clone(),
@@ -72,8 +73,7 @@ impl Widget for ChatPanel {
         ).ui(ui);
 
             if find_visible {
-                let mut opt_query = if find_query.is_empty() { None } else { Some(find_query.clone()) };
-                find_overlay::ChatFindOverlay::new(&mut opt_query).ui(ui);
+                find_overlay::ChatFindOverlay::new().ui(ui);
             }
         })
         .response
