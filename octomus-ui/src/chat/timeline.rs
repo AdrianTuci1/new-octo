@@ -1,17 +1,14 @@
 use egui::{Response, Ui, Widget};
-
+use crate::chat::types::ChatMessage;
 use crate::chat::bubble::MessageBubble;
 
 pub struct Timeline<'a> {
-    messages: &'a [crate::state::chat::Message],
+    messages: &'a [ChatMessage],
     is_loading: bool,
 }
 
 impl<'a> Timeline<'a> {
-    pub fn new(
-        messages: &'a [crate::state::chat::Message],
-        is_loading: bool,
-    ) -> Self {
+    pub fn new(messages: &'a [ChatMessage], is_loading: bool) -> Self {
         Self { messages, is_loading }
     }
 }
@@ -23,12 +20,14 @@ impl<'a> Widget for Timeline<'a> {
             .show(ui, |ui| {
                 ui.vertical(|ui| {
                     for message in self.messages {
-                        MessageBubble::new(message).ui(ui);
+                        ui.add_space(8.0);
+                        ui.add(MessageBubble::new(message.clone()));
                     }
                     if self.is_loading {
+                        ui.add_space(8.0);
                         ui.horizontal(|ui| {
                             ui.spinner();
-                            ui.label("Thinking...");
+                            ui.label("Loading...");
                         });
                     }
                 })

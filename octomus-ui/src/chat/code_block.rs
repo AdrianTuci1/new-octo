@@ -1,4 +1,4 @@
-use egui::{Response, RichText, Ui, Widget};
+use egui::{Color32, CornerRadius, Response, RichText, Ui, Widget};
 use syntect::{
     easy::HighlightLines,
     highlighting::ThemeSet,
@@ -14,6 +14,13 @@ pub struct CodeBlock {
 impl CodeBlock {
     pub fn new(language: Option<String>, code: String) -> Self {
         Self { language, code }
+    }
+
+    fn is_shell_language(language: &str) -> bool {
+        matches!(
+            language.to_lowercase().as_str(),
+            "sh" | "bash" | "zsh" | "shell" | "fish"
+        )
     }
 
     fn highlight(&self, ui: &mut Ui) {
@@ -56,13 +63,38 @@ impl Widget for CodeBlock {
     fn ui(self, ui: &mut Ui) -> Response {
         egui::Frame::dark_canvas(ui.style())
             .inner_margin(egui::vec2(8.0, 6.0))
-            .corner_radius(egui::CornerRadius::same(6))
+            .corner_radius(CornerRadius::same(6))
             .show(ui, |ui| {
-                if let Some(ref lang) = self.language {
-                    ui.label(RichText::new(format!("{}", lang)).small().monospace());
+                ui.vertical(|ui| {
+                    // Header with language label and copy button
+                    ui.horizontal(|ui| {
+                        if let Some(ref lang) = self.language {
+                            ui.label(
+                                RichText::new(lang.clone())
+                                    .small()
+                                    .monospace()
+                                    .color(Color32::from_rgb(150, 150, 150)),
+                            );
+                        }
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if ui.button("📋").clicked() {
+                                ui.output_mut(|o| {
+                                    o.copied_text = self.code.clone();
+                                });
+                            }
+                            if let Some(ref lang) = self.language {
+                                if Self::is_shell_language(lang) {
+                                    if ui.button("▶").clicked() {
+                                        // Run in terminal - emit command approval
+                                    }
+                                }
+                            }
+                        });
+                    });
                     ui.separator();
-                }
-                self.highlight(ui);
+                    self.highlight(ui);
+                })
+                .response
             })
             .response
     }
