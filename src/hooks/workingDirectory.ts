@@ -1,14 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { invoke } from '@tauri-apps/api/core';
-import { formatCompactPathLabel } from '../lib/pathLabels';
+import { FilesystemService } from '../services/Filesystem/FilesystemService';
 import { useMemoryStore } from '../stores/memoryStore';
-import type { FilesystemDirectoryListing, FilesystemPathContext } from '../types/filesystem';
-
-type DirectoryListingRequest = {
-  path?: string | null;
-  query?: string | null;
-  directoriesOnly?: boolean;
-};
+import type { FilesystemDirectoryListing } from '../types/filesystem';
 
 type UseWorkingDirectoryOptions = {
   initialPath?: string | null;
@@ -30,20 +23,17 @@ export function useWorkingDirectory(options: UseWorkingDirectoryOptions = {}) {
   const normalizedInitialPath = options.initialPath?.trim() || null;
 
   useEffect(() => {
-    void invoke<FilesystemPathContext>('terminal_get_path_context')
-      .then((context) => {
-        setHomeDir(context.homeDir);
-        const preferredPath = normalizedInitialPath
-          ?? (rememberSelection ? rememberedDirectory?.trim() || null : null)
-          ?? context.homeDir
-          ?? context.currentDir;
-
-        setCurrentPath((current) => current ?? preferredPath);
-        setBrowserPath((current) => current ?? preferredPath);
-      })
-      .catch((error) => {
-        console.warn('[working-directory] failed to load path context', error);
-      });
+    const filesystem = FilesystemService.getInstance();
+    void filesystem.loadPathContext().then((context) => {
+      if (!context) return;
+      setHomeDir(context.homeDir);
+      const preferredPath = normalizedInitialPath
+        ?? (rememberSelection ? rememberedDirectory?.trim() || null : null)
+        ?? context.homeDir
+        ?? context.currentDir;
+      setCurrentPath((current) => current ?? preferredPath);
+      setBrowserPath((current) => current ?? preferredPath);
+    });
   }, [normalizedInitialPath, rememberSelection, rememberedDirectory]);
 
   useEffect(() => {
@@ -71,23 +61,10 @@ export function useWorkingDirectory(options: UseWorkingDirectoryOptions = {}) {
   }, [rememberSelection, rememberedDirectory]);
 
   useEffect(() => {
-    if (!browserPath || !isPickerOpen) {
-      return;
-    }
-
-    void invoke<FilesystemDirectoryListing>('terminal_list_directory_entries', {
-      request: {
-        path: browserPath,
-        query: searchQuery || null,
-        directoriesOnly: true
-      } satisfies DirectoryListingRequest
-    })
-      .then((nextListing) => {
-        setListing(nextListing);
-      })
-      .catch((error) => {
-        console.warn('[working-directory] failed to list directories', error);
-      });
+    if (!browserPath || !isPickerOpen) return;
+    void FilesystemService.getInstance()
+      .listDirectoryEntries(browserPath, searchQuery || null)
+      .then(setListing);
   }, [browserPath, isPickerOpen, searchQuery]);
 
   const openPicker = useCallback(() => {
@@ -140,8 +117,8 @@ export function useWorkingDirectory(options: UseWorkingDirectoryOptions = {}) {
   }, [rememberSelection, saveSettings, syncCurrentPath]);
 
   const buttonLabel = useMemo(
-    () => formatCompactPathLabel(currentPath, homeDir),
-    [currentPath, homeDir]
+    () => FilesystemService.getInstance().formatPathLabel(currentPath),
+    [currentPath]
   );
 
   return {

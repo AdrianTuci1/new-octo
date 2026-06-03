@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
+import { mergeBlock, sortTimelineBlocks } from '../services/Terminal/TerminalBlocksService';
 import type {
   TerminalBlock,
   TerminalBlockEvent,
@@ -41,36 +42,8 @@ type UseTerminalCommandBlocksOptions = {
   onSessionChange?: (sessionId: string | null) => void;
 };
 
-function mergeBlock(
-  block: TerminalBlock,
-  output = '',
-  meta?: TerminalBlockSharedMeta
-): TerminalCommandBlock {
-  return {
-    ...block,
-    output: output || block.output || '',
-    status: block.finishedAt ? 'finished' : 'running',
-    presentation: meta?.presentation ?? 'command',
-    source: meta?.source,
-    conversationId: meta?.conversationId,
-    conversationTitle: meta?.conversationTitle
-  };
-}
-
 const EMPTY_META: Record<string, TerminalBlockSharedMeta> = {};
 const EMPTY_SYNTHETIC_BLOCKS: TerminalCommandBlock[] = [];
-
-function sortTimelineBlocks(blocks: TerminalCommandBlock[]) {
-  return [...blocks].sort((left, right) => {
-    const leftTime = Date.parse(left.startedAt || '') || 0;
-    const rightTime = Date.parse(right.startedAt || '') || 0;
-    if (leftTime !== rightTime) {
-      return leftTime - rightTime;
-    }
-
-    return left.id.localeCompare(right.id);
-  });
-}
 
 export function useTerminalCommandBlocks(options: UseTerminalCommandBlocksOptions = {}) {
   const cwd = options.cwd ?? null;

@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useStore } from 'zustand';
+import { useLauncherAppStateStore } from '../stores/launcherAppStateStore';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import type { LauncherProps } from '../components/Layout/Launcher/hooks';
 import { initialWorkspaceChromeTabs } from '../components/App/chrome';
@@ -109,128 +111,70 @@ type UseLauncherAppStateResult = {
 
 export function useLauncherAppState(): UseLauncherAppStateResult {
   const panelMode = getPanelMode();
-  const bootstrapMemory = useMemoryStore((state) => state.bootstrap);
-  const memoryWorkspace = useMemoryStore((state) => state.workspace);
-  const saveWorkspace = useMemoryStore((state) => state.saveWorkspace);
+  const bootstrapMemory = useMemoryStore((s) => s.bootstrap);
+  const memoryWorkspace = useMemoryStore((s) => s.workspace);
+  const saveWorkspace = useMemoryStore((s) => s.saveWorkspace);
+  const isLauncherWindowVisible = useStore(
+    useLauncherAppStateStore,
+    (s) => s.isLauncherWindowVisible
+  );
+  const isOnboardingCompleted = useStore(
+    useLauncherAppStateStore,
+    (s) => s.isOnboardingCompleted
+  );
+  const store = useLauncherAppStateStore;
   const pendingLauncherSessionSaveRef = useRef<{
     session: TerminalSessionState;
     tabId: string;
   } | null>(null);
   const launcherSessionSaveTimeoutRef = useRef<number | null>(null);
-  const [isLauncherWindowVisible, setIsLauncherWindowVisible] = useState(() => {
-    if (!(window as any).__TAURI_INTERNALS__) {
-      return true;
-    }
+  const launcherSessionOverrideRef = useRef<TerminalSessionState | null>(null);
+  const sessionOverrideTickRef = useRef(0);
+  const [_rerender, forceRerender] = useState(0);
 
-    return document.visibilityState !== 'hidden';
-  });
-  const [isOnboardingCompleted, setIsOnboardingCompleted] = useState(() => {
-    return localStorage.getItem('onboarding_completed') === 'true';
-  });
+  useEffect(() => { void bootstrapMemory(); }, [bootstrapMemory]);
 
   useEffect(() => {
-    void bootstrapMemory();
-  }, [bootstrapMemory]);
-
-  useEffect(() => {
-    if (!(window as any).__TAURI_INTERNALS__) {
-      return;
-    }
-
+    if (!(window as any).__TAURI_INTERNALS__) return;
     let cancelled = false;
     let intervalId = 0;
-
-    const syncVisibility = async () => {
-      const currentWindow = getCurrentWindow();
-      const visible = await currentWindow.isVisible().catch(() => document.visibilityState !== 'hidden');
-      if (!cancelled) {
-        setIsLauncherWindowVisible(visible);
-      }
+    const sync = async () => {
+      const visible = await getCurrentWindow().isVisible().catch(() => document.visibilityState !== 'hidden');
+      if (!cancelled) store.setState({ isLauncherWindowVisible: visible });
     };
-
-    void syncVisibility();
-    intervalId = window.setInterval(() => {
-      void syncVisibility();
-    }, 250);
-
-    return () => {
-      cancelled = true;
-      window.clearInterval(intervalId);
-    };
+    void sync();
+    intervalId = window.setInterval(() => { void sync(); }, 250);
+    return () => { cancelled = true; window.clearInterval(intervalId); };
   }, []);
 
   useEffect(() => {
-    if (panelMode !== 'launcher' || !memoryWorkspace) {
-      return;
-    }
-
-    const hasLinkedLauncherTab = Boolean(
-      memoryWorkspace.launcherTabId
-      && memoryWorkspace.tabs.some((tab) => tab.id === memoryWorkspace.launcherTabId)
-    );
-
-    if (hasLinkedLauncherTab) {
-      return;
-    }
-
+    if (panelMode !== 'launcher' || !memoryWorkspace) return;
+    if (memoryWorkspace.launcherTabId && memoryWorkspace.tabs.some((t) => t.id === memoryWorkspace.launcherTabId)) return;
     const latestWorkspace = buildWorkspaceForLauncher(useMemoryStore.getState().workspace);
-
-    if (
-      latestWorkspace.launcherTabId
-      && latestWorkspace.tabs.some((tab) => tab.id === latestWorkspace.launcherTabId)
-    ) {
-      return;
-    }
-
-    const terminalTabs = latestWorkspace.tabs.filter((tab) => tab.kind === 'terminal');
-    const nextTerminalIndex = Math.max(
-      latestWorkspace.nextTerminalIndex || 1,
-      terminalTabs.length + 1
-    );
+    if (latestWorkspace.launcherTabId && latestWorkspace.tabs.some((t) => t.id === latestWorkspace.launcherTabId)) return;
+    const terminalTabs = latestWorkspace.tabs.filter((t) => t.kind === 'terminal');
+    const nextTerminalIndex = Math.max(latestWorkspace.nextTerminalIndex || 1, terminalTabs.length + 1);
     const nextTabId = `terminal-${String(nextTerminalIndex).padStart(2, '0')}`;
-
     void saveWorkspace({
       ...latestWorkspace,
-      tabs: [
-        ...latestWorkspace.tabs,
-        {
-          id: nextTabId,
-          label: '~',
-          kind: 'terminal'
-        }
-      ],
-      launcherTabId: nextTabId,
-      selectedTabId: nextTabId,
-      paneLayoutsByTabId: {
-        ...(latestWorkspace.paneLayoutsByTabId ?? {}),
-        [nextTabId]: createDefaultPaneLayout(nextTabId)
-      },
-      nextTerminalIndex: Math.max(
-        latestWorkspace.nextTerminalIndex || 1,
-        nextTerminalIndex + 1
-      ),
-      terminalSessions: {
-        ...(latestWorkspace.terminalSessions ?? {}),
-        [nextTabId]: createEmptyTerminalSession()
-      },
-      updatedAt: new Date().toISOString()
+      tabs: [...latestWorkspace.tabs, { id: nextTabId, label: '~', kind: 'terminal' }],
+      launcherTabId: nextTabId, selectedTabId: nextTabId,
+      paneLayoutsByTabId: { ...(latestWorkspace.paneLayoutsByTabId ?? {}), [nextTabId]: createDefaultPaneLayout(nextTabId) },
+      nextTerminalIndex: Math.max(latestWorkspace.nextTerminalIndex || 1, nextTerminalIndex + 1),
+      terminalSessions: { ...(latestWorkspace.terminalSessions ?? {}), [nextTabId]: createEmptyTerminalSession() },
+      updatedAt: new Date().toISOString(),
     });
   }, [memoryWorkspace, panelMode, saveWorkspace]);
 
   useEffect(() => {
-    const handleStorage = (event: StorageEvent) => {
-      if (event.key === 'onboarding_completed') {
-        setIsOnboardingCompleted(event.newValue === 'true');
-      }
-    };
-
-    window.addEventListener('storage', handleStorage);
-    return () => window.removeEventListener('storage', handleStorage);
+    const h = (e: StorageEvent) => { if (e.key === 'onboarding_completed') store.setState({ isOnboardingCompleted: e.newValue === 'true' }); };
+    window.addEventListener('storage', h);
+    return () => window.removeEventListener('storage', h);
   }, []);
 
   const handleOnboardingComplete = useCallback(() => {
     localStorage.setItem('onboarding_completed', 'true');
-    setIsOnboardingCompleted(true);
+    store.setState({ isOnboardingCompleted: true });
   }, []);
 
   const launcherWorkspace = buildWorkspaceForLauncher(memoryWorkspace);
@@ -242,42 +186,29 @@ export function useLauncherAppState(): UseLauncherAppStateResult {
     launcherTabId && launcherWorkspace.tabs.some((tab) => tab.id === launcherTabId)
   );
   const canSpotlightControlWorkspace = panelMode === 'launcher' && isLinkedToWorkspace && isLauncherWindowVisible;
-  const [launcherSessionOverride, setLauncherSessionOverride] = useState<TerminalSessionState | null>(null);
   const lastHydratedLauncherTabIdRef = useRef<string | null>(null);
 
   const effectiveLauncherSession = useMemo(() => {
-    if (launcherSessionOverride) {
-      return launcherSessionOverride;
-    }
-
+    if (launcherSessionOverrideRef.current) return launcherSessionOverrideRef.current;
     return launcherSession ? normalizeTerminalSession(launcherSession) : null;
-  }, [launcherSession, launcherSessionOverride]);
+  }, [launcherSession, _rerender]);
 
   useEffect(() => {
     if (!launcherTabId) {
       lastHydratedLauncherTabIdRef.current = null;
-      setLauncherSessionOverride(null);
+      launcherSessionOverrideRef.current = null;
       return;
     }
-
     const nextSession = launcherSession ? normalizeTerminalSession(launcherSession) : null;
-
-    setLauncherSessionOverride((current) => {
-      if (lastHydratedLauncherTabIdRef.current !== launcherTabId) {
-        lastHydratedLauncherTabIdRef.current = launcherTabId;
-        return nextSession;
-      }
-
-      if (canSpotlightControlWorkspace && current) {
-        return current;
-      }
-
-      if (areTerminalSessionsEquivalent(current, nextSession)) {
-        return current;
-      }
-
-      return nextSession;
-    });
+    const current = launcherSessionOverrideRef.current;
+    if (lastHydratedLauncherTabIdRef.current !== launcherTabId) {
+      lastHydratedLauncherTabIdRef.current = launcherTabId;
+      launcherSessionOverrideRef.current = nextSession;
+      return;
+    }
+    if (canSpotlightControlWorkspace && current) return;
+    if (areTerminalSessionsEquivalent(current, nextSession)) return;
+    launcherSessionOverrideRef.current = nextSession;
   }, [canSpotlightControlWorkspace, launcherSession, launcherTabId]);
 
   const flushLauncherSessionSave = useCallback(async () => {
@@ -332,16 +263,11 @@ export function useLauncherAppState(): UseLauncherAppStateResult {
   const updateLauncherSession = useCallback((
     updater: (session: TerminalSessionState) => TerminalSessionState
   ) => {
-    if (!canSpotlightControlWorkspace || !launcherTabId) {
-      return;
-    }
-
-    setLauncherSessionOverride((current) => {
-      const baseSession = current ?? normalizeTerminalSession(launcherSession);
-      const nextSession = normalizeTerminalSession(updater(baseSession));
-      scheduleLauncherSessionSave(nextSession, launcherTabId);
-      return nextSession;
-    });
+    if (!canSpotlightControlWorkspace || !launcherTabId) return;
+    const baseSession = launcherSessionOverrideRef.current ?? normalizeTerminalSession(launcherSession);
+    const nextSession = normalizeTerminalSession(updater(baseSession));
+    launcherSessionOverrideRef.current = nextSession;
+    scheduleLauncherSessionSave(nextSession, launcherTabId);
   }, [canSpotlightControlWorkspace, launcherSession, launcherTabId, scheduleLauncherSessionSave]);
 
   const handleLauncherConversationChange = useCallback((conversationId: string | null) => {

@@ -4,7 +4,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { AgentPanel } from './views/Agent/AgentPanel';
 import { ShellWindow } from './views/Shell/ShellWindow';
 import { Onboarding } from './components/Onboarding/Onboarding';
-import { useLauncherAppState } from './hooks/useLauncherAppState';
+import { useLauncherAppState } from './hooks/launcherAppState';
 
 export function App() {
   const app = useLauncherAppState();

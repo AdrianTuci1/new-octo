@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { ComposerIntelligenceService, DEFAULT_RESPONSE } from '../services/Terminal/ComposerIntelligenceService';
+import type { BackendPrediction, BackendResponse } from '../services/Terminal/ComposerIntelligenceService';
 import type { RecommendedComposerAction, ShellPrediction } from '../lib/composerIntelligence';
 import type { ChatMessage } from '../types/chat';
 import type { ShellHistoryEntry } from '../types/history';
@@ -24,25 +26,12 @@ type ComposerIntelligenceOptions = {
   surface: 'terminal' | 'composerBar';
 };
 
-type BackendPrediction = {
-  suggestion: string;
-  suggestions: string[];
-  kind: string;
-};
-
 type BackendRecommendedAction = {
   id: string;
   label: string;
   value: string;
   description: string;
   mode: ComposerMode;
-};
-
-type BackendResponse = {
-  mode: ComposerMode;
-  shellSource: ShellModeSource | null;
-  prediction: BackendPrediction | null;
-  recommendedAction: BackendRecommendedAction | null;
 };
 
 type BackendGhostPrediction = {
@@ -52,19 +41,6 @@ type BackendGhostPrediction = {
   confidence: number;
   kind: string;
 };
-
-const DEFAULT_RESPONSE: BackendResponse = {
-  mode: 'chat',
-  shellSource: null,
-  prediction: null,
-  recommendedAction: null
-};
-
-const MAX_INTELLIGENCE_MESSAGES = 8;
-const MAX_INTELLIGENCE_MESSAGE_BODY_CHARS = 1_500;
-const MAX_INTELLIGENCE_TERMINAL_BLOCKS = 5;
-const MAX_INTELLIGENCE_TERMINAL_OUTPUT_HEAD_CHARS = 1_200;
-const MAX_INTELLIGENCE_TERMINAL_OUTPUT_TAIL_CHARS = 1_200;
 
 export function useComposerIntelligence(options: ComposerIntelligenceOptions) {
   const {
@@ -139,21 +115,8 @@ export function useComposerIntelligence(options: ComposerIntelligenceOptions) {
     setSelectedPredictionIndex(0);
   }, [contextKey, cwd, terminalBlocks.length]);
 
-  const compactMessages = useMemo(() => {
-    return messages.slice(-MAX_INTELLIGENCE_MESSAGES).map((message) => ({
-      role: message.role,
-      body: compactText(message.body, MAX_INTELLIGENCE_MESSAGE_BODY_CHARS)
-    }));
-  }, [messages]);
-
-  const compactTerminalBlocks = useMemo(() => {
-    return terminalBlocks.slice(-MAX_INTELLIGENCE_TERMINAL_BLOCKS).map((block) => ({
-      command: block.command,
-      output: compactTerminalOutput(block.output),
-      exitCode: block.exitCode ?? null,
-      status: block.status
-    }));
-  }, [terminalBlocks]);
+  const compactMessages = useMemo(() => ComposerIntelligenceService.compactMessages(messages), [messages]);
+  const compactTerminalBlocks = useMemo(() => ComposerIntelligenceService.compactTerminalBlocks(terminalBlocks), [terminalBlocks]);
   const shouldRequestComposerGhostPrediction = useMemo(() => (
     surface === 'composerBar'
       && trimmedQuery.length > 0
@@ -186,7 +149,7 @@ export function useComposerIntelligence(options: ComposerIntelligenceOptions) {
               prediction: nextPrediction
                 ? {
                     suggestion: nextPrediction.suggestion,
-                    suggestions: normalizeGhostSuggestions(nextPrediction),
+                    suggestions: ComposerIntelligenceService.normalizeGhostSuggestions(nextPrediction),
                     kind: nextPrediction.kind
                   }
                 : null,
@@ -251,7 +214,7 @@ export function useComposerIntelligence(options: ComposerIntelligenceOptions) {
             prediction: nextGhostPrediction
               ? {
                   suggestion: nextGhostPrediction.suggestion,
-                  suggestions: normalizeGhostSuggestions(nextGhostPrediction),
+                  suggestions: ComposerIntelligenceService.normalizeGhostSuggestions(nextGhostPrediction),
                   kind: nextGhostPrediction.kind
                 }
               : nextResponse.prediction
@@ -315,46 +278,4 @@ export function useComposerIntelligence(options: ComposerIntelligenceOptions) {
       setSelectedPredictionIndex((currentIndex) => (currentIndex + 1) % count);
     }
   };
-}
-
-function normalizeGhostSuggestions(prediction: BackendGhostPrediction) {
-  const seen = new Set<string>();
-  const suggestions = [prediction.suggestion, ...(prediction.suggestions ?? [])]
-    .map((suggestion) => suggestion.trim())
-    .filter((suggestion) => {
-      if (!suggestion || seen.has(suggestion)) {
-        return false;
-      }
-
-      seen.add(suggestion);
-      return true;
-    });
-
-  return suggestions.length > 0 ? suggestions : [prediction.suggestion];
-}
-
-function compactText(value: string, maxChars: number) {
-  const trimmed = value.trim();
-  if (trimmed.length <= maxChars) {
-    return trimmed;
-  }
-
-  return `${trimmed.slice(0, maxChars).trimEnd()}\n…`;
-}
-
-function compactTerminalOutput(output?: string | null) {
-  const normalized = (output ?? '').trim();
-  if (
-    normalized.length <=
-    MAX_INTELLIGENCE_TERMINAL_OUTPUT_HEAD_CHARS + MAX_INTELLIGENCE_TERMINAL_OUTPUT_TAIL_CHARS
-  ) {
-    return normalized;
-  }
-
-  const head = normalized.slice(0, MAX_INTELLIGENCE_TERMINAL_OUTPUT_HEAD_CHARS).trimEnd();
-  const tail = normalized
-    .slice(Math.max(0, normalized.length - MAX_INTELLIGENCE_TERMINAL_OUTPUT_TAIL_CHARS))
-    .trimStart();
-
-  return `${head}\n…\n${tail}`;
 }

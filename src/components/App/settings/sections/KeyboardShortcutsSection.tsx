@@ -1,6 +1,6 @@
 import { Search } from 'lucide-react';
 import { useMemo, useState } from 'react';
-import { useKeybindingCatalog } from '../../../../hooks/useKeybindingCatalog';
+import { useKeybindingCatalog } from '../../../../hooks/keybindingCatalog';
 import { ShortcutBinding } from '../menus/keyboard-shortcuts/ShortcutPrimitives';
 
 export function KeyboardShortcutsSection() {

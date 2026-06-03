@@ -1,4 +1,4 @@
-import { extractInlineFileChangeApproval, visibleChatMessageBody } from '../../../hooks/useChat';
+import { extractInlineFileChangeApproval, visibleChatMessageBody } from '../../../hooks/chat';
 import type { FileDiff } from '../../../types/diff';
 import type { ChatMessage } from '../../../types/chat';
 import { extractFileProposalFromMarkdown } from './fileProposals';

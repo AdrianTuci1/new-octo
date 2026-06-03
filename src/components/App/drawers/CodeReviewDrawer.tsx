@@ -1,7 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { ChevronDown, ChevronRight, Copy, FileCode2, RefreshCcw, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useMonacoColorizedLines } from '../../../hooks/useMonacoColorizedLines';
+import { useMonacoColorizedLines } from '../../../hooks/monacoColorizedLines';
 import { getLanguageFromPath } from '../../../lib/fileLanguage';
 import { useUIStore } from '../../../stores';
 import type { GitWorktreeDiff, GitWorktreeDiffFile } from '../../../types/gitDiff';

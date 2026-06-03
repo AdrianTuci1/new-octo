@@ -1,6 +1,6 @@
 import type { ChatMessage, WorkspaceExplorationArtifact } from '../../../types/chat';
 import type { TerminalCommandBlock } from '../../../types/terminal';
-import { extractInlineFileChangeApproval, visibleChatMessageBody } from '../../../hooks/useChat/parsers';
+import { extractInlineFileChangeApproval, visibleChatMessageBody } from '../../../hooks/chat/parsers';
 import { timelineMessageTime } from './timelineMessageTime';
 
 export type TimelineItem =

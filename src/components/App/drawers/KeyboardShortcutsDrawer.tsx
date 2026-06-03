@@ -4,7 +4,7 @@ import '../settings/SettingsContent.css';
 import './KeyboardShortcutsDrawer.css';
 import { ShortcutBinding } from '../settings/menus/keyboard-shortcuts/ShortcutPrimitives';
 import { DrawerHeader } from './DrawerHeader';
-import { useKeybindingCatalog } from '../../../hooks/useKeybindingCatalog';
+import { useKeybindingCatalog } from '../../../hooks/keybindingCatalog';
 
 type KeyboardShortcutsDrawerProps = {
   onClose: () => void;
