@@ -1,6 +1,7 @@
 use egui::{Color32, CornerRadius, Response, RichText, Stroke, Ui, Widget};
 
 use crate::chat::blocks::BlockRenderer;
+use crate::state::chat::MessageRole;
 
 pub struct MessageBubble<'a> {
     message: &'a crate::state::chat::Message,
@@ -13,9 +14,10 @@ impl<'a> MessageBubble<'a> {
 
     fn background_color(&self) -> Color32 {
         match self.message.role {
-            crate::state::chat::MessageRole::User => Color32::from_rgb(40, 80, 120),
-            crate::state::chat::MessageRole::Assistant => Color32::from_rgb(50, 50, 55),
-            crate::state::chat::MessageRole::System => Color32::from_rgb(60, 60, 40),
+            MessageRole::User => Color32::from_rgb(40, 80, 120),
+            MessageRole::Assistant => Color32::from_rgb(50, 50, 55),
+            MessageRole::System => Color32::from_rgb(60, 60, 40),
+            MessageRole::Tool => Color32::from_rgb(50, 55, 50),
         }
     }
 }
@@ -34,9 +36,10 @@ impl<'a> Widget for MessageBubble<'a> {
             .show(ui, |ui| {
                 ui.vertical(|ui| {
                     let role_label = match self.message.role {
-                        crate::state::chat::MessageRole::User => "You",
-                        crate::state::chat::MessageRole::Assistant => "Assistant",
-                        crate::state::chat::MessageRole::System => "System",
+                        MessageRole::User => "You",
+                        MessageRole::Assistant => "Assistant",
+                        MessageRole::System => "System",
+                        MessageRole::Tool => "Tool",
                     };
                     ui.label(RichText::new(role_label).strong().size(12.0));
                     ui.add_space(4.0);
